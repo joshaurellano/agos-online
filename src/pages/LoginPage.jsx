@@ -1,20 +1,23 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export default function LoginPage() {
+
+  const navigate = useNavigate();
+
   const { login, error } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setTimeout(() => {
-      login(username, password);
+      e.preventDefault();
+      setLoading(true);
+      const ok = await login(username, password);
       setLoading(false);
-    }, 600);
-  };
+      if (ok) navigate('/dashboard');
+    };
 
   return (
     <div style={{

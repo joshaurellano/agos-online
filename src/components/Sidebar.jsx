@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { NavLink } from 'react-router-dom';
+import { Nav, Button } from 'react-bootstrap';
 import { useAuth } from '../hooks/useAuth';
 
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-  { id: 'water-level', label: 'Water Level', icon: '💧' },
-  { id: 'rainfall', label: 'Rainfall', icon: '🌧' },
-  { id: 'flood-map', label: 'Flood Map', icon: '🗺' },
-  { id: 'historical', label: 'Historical Events', icon: '📋' },
-  { id: 'alerts', label: 'Alert Logs', icon: '🔔' },
-  { id: 'data-sources', label: 'Data Sources', icon: '📡' },
+  { path: '/dashboard',    label: 'Dashboard',         icon: '📊' },
+  { path: '/water-level',  label: 'Water Level',       icon: '💧' },
+  { path: '/rainfall',     label: 'Rainfall',          icon: '🌧'  },
+  { path: '/flood-map',    label: 'Flood Map',         icon: '🗺'  },
+  { path: '/historical',   label: 'Historical Events', icon: '📋' },
+  { path: '/alerts',       label: 'Alert Logs',        icon: '🔔' },
+  { path: '/data-sources', label: 'Data Sources',      icon: '📡' },
 ];
 
-export default function Sidebar({ activePage, onNavigate, mobileOpen, onClose }) {
+export default function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth();
 
   return (
@@ -27,7 +28,7 @@ export default function Sidebar({ activePage, onNavigate, mobileOpen, onClose })
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         {/* Logo */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--blue-border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="d-flex align-items-center gap-2">
             <span style={{ fontSize: '1.6rem' }}>🌊</span>
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.3rem', color: 'var(--accent)', letterSpacing: '-0.02em' }}>AGOS</div>
@@ -37,38 +38,49 @@ export default function Sidebar({ activePage, onNavigate, mobileOpen, onClose })
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
+        <Nav className="flex-column flex-grow-1 py-2 overflow-auto">
           {NAV_ITEMS.map(item => (
-            <button
-              key={item.id}
-              onClick={() => { onNavigate(item.id); onClose?.(); }}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '11px 20px', border: 'none', cursor: 'pointer',
-                background: activePage === item.id ? 'rgba(56,189,248,0.1)' : 'transparent',
-                color: activePage === item.id ? 'var(--accent)' : 'var(--text-secondary)',
-                borderLeft: activePage === item.id ? '3px solid var(--accent)' : '3px solid transparent',
-                fontFamily: 'var(--font-body)', fontSize: '0.88rem', fontWeight: activePage === item.id ? 600 : 400,
-                textAlign: 'left', transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { if (activePage !== item.id) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-              onMouseLeave={e => { if (activePage !== item.id) e.currentTarget.style.background = 'transparent'; }}
+            <Nav.Link
+              key={item.path}
+              as={NavLink}
+              to={item.path}
+              onClick={onClose}
+              className="d-flex align-items-center gap-2 px-3 py-2"
+              style={({ isActive }) => ({
+                background:  isActive ? 'rgba(56,189,248,0.1)' : 'transparent',
+                color:       isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                borderLeft:  isActive ? '3px solid var(--accent)' : '3px solid transparent',
+                fontSize:    '0.88rem',
+                fontWeight:  isActive ? 600 : 400,
+                transition:  'all 0.15s',
+                textDecoration: 'none',
+              })}
             >
               <span>{item.icon}</span>
               {item.label}
-            </button>
+            </Nav.Link>
           ))}
-        </nav>
+        </Nav>
 
         {/* User info */}
         <div style={{ padding: '16px 20px', borderTop: '1px solid var(--blue-border)' }}>
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>{user?.role}</div>
+          <div className="mb-3">
+            <div className="text-truncate" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              {user?.name}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {user?.role}
+            </div>
           </div>
-          <button className="btn btn-ghost" onClick={logout} style={{ width: '100%', justifyContent: 'center', fontSize: '0.82rem', padding: '8px' }}>
+          <Button
+            variant="outline-secondary"
+            size="sm"
+            onClick={logout}
+            className="w-100"
+            style={{ fontSize: '0.82rem' }}
+          >
             🚪 Sign Out
-          </button>
+          </Button>
         </div>
       </aside>
     </>

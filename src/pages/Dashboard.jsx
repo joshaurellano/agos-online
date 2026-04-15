@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import Swal from 'sweetalert2';
 import { ALERT_LEVELS, generateWaterLevelData, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
 
-export default function Dashboard({ onNavigate }) {
+export default function Dashboard() {
+  const navigate = useNavigate();
   const [currentAlert, setCurrentAlert] = useState('WARNING');
   const [waterData, setWaterData] = useState(generateWaterLevelData());
   const [currentLevel, setCurrentLevel] = useState(3.4);
