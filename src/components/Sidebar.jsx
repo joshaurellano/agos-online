@@ -10,10 +10,12 @@ const NAV_ITEMS = [
   { path: '/historical',   label: 'Historical Events', icon: '📋' },
   { path: '/alerts',       label: 'Alert Logs',        icon: '🔔' },
   { path: '/data-sources', label: 'Data Sources',      icon: '📡' },
+  { path: '/register',     label: 'Register',          icon: '📡', adminOnly: true },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth();
+  const isAdmin = user?.roles?.role_desc === 'Admin';
 
   return (
     <>
@@ -38,8 +40,10 @@ export default function Sidebar({ mobileOpen, onClose }) {
         </div>
 
         {/* Nav */}
+        
+
         <Nav className="flex-column flex-grow-1 py-2 overflow-auto">
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => (
             <Nav.Link
               key={item.path}
               as={NavLink}
@@ -69,7 +73,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
               {user?.name}
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              {user?.role}
+              {user?.roles?.role_desc}
             </div>
           </div>
           <Button

@@ -13,6 +13,7 @@ import DataSourcesPage from './pages/DataSourcesPage';
 
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 
 function App() {
   return (
@@ -21,7 +22,11 @@ function App() {
         <Routes>
           <Route path="/"         element={<LoginPage />} />
           <Route path="/login"    element={<LoginPage />} />
-          <Route path="/register" element={<RegistrationPage />} />
+          <Route path="/register" element={
+            <AdminRoute>
+              <RegistrationPage />
+            </AdminRoute>
+          } />
 
           <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
             <Route path="/dashboard"    element={<Dashboard />} />

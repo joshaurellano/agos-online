@@ -8,29 +8,32 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Restore session on page reload
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) fetchProfile(session.user.id);
-      else setLoading(false);
-    });
-
+    // onAuthStateChange fires immediately with the current session on mount,
+    // so you don't need getSession() at all.
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) fetchProfile(session.user.id);
-      else { setUser(null); setLoading(false); }
+      else {
+        setUser(null);
+        setLoading(false);
+      }
     });
 
     return () => listener.subscription.unsubscribe();
   }, []);
 
   const fetchProfile = async (userId) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('*, roles(role_desc)')
       .eq('id', userId)
       .single();
 
     if (data) setUser(data);
+    else {
+      console.error('Profile fetch failed:', error?.message);
+      setUser(null); // or handle as needed
+    }
     setLoading(false);
   };
 
