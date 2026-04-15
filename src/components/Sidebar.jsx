@@ -1,16 +1,20 @@
 import { NavLink } from 'react-router-dom';
-import { Nav, Button } from 'react-bootstrap';
+import { Nav, Button, Image } from 'react-bootstrap';
 import { useAuth } from '../hooks/useAuth';
 
+import { Icon } from '@iconify/react';
+
+import { CgLogOut } from "react-icons/cg";
+
 const NAV_ITEMS = [
-  { path: '/dashboard',    label: 'Dashboard',         icon: '📊' },
-  { path: '/water-level',  label: 'Water Level',       icon: '💧' },
-  { path: '/rainfall',     label: 'Rainfall',          icon: '🌧'  },
-  { path: '/flood-map',    label: 'Flood Map',         icon: '🗺'  },
-  { path: '/historical',   label: 'Historical Events', icon: '📋' },
-  { path: '/alerts',       label: 'Alert Logs',        icon: '🔔' },
-  { path: '/data-sources', label: 'Data Sources',      icon: '📡' },
-  { path: '/register',     label: 'Register',          icon: '📡', adminOnly: true },
+  { path: '/dashboard',    label: 'Dashboard',         icon: <Icon icon="fluent-color:calendar-data-bar-16" width={20} /> },
+  { path: '/water-level',  label: 'Water Level',       icon: <Icon icon="noto:water-wave" width={20} /> },
+  { path: '/rainfall',     label: 'Rainfall',          icon: <Icon icon="noto:cloud-with-rain" width={20} /> },
+  { path: '/flood-map',    label: 'Flood Map',         icon: <Icon icon="fluent-color:location-ripple-16" width={20} /> },
+  { path: '/historical',   label: 'Historical Events', icon: <Icon icon="flat-color-icons:overtime" width={20} /> },
+  { path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} /> },
+  { path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} /> },
+  { path: '/register',     label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
@@ -83,7 +87,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
             className="w-100"
             style={{ fontSize: '0.82rem' }}
           >
-            🚪 Sign Out
+            <CgLogOut style={{fontSize:20}}/> Sign Out
           </Button>
         </div>
       </aside>
