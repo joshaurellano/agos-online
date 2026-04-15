@@ -200,3 +200,12 @@ body {
   .page-body { padding: 16px; }
   .hide-mobile { display: none !important; }
 }
+
+.form-control::placeholder {
+  color: var(--text-secondary) !important;
+  opacity: 1;
+}
+
+.form-control {
+  color: var(--text-primary) !important;
+}

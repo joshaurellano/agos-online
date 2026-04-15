@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+import { Spinner, Form, InputGroup } from 'react-bootstrap';
+
 import { useAuth } from '../hooks/useAuth';
+
+import { FaEyeSlash } from "react-icons/fa";
+import { FaEye } from "react-icons/fa";
 
 export default function LoginPage() {
 
@@ -9,6 +15,7 @@ export default function LoginPage() {
   const { login, error } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -65,16 +72,18 @@ export default function LoginPage() {
             Sign In to Dashboard
           </h2>
 
-          <form onSubmit={handleSubmit}>
+          <Form onSubmit={handleSubmit}>
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Form.Label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Username
-              </label>
-              <input
+              </Form.Label>
+              
+              <Form.Control
+                placeholder="e.g. bgy_secretary"
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                placeholder="e.g. bgy_secretary"
+                
                 required
                 style={{
                   width: '100%', padding: '12px 14px',
@@ -85,29 +94,45 @@ export default function LoginPage() {
                 }}
                 onFocus={e => e.target.style.borderColor = 'var(--accent)'}
                 onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-              />
+              />  
+               
             </div>
 
             <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Form.Label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                style={{
-                  width: '100%', padding: '12px 14px',
-                  background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-                  borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
-                  fontFamily: 'var(--font-body)', fontSize: '0.95rem',
-                  outline: 'none', transition: 'border-color 0.2s',
-                }}
-                onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-              />
+              </Form.Label>
+              <InputGroup>
+                <Form.Control
+                  type={showPassword ? "text":"password"}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{
+                    padding: '12px 14px',
+                    background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
+                    borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)', 
+                    fontFamily: 'var(--font-body)', fontSize: '0.95rem',
+                    outline: 'none', transition: 'border-color 0.2s',
+                    borderRight:'none',
+                    color: 'var(--text-primary)'
+                  }}
+                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
+                />
+              <InputGroup.Text style={{
+                background: 'var(--blue-mid)',
+                border: '1px solid var(--blue-border)',
+                borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                borderLeft:'none'
+              }}> 
+                {
+                  showPassword ? <FaEye onClick={() => setShowPassword(prev => !prev)} /> :  <FaEyeSlash onClick={() => setShowPassword(prev => !prev)}/> } 
+              </InputGroup.Text>
+              </InputGroup>
             </div>
 
             {error && (
@@ -122,16 +147,17 @@ export default function LoginPage() {
               style={{ width: '100%', justifyContent: 'center', padding: '13px', fontSize: '1rem' }}
               disabled={loading}
             >
-              {loading ? '⟳ Signing in...' : '🔐 Sign In'}
+              {loading ? <>
+                <Spinner as="span"
+                  animation="grow"
+                  size="sm"
+                  role="status"
+                  aria-hidden="true" /> Loading...
+              </> : '🔐 Sign In'}
             </button>
-          </form>
+          </Form>
 
-          <div style={{ marginTop: '24px', padding: '14px', background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            <strong style={{ color: 'var(--text-secondary)' }}>Demo accounts:</strong><br />
-            bgy_secretary / agos2024<br />
-            drrm_officer / agos2024<br />
-            barangay_captain / agos2024
-          </div>
+          
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
