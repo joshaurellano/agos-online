@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { Nav, Button, Image } from 'react-bootstrap';
 import { useAuth } from '../hooks/useAuth';
 
+import { FaUserCircle } from "react-icons/fa";
 import { Icon } from '@iconify/react';
 
 import { CgLogOut } from "react-icons/cg";
@@ -73,8 +74,16 @@ export default function Sidebar({ mobileOpen, onClose }) {
         {/* User info */}
         <div style={{ padding: '16px 20px', borderTop: '1px solid var(--blue-border)' }}>
           <div className="mb-3">
-            <div className="text-truncate" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {user?.name}
+            
+            <div className="text-truncate" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display:'flex', height:'100%', width:'100%', justifyContent:'start', alignItem:'center', gap:5 }}>
+              
+              <div style={{width: '25px', height:'25px', borderRadius:'50%', background:'rgba(56,189,248,0.15)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                <Icon icon="glyphs-poly:user" width="20" height="20" />
+              </div>
+              <div>
+                {user?.name}
+              </div>
+              
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
               {user?.roles?.role_desc}
