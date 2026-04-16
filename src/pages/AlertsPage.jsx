@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { NOTIFICATION_LOG } from '../data/mockData';
 import Swal from 'sweetalert2';
 
@@ -11,6 +12,8 @@ const TYPE_STYLES = {
 };
 
 export default function AlertsPage() {
+  const { user } = useAuth();                                    // add this
+  const isResident = user?.roles?.role_id === 7;   
   const [logs, setLogs] = useState(NOTIFICATION_LOG);
   const [filter, setFilter] = useState('ALL');
 
@@ -93,7 +96,9 @@ export default function AlertsPage() {
               <button key={f} className={`btn ${filter === f ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setFilter(f)} style={{ padding: '5px 11px', fontSize: '0.72rem' }}>{f}</button>
             ))}
             <button className="btn btn-ghost" onClick={markAllRead} style={{ padding: '5px 11px', fontSize: '0.72rem' }}>✓ Mark All Read</button>
-            <button className="btn btn-primary" onClick={sendManualAlert} style={{ padding: '5px 11px', fontSize: '0.72rem' }}>+ Send Alert</button>
+            {!isResident && (
+              <button className="btn btn-primary" onClick={sendManualAlert} style={{ padding: '5px 11px', fontSize: '0.72rem' }}>+ Send Alert</button>
+            )}
           </div>
         </div>
 

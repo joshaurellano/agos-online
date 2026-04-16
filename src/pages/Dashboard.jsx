@@ -2,9 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import Swal from 'sweetalert2';
+
 import { ALERT_LEVELS, generateWaterLevelData, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [currentAlert, setCurrentAlert] = useState('WARNING');
   const [waterData, setWaterData] = useState(generateWaterLevelData());
@@ -12,8 +15,11 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const intervalRef = useRef(null);
 
+  const isResident = user?.role_id === 7;
+
   // Simulate live data updates
   useEffect(() => {
+
     intervalRef.current = setInterval(() => {
       setWaterData(prev => {
         const last = prev[prev.length - 1];
@@ -209,15 +215,17 @@ export default function Dashboard() {
       </div>
 
       {/* One-Click Evacuation Button */}
-      <div className="card" style={{ textAlign: 'center', padding: '28px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)' }}>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Emergency Action</div>
-        <button className="btn btn-danger" onClick={handleEvacuationAlert} style={{ fontSize: '1.05rem', padding: '16px 36px' }}>
-          🚨 Send One-Click Evacuation Alert
-        </button>
-        <div style={{ marginTop: '10px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-          Notifies all registered officials and residents in Barangay Triangulo
+      {!isResident && (
+        <div className="card" style={{ textAlign: 'center', padding: '28px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Emergency Action</div>
+          <button className="btn btn-danger" onClick={handleEvacuationAlert} style={{ fontSize: '1.05rem', padding: '16px 36px' }}>
+            🚨 Send One-Click Evacuation Alert
+          </button>
+          <div style={{ marginTop: '10px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Notifies all registered officials and residents in Barangay Triangulo
+          </div>
         </div>
-      </div>
+)}
     </div>
   );
 }

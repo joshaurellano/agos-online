@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Spinner, Form, InputGroup } from 'react-bootstrap';
@@ -12,7 +12,7 @@ export default function LoginPage() {
 
   const navigate = useNavigate();
 
-  const { login, error } = useAuth();
+  const { login, error, clearError, user, loading: authLoading } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false)
@@ -21,10 +21,20 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
       e.preventDefault();
       setLoading(true);
-      const ok = await login(username, password);
+      await login(username, password);
       setLoading(false);
-      if (ok) navigate('/dashboard');
+      
     };
+
+  useEffect(() => {
+      clearError();
+    }, []);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/dashboard');
+    }
+  }, [user, authLoading]);
 
   return (
     <div style={{

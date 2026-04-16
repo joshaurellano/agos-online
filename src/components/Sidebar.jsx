@@ -13,14 +13,15 @@ const NAV_ITEMS = [
   { path: '/rainfall',     label: 'Rainfall',          icon: <Icon icon="noto:cloud-with-rain" width={20} /> },
   { path: '/flood-map',    label: 'Flood Map',         icon: <Icon icon="fluent-color:location-ripple-16" width={20} /> },
   { path: '/historical',   label: 'Historical Events', icon: <Icon icon="flat-color-icons:overtime" width={20} /> },
-  { path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} /> },
-  { path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} /> },
-  { path: '/register',     label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true },
+  { path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} />, hideFromResidents: true },
+  { path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} />, hideFromResidents: true },
+  { path: '/register',      label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true },
+  { path: '/add-resident',  label: 'Add Resident',      icon: <Icon icon="fluent-color:people-community-16" width={20} />, hideFromResidents: true },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth();
-  const isAdmin = user?.roles?.role_desc === 'Admin';
+  const isAdmin = user.roles?.role_desc === 'Admin';
 
   return (
     <>
@@ -48,7 +49,11 @@ export default function Sidebar({ mobileOpen, onClose }) {
         
 
         <Nav className="flex-column flex-grow-1 py-2 overflow-auto">
-          {NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => (
+          {NAV_ITEMS.filter(item => {
+            if (item.adminOnly && !isAdmin) return false;
+            if (item.hideFromResidents && user?.role_id === 7) return false;
+            return true;
+          }).map(item => (
             <Nav.Link
               key={item.path}
               as={NavLink}

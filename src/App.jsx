@@ -14,15 +14,16 @@ import DataSourcesPage from './pages/DataSourcesPage';
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
+import ResidentRoute from './components/ResidentRoute';
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <Routes>
-          <Route path="/"         element={<LoginPage />} />
-          <Route path="/login"    element={<LoginPage />} />
-          
+          <Route path="/"      element={<LoginPage />} />
+          <Route path="/login" element={<LoginPage />} />
+
           <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
             <Route path="/dashboard"    element={<Dashboard />} />
             <Route path="/water-level"  element={<WaterLevelPage />} />
@@ -30,12 +31,24 @@ function App() {
             <Route path="/flood-map"    element={<FloodMapPage />} />
             <Route path="/historical"   element={<HistoricalPage />} />
             <Route path="/alerts"       element={<AlertsPage />} />
-            <Route path="/data-sources" element={<DataSourcesPage />} />
+
+            <Route path="/data-sources" element={
+              <ResidentRoute>
+                <DataSourcesPage />
+              </ResidentRoute>
+            } />
+
             <Route path="/register" element={
-            <AdminRoute>
-              <RegistrationPage />
-            </AdminRoute>
-          } />
+              <AdminRoute>
+                <RegistrationPage />
+              </AdminRoute>
+            } />
+
+            <Route path="/add-resident" element={
+              <ResidentRoute>
+                <RegistrationPage />
+              </ResidentRoute>
+            } />
           </Route>
         </Routes>
       </Router>
