@@ -11,6 +11,7 @@ const PAGE_TITLES = {
   '/historical':   'Historical Flood Events',
   '/alerts':       'Alert Notification Log',
   '/data-sources': 'Data Sources',
+  '/register':     'Register Page'
 };
 
 export default function MainLayout() {

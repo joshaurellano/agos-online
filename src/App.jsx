@@ -22,12 +22,7 @@ function App() {
         <Routes>
           <Route path="/"         element={<LoginPage />} />
           <Route path="/login"    element={<LoginPage />} />
-          <Route path="/register" element={
-            <AdminRoute>
-              <RegistrationPage />
-            </AdminRoute>
-          } />
-
+          
           <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
             <Route path="/dashboard"    element={<Dashboard />} />
             <Route path="/water-level"  element={<WaterLevelPage />} />
@@ -36,6 +31,11 @@ function App() {
             <Route path="/historical"   element={<HistoricalPage />} />
             <Route path="/alerts"       element={<AlertsPage />} />
             <Route path="/data-sources" element={<DataSourcesPage />} />
+            <Route path="/register" element={
+            <AdminRoute>
+              <RegistrationPage />
+            </AdminRoute>
+          } />
           </Route>
         </Routes>
       </Router>

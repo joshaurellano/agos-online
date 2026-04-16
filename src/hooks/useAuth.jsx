@@ -8,9 +8,10 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const clearError = () => setError('');
+
   useEffect(() => {
-    // onAuthStateChange fires immediately with the current session on mount,
-    // so you don't need getSession() at all.
+    
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) fetchProfile(session.user.id);
       else {
@@ -63,9 +64,9 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
     setUser(null);
   };
-
+  
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, error, loading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, clearError, error, loading }}>
       {children}
     </AuthContext.Provider>
   );
