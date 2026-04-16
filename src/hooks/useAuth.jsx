@@ -46,14 +46,14 @@ export function AuthProvider({ children }) {
     return true;
   };
 
-  const register = async ({ name, username, password, role_id }) => {
+  const register = async ({ name, username, password, phone ,role_id }) => {
     setError('');
     const email = `${username}@agos.local`;
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { name, username, role_id }
+        data: { name, username, phone, role_id }
       }
     });
     if (error) { setError(error.message); return false; }

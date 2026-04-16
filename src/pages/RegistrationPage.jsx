@@ -13,7 +13,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
 
   const [roles, setRoles] = useState([]);
-  const [form, setForm] = useState({ name: '', username: '', password: '', role_id: '' });
+  const [form, setForm] = useState({ name: '', username: '', password: '', phone: '', role_id: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -96,6 +96,18 @@ export default function RegisterPage() {
                 <Form.Control
                   name="name" type="text" value={form.name}
                   onChange={handleChange} placeholder="e.g. Maria Santos"
+                  required style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
+                />
+              </div>
+
+              {/* Phone Number */}
+              <div style={{ marginBottom: '16px' }}>
+                <Form.Label style={labelStyle}>Phone Number</Form.Label>
+                <Form.Control
+                  name="phone" type="number" value={form.phone}
+                  onChange={handleChange} placeholder="e.g. 09123456789"
                   required style={inputStyle}
                   onFocus={e => e.target.style.borderColor = 'var(--accent)'}
                   onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
