@@ -10,11 +10,18 @@ import { supabase } from '../lib/supabaseClient';
 
 export default function RegisterPage() {
   const { register, error, clearError } = useAuth();
-  const navigate = useNavigate();
 
+  const [localError, setLocalError] = useState('')
   const [roles, setRoles] = useState([]);
-  const [form, setForm] = useState({ name: '', username: '', password: '', phone: '', role_id: '' });
+  const [form, setForm] = useState({ 
+    name: '', 
+    username: '', 
+    password: '',
+    confirmPassword: '', 
+    phone: '', 
+    role_id: '' });
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -27,17 +34,37 @@ export default function RegisterPage() {
 
   useEffect(() => {
     clearError();
+    setLocalError('')
   }, []);
 
   const handleChange = (e) => {
     clearError();
+    setLocalError('')
     setForm({ ...form, [e.target.name]: e.target.value });
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // ✅ validate passwords match
+    if (form.password !== form.confirmPassword) {
+      clearError();
+      setLocalError("Passwords do not match"); 
+      return; // 🚨 IMPORTANT: stop execution
+    }
+
+    // ✅ optional: length validation
+    if (form.password.length < 8) {
+      setLocalError("Password must be at least 8 characters");
+      return;
+    }
+
     setLoading(true);
-    const ok = await register(form);
+
+    const { confirmPassword, ...payload } = form;
+
+    const ok = await register(payload);
+
     setLoading(false);
 
     if (ok) setSuccess(true);
@@ -106,9 +133,15 @@ export default function RegisterPage() {
               <div style={{ marginBottom: '16px' }}>
                 <Form.Label style={labelStyle}>Phone Number</Form.Label>
                 <Form.Control
-                  name="phone" type="number" value={form.phone}
-                  onChange={handleChange} placeholder="e.g. 09123456789"
-                  required style={inputStyle}
+                  name="phone"
+                  type="tel"
+                  value={form.phone}
+                  onChange={handleChange}
+                  placeholder="e.g. 09123456789"
+                  required
+                  pattern="^09\d{9}$"
+                  maxLength={11}
+                  style={inputStyle}
                   onFocus={e => e.target.style.borderColor = 'var(--accent)'}
                   onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
                 />
@@ -156,6 +189,41 @@ export default function RegisterPage() {
                   </Form.Text>
               </div>
 
+              {/* Confirm Password */}
+              <div style={{ marginBottom: '16px' }}>
+                <Form.Label style={labelStyle}>Confirm Password</Form.Label>
+                <InputGroup>
+                  <Form.Control
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={form.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="••••••••"
+                    required
+                    style={{
+                      ...inputStyle,
+                      borderRight: 'none',
+                      borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)'
+                    }}
+                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
+                  />
+                  <InputGroup.Text
+                    onClick={() => setShowConfirmPassword(prev => !prev)}
+                    style={{
+                      background: 'var(--blue-mid)',
+                      border: '1px solid var(--blue-border)',
+                      borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      borderLeft: 'none'
+                    }}
+                  >
+                    {showConfirmPassword ? <FaEye /> : <FaEyeSlash />}
+                  </InputGroup.Text>
+                </InputGroup>
+              </div>
+
               {/* Role */}
               <div style={{ marginBottom: '24px' }}>
                 <Form.Label style={labelStyle}>Role</Form.Label>
@@ -173,9 +241,9 @@ export default function RegisterPage() {
                 </Form.Select>
               </div>
 
-              {error && (
+              {(error || localError) && (
                 <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: '16px', color: '#fca5a5', fontSize: '0.85rem' }}>
-                  ⚠️ {error}
+                  ⚠️ {error || localError}
                 </div>
               )}
 
