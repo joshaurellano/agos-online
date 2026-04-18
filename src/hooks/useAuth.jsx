@@ -46,19 +46,33 @@ export function AuthProvider({ children }) {
     return true;
   };
 
-  const register = async ({ name, username, password, phone ,role_id }) => {
-    setError('');
-    const email = `${username}@agos.local`;
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, username, phone, role_id }
-      }
-    });
-    if (error) { setError(error.message); return false; }
-    return true;
-  };
+  const createUser = async (payload) => {
+  setError('');
+
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
+    setError("Not authenticated");
+    return false;
+  }
+
+  const { data, error } = await supabase.functions.invoke('create-user', {
+    body: payload,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    }
+  });
+
+  if (error) {
+    const errorText = await error.context.text();
+    console.log("FUNCTION ERROR BODY:", errorText);
+    const parsed = JSON.parse(errorText);
+    setError(parsed.error || 'Something went wrong');
+    return false;
+  }
+
+  return true;
+};
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -66,7 +80,15 @@ export function AuthProvider({ children }) {
   };
   
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, clearError, error, loading }}>
+    <AuthContext.Provider value={{
+      user,
+      login,
+      createUser,
+      logout,
+      clearError,
+      error,
+      loading
+    }}>
       {children}
     </AuthContext.Provider>
   );

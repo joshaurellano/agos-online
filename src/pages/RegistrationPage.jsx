@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
 
 export default function RegisterPage() {
-  const { register, error, clearError, user } = useAuth();
+  const { createUser, error, clearError, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -18,7 +18,6 @@ export default function RegisterPage() {
 
   const [localError, setLocalError] = useState('');
   const [roles, setRoles] = useState([]);
-  const [residentRoleId, setResidentRoleId] = useState('');
   const [form, setForm] = useState({
     name: '',
     username: '',
@@ -38,7 +37,6 @@ export default function RegisterPage() {
         setRoles(data);
         const resident = data.find(r => r.role_id === 7);
         if (resident) {
-          console.log(true)
           if (isResidentMode) {
             setForm(f => ({ ...f, role_id: 7 }));
           }
@@ -76,11 +74,13 @@ export default function RegisterPage() {
 
     const { confirmPassword, ...payload } = form;
 
-    const ok = await register(payload);
-
+    const ok = await createUser(payload);
+    
     setLoading(false);
 
     if (ok) {
+      setSuccess(true);
+
       setForm({
         name: '',
         username: '',
