@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { FLOOD_ZONES, ALERT_LEVELS } from '../data/mockData';
 import Swal from 'sweetalert2';
+import { useAuth } from '../hooks/useAuth';
 
-// Simple SVG map of Barangay Triangulo zones
 function TrianguloMap({ activeZone, onZoneClick }) {
+
   const zones = [
     {
       id: 'Z1', name: 'Zone 1', risk: 'LOW', color: '#22c55e',
@@ -86,6 +87,11 @@ function TrianguloMap({ activeZone, onZoneClick }) {
 }
 
 export default function FloodMapPage() {
+
+  const { user } = useAuth();
+
+  const isResident = user?.role_id === 7;
+
   const [activeZone, setActiveZone] = useState('Z3');
 
   const selectedZone = FLOOD_ZONES.find(z => z.id === activeZone);
@@ -162,9 +168,14 @@ export default function FloodMapPage() {
                     ? 'ℹ️ This zone has moderate flood risk due to proximity to drainage channels. Monitor during heavy rainfall events.'
                     : 'ℹ️ This zone has low flood risk. Occasional waterlogging possible during extreme rainfall.'}
                 </div>
-                <button className="btn btn-danger" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleEvacuate(selectedZone)}>
-                  🚨 Evacuate {selectedZone.name}
-                </button>
+
+                { !isResident &&(
+                  <button className="btn btn-danger" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleEvacuate(selectedZone)}>
+                    🚨 Evacuate {selectedZone.name}
+                  </button>
+                  )
+                }
+
               </div>
             </div>
           )}
