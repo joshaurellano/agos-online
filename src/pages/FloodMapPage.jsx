@@ -1,97 +1,45 @@
 import { useState } from 'react';
-import { FLOOD_ZONES, ALERT_LEVELS } from '../data/mockData';
+import { FLOOD_ZONES } from '../data/mockData';
 import Swal from 'sweetalert2';
 import { useAuth } from '../hooks/useAuth';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+
+// Fix Leaflet's broken default icon paths when bundled with Vite
+// This must be at the TOP LEVEL, outside any function
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
 function TrianguloMap({ activeZone, onZoneClick }) {
-
-  const zones = [
-    {
-      id: 'Z1', name: 'Zone 1', risk: 'LOW', color: '#22c55e',
-      path: 'M 80 60 L 200 60 L 200 160 L 80 160 Z',
-      labelX: 140, labelY: 115,
-    },
-    {
-      id: 'Z2', name: 'Zone 2', risk: 'MODERATE', color: '#eab308',
-      path: 'M 200 60 L 340 60 L 340 160 L 200 160 Z',
-      labelX: 270, labelY: 115,
-    },
-    {
-      id: 'Z3', name: 'Zone 3', risk: 'HIGH', color: '#f97316',
-      path: 'M 80 160 L 270 160 L 270 280 L 80 280 Z',
-      labelX: 175, labelY: 225,
-    },
-    {
-      id: 'Z4', name: 'Zone 4', risk: 'LOW', color: '#22c55e',
-      path: 'M 270 160 L 380 160 L 380 280 L 270 280 Z',
-      labelX: 325, labelY: 225,
-    },
-  ];
-
   return (
-    <svg viewBox="0 0 460 340" style={{ width: '100%', maxWidth: 460, height: 'auto' }}>
-      {/* Background */}
-      <rect width="460" height="340" fill="#0a1628" rx="8" />
-
-      {/* River (Bicol River) */}
-      <path
-        d="M 0 195 Q 60 185 100 200 Q 160 218 220 205 Q 290 190 360 210 Q 420 225 460 215"
-        stroke="#38bdf8" strokeWidth="14" fill="none" opacity="0.4" strokeLinecap="round"
+    <MapContainer
+      center={[13.6192, 123.1814]}
+      zoom={16}
+      style={{ width: '100%', height: 340, borderRadius: 'var(--radius)', zIndex: 0 }}
+      scrollWheelZoom={false}
+    >
+      <TileLayer
+        attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        subdomains="abcd"
+        maxZoom={20}
       />
-      <path
-        d="M 0 195 Q 60 185 100 200 Q 160 218 220 205 Q 290 190 360 210 Q 420 225 460 215"
-        stroke="#38bdf8" strokeWidth="4" fill="none" opacity="0.7" strokeLinecap="round"
-      />
-
-      {/* Zone shapes */}
-      {zones.map(z => (
-        <g key={z.id} onClick={() => onZoneClick(z.id)} style={{ cursor: 'pointer' }}>
-          <path
-            d={z.path}
-            fill={`${z.color}${activeZone === z.id ? '55' : '25'}`}
-            stroke={z.color}
-            strokeWidth={activeZone === z.id ? 3 : 1.5}
-            strokeOpacity={0.8}
-          />
-          <text x={z.labelX} y={z.labelY - 10} textAnchor="middle" fill={z.color} fontSize="13" fontWeight="800" fontFamily="Syne, sans-serif">
-            {z.name}
-          </text>
-          <text x={z.labelX} y={z.labelY + 8} textAnchor="middle" fill={z.color} fontSize="10" fontFamily="DM Sans, sans-serif" opacity="0.8">
-            {z.risk} RISK
-          </text>
-        </g>
-      ))}
-
-      {/* Barangay label */}
-      <text x="230" y="22" textAnchor="middle" fill="#8da4be" fontSize="10" fontFamily="DM Sans, sans-serif" letterSpacing="2">
-        BARANGAY TRIANGULO, NAGA CITY
-      </text>
-
-      {/* River label */}
-      <text x="380" y="238" fill="#38bdf8" fontSize="9" fontFamily="DM Sans, sans-serif" opacity="0.7">Bicol River</text>
-
-      {/* Compass */}
-      <text x="430" y="310" fill="#4a6080" fontSize="12" textAnchor="middle">N</text>
-      <line x1="430" y1="295" x2="430" y2="315" stroke="#4a6080" strokeWidth="1" />
-      <polygon points="430,290 426,300 434,300" fill="#4a6080" />
-
-      {/* Legend */}
-      <rect x="10" y="295" width="8" height="8" fill="#22c55e" opacity="0.6" />
-      <text x="22" y="303" fill="#8da4be" fontSize="9">Low</text>
-      <rect x="50" y="295" width="8" height="8" fill="#eab308" opacity="0.6" />
-      <text x="62" y="303" fill="#8da4be" fontSize="9">Moderate</text>
-      <rect x="110" y="295" width="8" height="8" fill="#f97316" opacity="0.6" />
-      <text x="122" y="303" fill="#8da4be" fontSize="9">High</text>
-    </svg>
+      <Marker position={[13.6192, 123.1814]}>
+        <Popup>
+          <b>Barangay Triangulo</b><br />Flood Monitoring Station.
+        </Popup>
+      </Marker>
+    </MapContainer>
   );
 }
 
 export default function FloodMapPage() {
-
   const { user } = useAuth();
-
   const isResident = user?.role_id === 7;
-
   const [activeZone, setActiveZone] = useState('Z3');
 
   const selectedZone = FLOOD_ZONES.find(z => z.id === activeZone);
@@ -136,7 +84,6 @@ export default function FloodMapPage() {
 
         {/* Zone Detail */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Selected zone info */}
           {selectedZone && (
             <div className="card" style={{ border: `2px solid ${riskColors[selectedZone.risk]}50` }}>
               <div className="card-title">{selectedZone.name} — Details</div>
@@ -168,14 +115,11 @@ export default function FloodMapPage() {
                     ? 'ℹ️ This zone has moderate flood risk due to proximity to drainage channels. Monitor during heavy rainfall events.'
                     : 'ℹ️ This zone has low flood risk. Occasional waterlogging possible during extreme rainfall.'}
                 </div>
-
-                { !isResident &&(
+                {!isResident && (
                   <button className="btn btn-danger" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleEvacuate(selectedZone)}>
                     🚨 Evacuate {selectedZone.name}
                   </button>
-                  )
-                }
-
+                )}
               </div>
             </div>
           )}

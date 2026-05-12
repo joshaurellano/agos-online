@@ -151,12 +151,48 @@ export const WEATHER_FORECAST = [
 ];
 
 export const DATA_SOURCES = [
-  { name: 'PAGASA Weather Station', status: 'live', last_update: '2 min ago', type: 'rainfall' },
-  { name: 'Bicol River Gauge Station', status: 'live', last_update: '5 min ago', type: 'water_level' },
-  { name: 'DOST-ASTI Flood Sensors', status: 'live', last_update: '1 min ago', type: 'sensor' },
-  { name: 'Local Barangay Sensor (Sim.)', status: 'simulated', last_update: 'Real-time', type: 'local' },
-  { name: 'OCD Region V Advisory', status: 'live', last_update: '15 min ago', type: 'advisory' },
-  { name: 'LGU Naga City Reports', status: 'delayed', last_update: '45 min ago', type: 'lgu' },
+  {
+    name: 'WeatherAPI.com (Naga City)',
+    status: 'live',
+    last_update: 'Real-time',
+    type: 'rainfall',
+    description: 'Live rainfall, wind speed, and humidity data fetched from WeatherAPI.com using coordinates 13.62, 123.19 (Naga City, Bicol).',
+  },
+  {
+    name: 'LSTM Flood Prediction Model',
+    status: 'live',
+    last_update: 'Every 30 seconds',
+    type: 'ai_model',
+    description: 'Trained LSTM model (flood_model_triangulo.h5) running on local Flask backend. Outputs flood probability and alert level based on live weather inputs.',
+  },
+  {
+    name: 'Typhoon Signal Estimator',
+    status: 'simulated',
+    last_update: 'Real-time',
+    type: 'sensor',
+    description: 'Derived from WeatherAPI wind speed data. Signal 1–4 estimated using PAGASA wind thresholds (>30, >61, >121, >185 km/h).',
+  },
+  {
+    name: 'Antecedent Moisture (Humidity)',
+    status: 'live',
+    last_update: 'Real-time',
+    type: 'sensor',
+    description: 'Humidity percentage from WeatherAPI, used as a proxy for soil moisture in the LSTM model input sequence.',
+  },
+  {
+    name: 'Seasonal Cyclical Encoder',
+    status: 'live',
+    last_update: 'System clock',
+    type: 'local',
+    description: 'Month-of-year encoded as sine/cosine values using the server system clock. Captures seasonal flood patterns (e.g. typhoon season June–November).',
+  },
+  {
+    name: 'flood_main_dataset_.csv (Training Data)',
+    status: 'offline',
+    last_update: 'April 2026',
+    type: 'historical',
+    description: 'Historical flood records for Barangay Triangulo used to train the LSTM model. Not used in live prediction — model weights already saved in .h5 file.',
+  },
 ];
 
 export const FLOOD_ZONES = [

@@ -1,24 +1,52 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react'; // ← added useEffect, useRef
 import { useAuth } from '../hooks/useAuth';
 import { NOTIFICATION_LOG } from '../data/mockData';
 import Swal from 'sweetalert2';
+import { useModelPrediction, alertLevelToKey } from '../lib/modelApi'; // ← MODEL
 
 const TYPE_STYLES = {
-  CRITICAL: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', icon: '🔴' },
+  CRITICAL: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  icon: '🔴' },
   WARNING:  { color: '#f97316', bg: 'rgba(249,115,22,0.1)', icon: '🟠' },
-  ADVISORY: { color: '#eab308', bg: 'rgba(234,179,8,0.1)', icon: '🟡' },
-  NORMAL:   { color: '#22c55e', bg: 'rgba(34,197,94,0.1)', icon: '🟢' },
+  ADVISORY: { color: '#eab308', bg: 'rgba(234,179,8,0.1)',  icon: '🟡' },
+  NORMAL:   { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',  icon: '🟢' },
   INFO:     { color: '#38bdf8', bg: 'rgba(56,189,248,0.1)', icon: '🔵' },
 };
 
 export default function AlertsPage() {
-  const { user } = useAuth();                                    // add this
-  const isResident = user?.roles?.role_id === 7;   
-  const [logs, setLogs] = useState(NOTIFICATION_LOG);
+  const { user } = useAuth();
+  const isResident = user?.roles?.role_id === 7;
+  const [logs, setLogs]     = useState(NOTIFICATION_LOG);
   const [filter, setFilter] = useState('ALL');
 
+  // ← MODEL: subscribe to live prediction
+  const { prediction } = useModelPrediction();
+  const lastAlertRef = useRef(null); // track last injected alert to avoid duplicates
+
+  // ← MODEL: auto-inject a log entry whenever the model fires a non-NORMAL alert
+  useEffect(() => {
+    if (!prediction) return;
+    const key = alertLevelToKey(prediction.alert_level);
+    if (key === 'NORMAL') return; // nothing to log for safe status
+
+    // Only inject once per unique status string to avoid spam on re-renders
+    if (lastAlertRef.current === prediction.status) return;
+    lastAlertRef.current = prediction.status;
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+    const newLog = {
+      id: Date.now(),
+      time: timeStr,
+      type: key,
+      message: `[AI Model] ${prediction.status} — Flood probability: ${(prediction.probability * 100).toFixed(1)}%. Rainfall: ${prediction.live_metrics.rainfall_mm.toFixed(1)}mm, Signal #${prediction.live_metrics.wind_signal}.`,
+      sent_by: 'LSTM Model (Auto)',
+      read: false,
+    };
+    setLogs(prev => [newLog, ...prev]);
+  }, [prediction]);
+
   const filtered = logs.filter(l => filter === 'ALL' || l.type === filter);
-  const unread = logs.filter(l => !l.read).length;
+  const unread   = logs.filter(l => !l.read).length;
 
   const markAllRead = () => setLogs(prev => prev.map(l => ({ ...l, read: true })));
 
@@ -46,7 +74,7 @@ export default function AlertsPage() {
       color: '#e2eaf5',
       preConfirm: () => {
         const type = document.getElementById('swal-type').value;
-        const msg = document.getElementById('swal-msg').value;
+        const msg  = document.getElementById('swal-msg').value;
         if (!msg.trim()) { Swal.showValidationMessage('Please enter a message.'); return false; }
         return { type, msg };
       },
@@ -66,15 +94,16 @@ export default function AlertsPage() {
     });
   };
 
+  // --- JSX below is UNCHANGED from your original ---
   return (
     <div className="fade-in">
       {/* Stats */}
       <div className="grid-4" style={{ marginBottom: '20px' }}>
         {[
-          { label: 'Total Alerts', value: logs.length, icon: '🔔', color: 'var(--accent)' },
-          { label: 'Unread', value: unread, icon: '📬', color: unread > 0 ? 'var(--orange)' : 'var(--green)' },
+          { label: 'Total Alerts',  value: logs.length,                              icon: '🔔', color: 'var(--accent)' },
+          { label: 'Unread',        value: unread,                                   icon: '📬', color: unread > 0 ? 'var(--orange)' : 'var(--green)' },
           { label: 'Critical Sent', value: logs.filter(l => l.type === 'CRITICAL').length, icon: '🔴', color: 'var(--red)' },
-          { label: 'This Session', value: logs.filter(l => l.time === 'Just now').length, icon: '📤', color: 'var(--text-secondary)' },
+          { label: 'This Session',  value: logs.filter(l => l.time === 'Just now').length, icon: '📤', color: 'var(--text-secondary)' },
         ].map(c => (
           <div key={c.label} className="card">
             <div style={{ fontSize: '1.2rem', marginBottom: '8px' }}>{c.icon}</div>
@@ -85,7 +114,6 @@ export default function AlertsPage() {
       </div>
 
       <div className="card">
-        {/* Controls */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
           <div className="card-title" style={{ margin: 0 }}>
             🔔 Notification Log
@@ -102,7 +130,6 @@ export default function AlertsPage() {
           </div>
         </div>
 
-        {/* Log entries */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {filtered.length === 0 && (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px', fontSize: '0.9rem' }}>No alerts found.</div>

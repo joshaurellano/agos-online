@@ -5,11 +5,11 @@ import Swal from 'sweetalert2';
 
 import { ALERT_LEVELS, generateWaterLevelData, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
+import { useModelPrediction, alertLevelToKey } from '../lib/modelApi'; // ← MODEL
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [currentAlert, setCurrentAlert] = useState('WARNING');
   const [waterData, setWaterData] = useState(generateWaterLevelData());
   const [currentLevel, setCurrentLevel] = useState(3.4);
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -17,19 +17,25 @@ export default function Dashboard() {
 
   const isResident = user?.role_id === 7;
 
-  // Simulate live data updates
-  useEffect(() => {
+  // ← MODEL: pull live prediction from Flask backend
+  const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
 
+  // Derive alert key from model when available, otherwise fall back to water level
+  const currentAlert = prediction
+    ? alertLevelToKey(prediction.alert_level)
+    : currentLevel >= 4.5 ? 'CRITICAL'
+    : currentLevel >= 3.5 ? 'WARNING'
+    : currentLevel >= 2.5 ? 'ADVISORY'
+    : 'NORMAL';
+
+  // Simulate live water-level updates (keep existing chart animation)
+  useEffect(() => {
     intervalRef.current = setInterval(() => {
       setWaterData(prev => {
         const last = prev[prev.length - 1];
         const newLevel = parseFloat((last.level + (Math.random() - 0.45) * 0.15).toFixed(2));
         const clamped = Math.max(0.5, Math.min(6.0, newLevel));
         setCurrentLevel(clamped);
-        if (clamped >= 4.5) setCurrentAlert('CRITICAL');
-        else if (clamped >= 3.5) setCurrentAlert('WARNING');
-        else if (clamped >= 2.5) setCurrentAlert('ADVISORY');
-        else setCurrentAlert('NORMAL');
         const now = new Date();
         setLastUpdate(now);
         const newPoint = {
@@ -80,8 +86,30 @@ export default function Dashboard() {
 
   const liveSourceCount = DATA_SOURCES.filter(s => s.status === 'live').length;
 
+  // ← MODEL: derive stats from model when available
+  const rainfallDisplay   = prediction ? `${prediction.live_metrics.rainfall_mm.toFixed(1)}mm` : '45.1mm';
+  const probabilityPct    = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';
+  const leadTimeDisplay   = prediction?.lead_time_estimate ?? '6-12 hrs';
+
   return (
     <div className="fade-in">
+
+      {/* ← MODEL: status banner shows model error if offline */}
+      {modelError && (
+        <div style={{
+          background: 'rgba(239,68,68,0.08)',
+          border: '1px solid rgba(239,68,68,0.3)',
+          borderLeft: '4px solid #ef4444',
+          borderRadius: 'var(--radius)',
+          padding: '10px 16px',
+          marginBottom: '14px',
+          fontSize: '0.82rem',
+          color: '#ef4444',
+        }}>
+          ⚠️ Model backend offline — showing simulated data. Start <code>app.py</code> to enable live predictions.
+        </div>
+      )}
+
       {/* Alert Banner */}
       <div style={{
         background: `${alertInfo.color}15`,
@@ -102,11 +130,25 @@ export default function Dashboard() {
             <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: alertInfo.color, letterSpacing: '0.05em' }}>
               {alertInfo.label.toUpperCase()} LEVEL
             </span>
+            {/* ← MODEL: show flood probability badge */}
+            {prediction && (
+              <span style={{
+                fontSize: '0.72rem',
+                background: `${alertInfo.color}25`,
+                color: alertInfo.color,
+                padding: '2px 10px',
+                borderRadius: '99px',
+                fontWeight: 700,
+                border: `1px solid ${alertInfo.color}40`,
+              }}>
+                AI: {probabilityPct} flood risk
+              </span>
+            )}
           </div>
           <div style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '4px' }}>{alertInfo.description}</div>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>🔔 {alertInfo.action}</div>
         </div>
-        {/* Plain language status */}
+
         <div style={{
           background: 'rgba(0,0,0,0.2)',
           borderRadius: 'var(--radius-sm)',
@@ -114,22 +156,45 @@ export default function Dashboard() {
           minWidth: '200px',
           border: `1px solid ${alertInfo.color}30`,
         }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Status Message</div>
-          <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem', lineHeight: 1.4 }}>
-            ⚠️ Flooding possible in the next 6 hrs in Zone 3
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            {/* ← MODEL: show model status message when available */}
+            {prediction ? 'Model Status' : 'Status Message'}
           </div>
+          <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem', lineHeight: 1.4 }}>
+            {prediction
+              ? prediction.status
+              : '⚠️ Flooding possible in the next 6 hrs in Zone 3'}
+          </div>
+          {prediction && (
+            <div style={{ marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              ⏱ Lead time: {leadTimeDisplay}
+            </div>
+          )}
         </div>
       </div>
 
       {/* KPI Row */}
       <div className="grid-4" style={{ marginBottom: '20px' }}>
         <StatCard icon="💧" label="Current Water Level" value={`${currentLevel}m`} sub="Bicol River Station" color={currentLevel >= 3.5 ? 'var(--orange)' : 'var(--green)'} />
-        <StatCard icon="🌧" label="Rainfall (Last 3hr)" value="45.1mm" sub="PAGASA Station" color="var(--accent)" />
+        {/* ← MODEL: rainfall from model; fallback to mock */}
+        <StatCard icon="🌧" label="Rainfall (Current)" value={rainfallDisplay} sub={prediction ? 'WeatherAPI · Live' : 'PAGASA Station'} color="var(--accent)" />
         <StatCard icon="📡" label="Data Sources Live" value={`${liveSourceCount}/${DATA_SOURCES.length}`} sub="Active connections" color="var(--green)" />
-        <StatCard icon="🏠" label="Households at Risk" value="156" sub="Zone 3 — High Risk" color="var(--orange)" />
+        {/* ← MODEL: flood probability card */}
+        <StatCard
+          icon="🤖"
+          label="AI Flood Probability"
+          value={modelLoading ? '...' : probabilityPct}
+          sub={prediction ? `Signal #${prediction.live_metrics.wind_signal} · ${prediction.live_metrics.humidity}% humidity` : 'LSTM Model'}
+          color={
+            !prediction ? 'var(--text-secondary)'
+            : prediction.alert_level === 2 ? 'var(--red)'
+            : prediction.alert_level === 1 ? 'var(--orange)'
+            : 'var(--green)'
+          }
+        />
       </div>
 
-      {/* Water Level Chart */}
+      {/* Water Level Chart — unchanged */}
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="card-title">
           💧 Real-Time Water Level Gauge
@@ -142,14 +207,14 @@ export default function Dashboard() {
             <div style={{ width: 16, height: 3, background: 'var(--orange)', borderRadius: 2 }} /> Warning Threshold (3.5m)
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-            <div style={{ width: 16, height: 3, background: 'var(--red)', borderRadius: 2, borderTop: '2px dashed var(--red)' }} /> Critical (4.5m)
+            <div style={{ width: 16, height: 3, background: 'var(--red)', borderRadius: 2 }} /> Critical (4.5m)
           </div>
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={waterData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.3} />
+                <stop offset="5%"  stopColor="#38bdf8" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.02} />
               </linearGradient>
             </defs>
@@ -225,7 +290,7 @@ export default function Dashboard() {
             Notifies all registered officials and residents in Barangay Triangulo
           </div>
         </div>
-)}
+      )}
     </div>
   );
 }
