@@ -13,6 +13,7 @@ const STATUS_INFO = {
   live: { label: 'Live', color: '#22c55e', desc: 'Data stream active and current.' },
   delayed: { label: 'Delayed', color: '#f97316', desc: 'Data is delayed beyond expected interval. Manual check recommended.' },
   simulated: { label: 'Simulated', color: '#eab308', desc: 'Prototype mode: data is simulated for demonstration.' },
+  offline: { label: 'Offline', color: '#ef4444', desc: 'Data source is currently unreachable or inactive.' },
 };
 
 export default function DataSourcesPage() {
