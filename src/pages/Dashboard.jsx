@@ -1,31 +1,111 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 
 import { ALERT_LEVELS, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
-import { useModelPrediction, alertLevelToKey } from '../lib/modelApi'; // ← MODEL
+import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+// ── RainViewer radar layer injected into the existing MapContainer ──
+function RainViewerLayer() {
+  const map = useMap();
+  const radarLayerRef = useRef(null);
+
+  useEffect(() => {
+    async function updateRadar() {
+      try {
+        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+        const data = await res.json();
+        const past = data?.radar?.past;
+        if (!past || past.length === 0) return;
+
+        const latestPath = past[past.length - 1].path;
+        const tileUrl = `https://tilecache.rainviewer.com${latestPath}/256/{z}/{x}/{y}/2/1_1.png`;
+
+        if (radarLayerRef.current) {
+          map.removeLayer(radarLayerRef.current);
+        }
+
+        radarLayerRef.current = L.tileLayer(tileUrl, {
+          opacity: 0.5,
+          zIndex: 100,
+          attribution: '© RainViewer',
+        }).addTo(map);
+      } catch (err) {
+        console.warn('RainViewer radar update failed:', err);
+      }
+    }
+
+    updateRadar();
+    const interval = setInterval(updateRadar, 600_000); // refresh every 10 min
+    return () => {
+      clearInterval(interval);
+      if (radarLayerRef.current) map.removeLayer(radarLayerRef.current);
+    };
+  }, [map]);
+
+  return null;
+}
+
+// ── Mini dashboard map with radar overlay ──
+function DashboardMap() {
+
+  return (
+    <MapContainer
+      center={[13.6192, 123.1814]}
+      zoom={11}
+      style={{ width: '100%', height: 300, borderRadius: 'var(--radius)', zIndex: 0 }}
+      scrollWheelZoom={false}
+    >
+      <TileLayer
+        attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        subdomains="abcd"
+        maxZoom={20}
+      />
+      <RainViewerLayer />
+      <Marker position={[13.6192, 123.1814]}>
+        <Popup>
+          <b>Monitoring Station</b><br />Triangulo, Naga City
+        </Popup>
+      </Marker>
+    </MapContainer>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('radar'); // 'radar' | 'windy'
+  const [forecast, setForecast] = useState([]);
+  const [forecastLoading, setForecastLoading] = useState(true);
 
+  useEffect(() => {
+    fetch('http://localhost:5000/forecast')
+      .then(res => res.json())
+      .then(data => {
+        if (data.forecast) setForecast(data.forecast);
+      })
+      .catch(err => console.warn('Forecast fetch failed:', err))
+      .finally(() => setForecastLoading(false));
+  }, []);
   const isResident = user?.role_id === 7;
 
-  // ← MODEL: pull live prediction from Flask backend
   const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
 
-  // No real sensor data yet — water level is unavailable
   const waterLevelAvailable = false;
 
-  // Derive alert key from model when available, otherwise fall back to water level
   const currentAlert = prediction
     ? alertLevelToKey(prediction.alert_level)
-    : waterLevelAvailable
-    ? currentLevel >= 4.5 ? 'CRITICAL'
-      : currentLevel >= 3.5 ? 'WARNING'
-      : currentLevel >= 2.5 ? 'ADVISORY'
-      : 'NORMAL'
     : 'NORMAL';
 
   const alertInfo = ALERT_LEVELS[currentAlert];
@@ -37,7 +117,7 @@ export default function Dashboard() {
         <p style="color:#8da4be;margin-bottom:16px">This will send an evacuation alert to all registered officials and residents in Barangay Triangulo.</p>
         <div style="background:#152a4a;border-radius:8px;padding:14px;text-align:left">
           <div style="color:#ef4444;font-weight:700;margin-bottom:8px">📢 Alert Message:</div>
-          <div style="color:#e2eaf5;font-size:0.9rem">"Flooding possible in the next 6 hours in Zone 3. Please proceed to designated evacuation centers immediately."</div>
+          <div style="color:#e2eaf5;font-size:0.9rem">"Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately."</div>
         </div>
       `,
       icon: 'warning',
@@ -64,15 +144,41 @@ export default function Dashboard() {
 
   const liveSourceCount = DATA_SOURCES.filter(s => s.status === 'live').length;
 
-  // ← MODEL: derive stats from model when available
-  const rainfallDisplay   = prediction ? `${prediction.live_metrics.rainfall_mm.toFixed(1)}mm` : '45.1mm';
-  const probabilityPct    = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';
-  const leadTimeDisplay   = prediction?.lead_time_estimate ?? '6-12 hrs';
+  const rainfallDisplay = prediction ? `${prediction.live_metrics.rainfall_mm.toFixed(1)}mm` : '45.1mm';
+  const probabilityPct  = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';
+  const leadTimeDisplay = prediction?.lead_time_estimate ?? '6-12 hrs';
+
+  const BASELINE_LEVEL = 1.4;
+  const RISE_RATE = 0.045;
+
+  const rainfallMm = prediction?.live_metrics?.rainfall_mm ?? 0;
+  const hasRainfall = rainfallMm > 0;
+
+  const estimatedLevel = prediction
+    ? parseFloat((BASELINE_LEVEL + rainfallMm * RISE_RATE).toFixed(2))
+    : null;
+
+  const waterLevelDisplay = estimatedLevel !== null ? `${estimatedLevel}m` : 'N/A';
+
+  const waterLevelColor = (!estimatedLevel || !hasRainfall) ? 'var(--text-muted)'
+    : estimatedLevel >= 4.5 ? 'var(--red)'
+    : estimatedLevel >= 3.5 ? 'var(--orange)'
+    : estimatedLevel >= 2.5 ? 'var(--accent)'
+    : 'var(--green)';
+
+  const waterLevelSub = !estimatedLevel
+    ? 'No data available'
+    : !hasRainfall
+    ? 'Est. · No active rainfall · Baseline level'
+    : estimatedLevel >= 4.5 ? 'Est. · Critical threshold exceeded'
+    : estimatedLevel >= 3.5 ? 'Est. · Warning threshold exceeded'
+    : estimatedLevel >= 2.5 ? 'Est. · Advisory range'
+    : 'Est. · Within safe range';
 
   return (
     <div className="fade-in">
 
-      {/* ← MODEL: status banner shows model error if offline */}
+      {/* Model backend error banner */}
       {modelError && (
         <div style={{
           background: 'rgba(239,68,68,0.08)',
@@ -108,7 +214,6 @@ export default function Dashboard() {
             <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: alertInfo.color, letterSpacing: '0.05em' }}>
               {alertInfo.label.toUpperCase()} LEVEL
             </span>
-            {/* ← MODEL: show flood probability badge */}
             {prediction && (
               <span style={{
                 fontSize: '0.72rem',
@@ -135,13 +240,12 @@ export default function Dashboard() {
           border: `1px solid ${alertInfo.color}30`,
         }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            {/* ← MODEL: show model status message when available */}
             {prediction ? 'Model Status' : 'Status Message'}
           </div>
           <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem', lineHeight: 1.4 }}>
             {prediction
               ? prediction.status
-              : '⚠️ Flooding possible in the next 6 hrs in Zone 3'}
+              : '⚠️ Flooding possible in the next 6 hrs'}
           </div>
           {prediction && (
             <div style={{ marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -153,16 +257,41 @@ export default function Dashboard() {
 
       {/* KPI Row */}
       <div className="grid-4" style={{ marginBottom: '20px' }}>
-        <StatCard icon="💧" label="Current Water Level" value="N/A" sub="No data available" color="var(--text-muted)" noData />
-        {/* ← MODEL: rainfall from model; fallback to mock */}
+        <StatCard
+          icon="💧"
+          label="Est. Water Level"
+          value={waterLevelDisplay}
+          sub={waterLevelSub}
+          color={waterLevelColor}
+          noData={!estimatedLevel || !hasRainfall}
+        />
         <StatCard icon="🌧" label="Rainfall (Current)" value={rainfallDisplay} sub={prediction ? 'WeatherAPI · Live' : 'PAGASA Station'} color="var(--accent)" />
-        <StatCard icon="📡" label="Data Sources Live" value={`${liveSourceCount}/${DATA_SOURCES.length}`} sub="Active connections" color="var(--green)" />
-        {/* ← MODEL: flood probability card */}
+        <StatCard
+          icon="🌀"
+          label="Wind Signal"
+          value={prediction ? `#${prediction.live_metrics.wind_signal}` : '—'}
+          sub={
+            !prediction ? 'PAGASA Signal'
+            : prediction.live_metrics.wind_signal >= 4 ? 'Extremely destructive · >185 km/h'
+            : prediction.live_metrics.wind_signal === 3 ? 'Destructive · >121 km/h'
+            : prediction.live_metrics.wind_signal === 2 ? 'Damaging · >61 km/h'
+            : prediction.live_metrics.wind_signal === 1 ? 'Strong · >30 km/h'
+            : 'No active signal'
+          }
+          color={
+            !prediction ? 'var(--text-secondary)'
+            : prediction.live_metrics.wind_signal >= 4 ? 'var(--red)'
+            : prediction.live_metrics.wind_signal === 3 ? 'var(--red)'
+            : prediction.live_metrics.wind_signal === 2 ? 'var(--orange)'
+            : prediction.live_metrics.wind_signal === 1 ? 'var(--accent)'
+            : 'var(--green)'
+          }
+        />
         <StatCard
           icon="🤖"
           label="Flood Probability"
           value={modelLoading ? '...' : probabilityPct}
-          sub={prediction ? `Signal #${prediction.live_metrics.wind_signal} · ${prediction.live_metrics.humidity}% humidity` : 'LSTM Model'}
+          sub={prediction ? `${prediction.live_metrics.humidity}% humidity` : 'LSTM Model'}
           color={
             !prediction ? 'var(--text-secondary)'
             : prediction.alert_level === 2 ? 'var(--red)'
@@ -172,60 +301,181 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Water Level Chart — no sensor data */}
-      <div className="card" style={{ marginBottom: '20px' }}>
-        <div className="card-title">
-          💧 Real-Time Water Level Gauge
-          <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-            No live feed
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)', opacity: 0.5 }}>
-            <div style={{ width: 16, height: 3, background: 'var(--orange)', borderRadius: 2 }} /> Warning Threshold (3.5m)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)', opacity: 0.5 }}>
-            <div style={{ width: 16, height: 3, background: 'var(--red)', borderRadius: 2 }} /> Critical (4.5m)
-          </div>
-        </div>
+      {/* Water Level Gauge */}
+<div className="card" style={{ marginBottom: '20px' }}>
+  <div className="card-title">
+    💧 Estimated Water Level Gauge
+    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+      {estimatedLevel ? 'Derived from rainfall · No physical sensor' : 'No live feed'}
+    </span>
+  </div>
+  <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+      <div style={{ width: 16, height: 3, background: 'var(--orange)', borderRadius: 2 }} /> Warning Threshold (3.5m)
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+      <div style={{ width: 16, height: 3, background: 'var(--red)', borderRadius: 2 }} /> Critical (4.5m)
+    </div>
+  </div>
+  <div style={{
+    height: 220,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    background: 'var(--blue-mid)',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px dashed var(--blue-border)',
+    position: 'relative',
+    overflow: 'hidden',
+  }}>
+    {estimatedLevel ? (
+      <>
+        {/* Water fill visual */}
         <div style={{
-          height: 220,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '10px',
-          background: 'var(--blue-mid)',
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          height: `${Math.min((estimatedLevel / 6) * 100, 100)}%`,
+          background: estimatedLevel >= 4.5 ? 'rgba(239,68,68,0.15)'
+            : estimatedLevel >= 3.5 ? 'rgba(249,115,22,0.15)'
+            : estimatedLevel >= 2.5 ? 'rgba(56,189,248,0.15)'
+            : 'rgba(34,197,94,0.10)',
           borderRadius: 'var(--radius-sm)',
-          border: '1px dashed var(--blue-border)',
+          transition: 'height 0.8s ease',
+        }} />
+        {/* Warning threshold line */}
+        <div style={{
+          position: 'absolute',
+          bottom: `${(3.5 / 6) * 100}%`,
+          left: 0, right: 0,
+          borderTop: '1px dashed var(--orange)',
+          opacity: 0.6,
         }}>
-          <div style={{ fontSize: '2rem', opacity: 0.3 }}>📡</div>
-          <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600 }}>No sensor data available</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.7 }}>Real-time chart will populate once the water level sensor is connected</div>
+          <span style={{ position: 'absolute', right: 8, top: -16, fontSize: '0.65rem', color: 'var(--orange)' }}>3.5m</span>
         </div>
+        {/* Critical threshold line */}
+        <div style={{
+          position: 'absolute',
+          bottom: `${(4.5 / 6) * 100}%`,
+          left: 0, right: 0,
+          borderTop: '1px dashed var(--red)',
+          opacity: 0.6,
+        }}>
+          <span style={{ position: 'absolute', right: 8, top: -16, fontSize: '0.65rem', color: 'var(--red)' }}>4.5m</span>
+        </div>
+        {/* Value display */}
+        <div style={{ position: 'relative', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, color: waterLevelColor, lineHeight: 1 }}>
+            {waterLevelDisplay}
+          </div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+            Baseline 1.4m + rainfall factor (×0.045)
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', opacity: 0.7 }}>
+          </div>
+        </div>
+      </>
+    ) : (
+      <>
+        <div style={{ fontSize: '2rem', opacity: 0.3 }}>📡</div>
+        <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600 }}>No sensor data available</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.7 }}>
+          Start the model backend to see estimated water level
+        </div>
+      </>
+        )}
       </div>
+    </div>
+
+      {/* ── NEW: Live Weather Radar Section ── */}
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <div className="card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          <span>🛰 Live Weather Radar — Naga City Area</span>
+          {/* Tab switcher */}
+          <div style={{ display: 'flex', gap: '6px', fontFamily: 'var(--font-body)', fontWeight: 500 }}>
+            {[
+              { key: 'radar', label: '🌧 Radar Map' },
+              { key: 'windy', label: '💨 Windy Forecast' },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                style={{
+                  padding: '5px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: `1px solid ${activeTab === tab.key ? 'var(--accent)' : 'var(--blue-border)'}`,
+                  background: activeTab === tab.key ? 'rgba(56,189,248,0.15)' : 'var(--blue-mid)',
+                  color: activeTab === tab.key ? 'var(--accent)' : 'var(--text-muted)',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  fontWeight: activeTab === tab.key ? 700 : 400,
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {activeTab === 'radar' && (
+          <>
+            <DashboardMap />
+            <div style={{ marginTop: '8px', fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--green)' }} />
+              RainViewer radar overlay · auto-refreshes every 10 min · © OpenStreetMap / CARTO
+            </div>
+          </>
+        )}
+
+        {activeTab === 'windy' && (
+          <>
+            <div style={{ borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--blue-border)' }}>
+              <iframe
+                width="100%"
+                height="400"
+                src="https://www.windy.com/embed2.html?lat=13.621&lon=123.194&zoom=8&level=surface&overlay=rain&product=ecmwf&message=true&marker=true&location=coordinates"
+                frameBorder="0"
+                title="Windy Live Forecast"
+              />
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Powered by Windy.com · ECMWF forecast model · Surface rain overlay
+            </div>
+          </>
+        )}
+      </div>
+      {/* ── END: Live Weather Radar Section ── */}
 
       {/* Bottom row */}
       <div className="grid-2" style={{ marginBottom: '20px' }}>
         {/* Weather Forecast */}
         <div className="card">
           <div className="card-title">⛅ Weather Forecast Strip — Next 72 Hours</div>
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-            {WEATHER_FORECAST.map(f => (
-              <div key={f.time} style={{
-                minWidth: '80px', textAlign: 'center',
-                background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)',
-                padding: '12px 8px', flexShrink: 0,
-                border: '1px solid var(--blue-border)',
-              }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>{f.time}</div>
-                <div style={{ fontSize: '1.4rem', marginBottom: '4px' }}>{f.icon}</div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-primary)', fontWeight: 600 }}>{f.temp}</div>
-                <div style={{ fontSize: '0.68rem', color: '#38bdf8', marginTop: '2px' }}>{f.rain_chance}% 🌧</div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>{f.wind}</div>
-              </div>
-            ))}
-          </div>
+          {forecastLoading ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '20px 0' }}>Loading forecast...</div>
+          ) : forecast.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '20px 0' }}>⚠️ Forecast unavailable — backend offline</div>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+              {forecast.map(f => (
+                <div key={f.time} style={{
+                  minWidth: '80px', textAlign: 'center',
+                  background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)',
+                  padding: '12px 8px', flexShrink: 0,
+                  border: '1px solid var(--blue-border)',
+                }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>
+                    {new Date(f.time).toLocaleString('en-PH', { weekday: 'short', hour: 'numeric', hour12: true })}
+                  </div>
+                  <img src={f.icon_url} alt={f.condition} style={{ width: 32, height: 32, marginBottom: '2px' }} />
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-primary)', fontWeight: 600 }}>{f.temp_c}°C</div>
+                  <div style={{ fontSize: '0.68rem', color: '#38bdf8', marginTop: '2px' }}>{f.rain_chance}% 🌧</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>{f.wind_kph} km/h</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Alert Levels Reference */}
@@ -274,7 +524,7 @@ function StatCard({ icon, label, value, sub, color, noData }) {
       <div style={{ fontSize: '1.3rem' }}>{icon}</div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>{label}</div>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 800, color: color || 'var(--accent)', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: noData ? 'var(--text-muted)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
         {noData && <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', flexShrink: 0 }} />}
         {sub}
       </div>

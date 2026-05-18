@@ -25,7 +25,7 @@ export const ALERT_LEVELS = {
     color: '#f97316',
     bg: '#ffedd5',
     border: '#ea580c',
-    description: 'Significant flooding expected. Zone 3 at high risk.',
+    description: 'Significant flooding expected.',
     action: 'Prepare evacuation. Secure valuables. Monitor updates.',
     level: 2,
   },
