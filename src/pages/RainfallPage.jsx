@@ -1,39 +1,72 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { generateRainfallData } from '../data/mockData';
-import { useModelPrediction } from '../lib/modelApi'; // ← MODEL
-
-const hourlyData = Array.from({ length: 24 }, (_, i) => ({
-  hour: `${String(i).padStart(2, '0')}:00`,
-  rainfall: parseFloat((Math.random() * 18 + 1).toFixed(1)),
-}));
-hourlyData[15].rainfall = 28.3;
-hourlyData[16].rainfall = 34.1;
+import { useModelPrediction } from '../lib/modelApi';
+import { supabase } from '../lib/supabaseClient';
 
 export default function RainfallPage() {
-  const [view, setView]     = useState('chart');
-  const [period, setPeriod] = useState('hourly');
-  const weeklyData          = generateRainfallData();
-  const data                = period === 'hourly' ? hourlyData : weeklyData;
-  const dataKey             = period === 'hourly' ? 'hour' : 'date';
+  const [view, setView]         = useState('chart');
+  const [period, setPeriod]     = useState('hourly');
+  const [dailyData, setDailyData]     = useState([]);
+  const [hourlyLogs, setHourlyLogs]   = useState([]);
 
-  // ← MODEL: get live rainfall from model backend
   const { prediction } = useModelPrediction();
   const liveRainfall = prediction?.live_metrics?.rainfall_mm;
 
-  const total = data.reduce((s, d) => s + d.rainfall, 0).toFixed(1);
-  const peak  = Math.max(...data.map(d => d.rainfall)).toFixed(1);
+  useEffect(() => {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    supabase
+      .from('prediction_logs')
+      .select('recorded_at, rainfall_mm')
+      .gte('recorded_at', since)
+      .order('recorded_at', { ascending: true })
+      .then(({ data }) => {
+        if (!data) return;
+        const buckets = {};
+        data.forEach(row => {
+          const hour = new Date(row.recorded_at)
+            .toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+          if (!buckets[hour]) buckets[hour] = { hour, rainfall: 0, count: 0 };
+          buckets[hour].rainfall += row.rainfall_mm;
+          buckets[hour].count    += 1;
+        });
+        setHourlyLogs(Object.values(buckets));
+      });
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    supabase
+      .from('prediction_logs')
+      .select('recorded_at, rainfall_mm')
+      .gte('recorded_at', sevenDaysAgo)
+      .order('recorded_at', { ascending: true })
+      .then(({ data }) => {
+        if (!data) return;
+        const buckets = {};
+        data.forEach(row => {
+          const date = new Date(row.recorded_at)
+            .toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+          if (!buckets[date]) buckets[date] = { date, rainfall: 0 };
+          buckets[date].rainfall = parseFloat(
+            (buckets[date].rainfall + row.rainfall_mm).toFixed(2)
+          );
+        });
+        setDailyData(Object.values(buckets));
+      });
+  }, []);
+
+  const data    = period === 'hourly' ? hourlyLogs : dailyData;
+  const dataKey = period === 'hourly' ? 'hour'     : 'date';
+  const total   = data.reduce((s, d) => s + d.rainfall, 0).toFixed(1);
+  const peak    = Math.max(0, ...data.map(d => d.rainfall)).toFixed(1);
 
   return (
     <div className="fade-in">
       <div className="grid-4" style={{ marginBottom: '20px' }}>
         {[
-          { label: 'Total Accumulated', value: `${total}mm`, icon: '☔', color: 'var(--accent)' },
+          { label: 'Total Accumulated', value: `${total}mm`,   icon: '☔', color: 'var(--accent)' },
           { label: 'Peak Intensity',    value: `${peak}mm/hr`, icon: '⚡', color: 'var(--orange)' },
-          // ← MODEL: show live rainfall from WeatherAPI via the model backend
           {
             label: '3-Hr Accumulation',
-            value: liveRainfall != null ? `${liveRainfall.toFixed(1)}mm` : '45.1mm',
+            value: liveRainfall != null ? `${liveRainfall.toFixed(1)}mm` : '—',
             icon: '⏱',
             color: 'var(--yellow)',
           },
@@ -47,7 +80,6 @@ export default function RainfallPage() {
         ))}
       </div>
 
-      {/* ← MODEL: source label below chart */}
       <div className="card">
         <div className="card-title">
           🌧 Rainfall Accumulation
@@ -59,7 +91,11 @@ export default function RainfallPage() {
           </div>
         </div>
 
-        {view === 'chart' ? (
+        {data.length === 0 ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
+            No data yet — logs will appear once the backend starts recording.
+          </div>
+        ) : view === 'chart' ? (
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
@@ -101,17 +137,16 @@ export default function RainfallPage() {
       <div className="card" style={{ marginTop: '16px', padding: '14px 20px' }}>
         <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '0.8rem' }}>
           {[
-            { label: '🟢 Trace',         range: '< 10mm/hr',  color: '#22c55e' },
-            { label: '🟡 Light Rain',     range: '10–25mm/hr', color: '#eab308' },
-            { label: '🟠 Moderate Rain',  range: '25–50mm/hr', color: '#f97316' },
-            { label: '🔴 Heavy Rain',     range: '≥ 50mm/hr',  color: '#ef4444' },
+            { label: '🟢 Trace',        range: '< 10mm/hr',  color: '#22c55e' },
+            { label: '🟡 Light Rain',    range: '10–25mm/hr', color: '#eab308' },
+            { label: '🟠 Moderate Rain', range: '25–50mm/hr', color: '#f97316' },
+            { label: '🔴 Heavy Rain',    range: '≥ 50mm/hr',  color: '#ef4444' },
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', gap: '6px', color: r.color }}>
               <span>{r.label}</span>
               <span style={{ color: 'var(--text-muted)' }}>({r.range})</span>
             </div>
           ))}
-          {/* ← MODEL: dynamic source label */}
           <div style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>
             {prediction ? 'Source: WeatherAPI via LSTM Backend' : 'Source: PAGASA Weather Station · Naga City'}
           </div>
