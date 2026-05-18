@@ -187,6 +187,13 @@ export const DATA_SOURCES = [
     description: 'Month-of-year encoded as sine/cosine values using the server system clock. Captures seasonal flood patterns (e.g. typhoon season June–November).',
   },
   {
+    name: 'Water Level Sensor (Bicol River)',
+    status: 'offline',
+    last_update: 'No data',
+    type: 'sensor',
+    description: 'Physical water level sensor at Triangulo station. Currently offline — no readings available. Live gauge and chart on the dashboard will populate once the sensor is connected.',
+  },
+  {
     name: 'flood_main_dataset_.csv (Training Data)',
     status: 'offline',
     last_update: 'April 2026',
@@ -203,7 +210,7 @@ export const FLOOD_ZONES = [
 ];
 
 export const NOTIFICATION_LOG = [
-  { id: 1, time: '10:32 AM', type: 'WARNING', message: 'Water level at Bicol River reached 3.4m — Warning threshold approaching.', sent_by: 'System', read: false },
+  { id: 1, time: '10:32 AM', type: 'INFO', message: 'Water level sensor (Bicol River / Triangulo Station) is offline. No readings currently available.', sent_by: 'System', read: false },
   { id: 2, time: '09:15 AM', type: 'ADVISORY', message: 'Rainfall accumulation exceeded 40mm in the last 3 hours.', sent_by: 'System', read: false },
   { id: 3, time: '08:00 AM', type: 'INFO', message: 'PAGASA forecast: Heavy rainfall expected 12-18 hours.', sent_by: 'Admin', read: true },
   { id: 4, time: 'Yesterday 11:45 PM', type: 'NORMAL', message: 'Water levels returned to normal. All clear.', sent_by: 'System', read: true },

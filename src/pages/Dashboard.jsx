@@ -1,54 +1,32 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import Swal from 'sweetalert2';
 
-import { ALERT_LEVELS, generateWaterLevelData, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
+import { ALERT_LEVELS, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi'; // ← MODEL
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [waterData, setWaterData] = useState(generateWaterLevelData());
-  const [currentLevel, setCurrentLevel] = useState(3.4);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
-  const intervalRef = useRef(null);
 
   const isResident = user?.role_id === 7;
 
   // ← MODEL: pull live prediction from Flask backend
   const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
 
+  // No real sensor data yet — water level is unavailable
+  const waterLevelAvailable = false;
+
   // Derive alert key from model when available, otherwise fall back to water level
   const currentAlert = prediction
     ? alertLevelToKey(prediction.alert_level)
-    : currentLevel >= 4.5 ? 'CRITICAL'
-    : currentLevel >= 3.5 ? 'WARNING'
-    : currentLevel >= 2.5 ? 'ADVISORY'
+    : waterLevelAvailable
+    ? currentLevel >= 4.5 ? 'CRITICAL'
+      : currentLevel >= 3.5 ? 'WARNING'
+      : currentLevel >= 2.5 ? 'ADVISORY'
+      : 'NORMAL'
     : 'NORMAL';
-
-  // Simulate live water-level updates (keep existing chart animation)
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      setWaterData(prev => {
-        const last = prev[prev.length - 1];
-        const newLevel = parseFloat((last.level + (Math.random() - 0.45) * 0.15).toFixed(2));
-        const clamped = Math.max(0.5, Math.min(6.0, newLevel));
-        setCurrentLevel(clamped);
-        const now = new Date();
-        setLastUpdate(now);
-        const newPoint = {
-          time: now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-          level: clamped,
-          threshold: 3.5,
-          critical: 4.5,
-        };
-        return [...prev.slice(1), newPoint];
-      });
-    }, 5000);
-    return () => clearInterval(intervalRef.current);
-  }, []);
 
   const alertInfo = ALERT_LEVELS[currentAlert];
 
@@ -175,14 +153,14 @@ export default function Dashboard() {
 
       {/* KPI Row */}
       <div className="grid-4" style={{ marginBottom: '20px' }}>
-        <StatCard icon="💧" label="Current Water Level" value={`${currentLevel}m`} sub="Bicol River Station" color={currentLevel >= 3.5 ? 'var(--orange)' : 'var(--green)'} />
+        <StatCard icon="💧" label="Current Water Level" value="N/A" sub="No data available" color="var(--text-muted)" noData />
         {/* ← MODEL: rainfall from model; fallback to mock */}
         <StatCard icon="🌧" label="Rainfall (Current)" value={rainfallDisplay} sub={prediction ? 'WeatherAPI · Live' : 'PAGASA Station'} color="var(--accent)" />
         <StatCard icon="📡" label="Data Sources Live" value={`${liveSourceCount}/${DATA_SOURCES.length}`} sub="Active connections" color="var(--green)" />
         {/* ← MODEL: flood probability card */}
         <StatCard
           icon="🤖"
-          label="AI Flood Probability"
+          label="Flood Probability"
           value={modelLoading ? '...' : probabilityPct}
           sub={prediction ? `Signal #${prediction.live_metrics.wind_signal} · ${prediction.live_metrics.humidity}% humidity` : 'LSTM Model'}
           color={
@@ -194,42 +172,37 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Water Level Chart — unchanged */}
+      {/* Water Level Chart — no sensor data */}
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="card-title">
           💧 Real-Time Water Level Gauge
           <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-            Updated: {lastUpdate.toLocaleTimeString('en-PH')}
+            No live feed
           </span>
         </div>
         <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)', opacity: 0.5 }}>
             <div style={{ width: 16, height: 3, background: 'var(--orange)', borderRadius: 2 }} /> Warning Threshold (3.5m)
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)', opacity: 0.5 }}>
             <div style={{ width: 16, height: 3, background: 'var(--red)', borderRadius: 2 }} /> Critical (4.5m)
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={waterData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#38bdf8" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
-            <XAxis dataKey="time" tick={{ fill: '#4a6080', fontSize: 10 }} tickLine={false} interval={3} />
-            <YAxis tick={{ fill: '#4a6080', fontSize: 10 }} tickLine={false} unit="m" domain={[0, 6]} />
-            <Tooltip
-              contentStyle={{ background: '#112240', border: '1px solid #1e3a5f', borderRadius: 8, color: '#e2eaf5', fontSize: 12 }}
-              formatter={(v) => [`${v}m`, 'Water Level']}
-            />
-            <ReferenceLine y={3.5} stroke="#f97316" strokeWidth={2} strokeDasharray="4 2" />
-            <ReferenceLine y={4.5} stroke="#ef4444" strokeWidth={2} strokeDasharray="4 2" />
-            <Area type="monotone" dataKey="level" stroke="#38bdf8" strokeWidth={2} fill="url(#waterGrad)" dot={false} activeDot={{ r: 4, fill: '#38bdf8' }} />
-          </AreaChart>
-        </ResponsiveContainer>
+        <div style={{
+          height: 220,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '10px',
+          background: 'var(--blue-mid)',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px dashed var(--blue-border)',
+        }}>
+          <div style={{ fontSize: '2rem', opacity: 0.3 }}>📡</div>
+          <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600 }}>No sensor data available</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.7 }}>Real-time chart will populate once the water level sensor is connected</div>
+        </div>
       </div>
 
       {/* Bottom row */}
@@ -295,13 +268,16 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ icon, label, value, sub, color }) {
+function StatCard({ icon, label, value, sub, color, noData }) {
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: noData ? 0.6 : 1 }}>
       <div style={{ fontSize: '1.3rem' }}>{icon}</div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>{label}</div>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 800, color: color || 'var(--accent)', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sub}</div>
+      <div style={{ fontSize: '0.75rem', color: noData ? 'var(--text-muted)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {noData && <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', flexShrink: 0 }} />}
+        {sub}
+      </div>
     </div>
   );
 }
