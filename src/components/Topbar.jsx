@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../hooks/useTheme';
 
 export default function Topbar({ title, onMenuClick, alertLevel }) {
   const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         {/* Alert level indicator */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px',
@@ -45,6 +47,15 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
             {alertLevel}
           </span>
         </div>
+
+        {/* Dark / Light toggle */}
+        <button
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
 
         {/* Clock */}
         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }} className="hide-mobile">
