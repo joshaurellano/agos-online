@@ -25,17 +25,17 @@
 
 /* ── LIGHT MODE ── */
 :root.light {
-  --blue-deep:      #f0f4f8;
-  --blue-mid:       #e2eaf3;
-  --blue-panel:     #ffffff;
-  --blue-card:      #f8fafc;
-  --blue-border:    #cbd5e1;
-  --accent:         #0ea5e9;
-  --accent2:        #0284c7;
-  --text-primary:   #0f172a;
-  --text-secondary: #475569;
-  --text-muted:     #94a3b8;
-  --shadow:         0 4px 24px rgba(0,0,0,0.08);
+  --blue-deep:      #dce6f5;
+  --blue-mid:       #c8d8ee;
+  --blue-panel:     #eaf1fb;
+  --blue-card:      #f4f8ff;
+  --blue-border:    #a8bfd8;
+  --accent:         #0284c7;
+  --accent2:        #0369a1;
+  --text-primary:   #0c1e35;
+  --text-secondary: #2d4a6a;
+  --text-muted:     #5a7a9a;
+  --shadow:         0 4px 24px rgba(10,40,80,0.12);
 }
 
 html { font-size: 16px; }
