@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
+import { ThemeProvider } from './hooks/useTheme';
 
 import LoginPage from './pages/LoginPage';
 import RegistrationPage from './pages/RegistrationPage';
@@ -18,41 +19,43 @@ import ResidentRoute from './components/ResidentRoute';
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/"      element={<LoginPage />} />
-          <Route path="/login" element={<LoginPage />} />
+    <ThemeProvider>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            <Route path="/"      element={<LoginPage />} />
+            <Route path="/login" element={<LoginPage />} />
 
-          <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-            <Route path="/dashboard"    element={<Dashboard />} />
-            <Route path="/water-level"  element={<WaterLevelPage />} />
-            <Route path="/rainfall"     element={<RainfallPage />} />
-            <Route path="/flood-map"    element={<FloodMapPage />} />
-            <Route path="/historical"   element={<HistoricalPage />} />
-            <Route path="/alerts"       element={<AlertsPage />} />
+            <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+              <Route path="/dashboard"    element={<Dashboard />} />
+              <Route path="/water-level"  element={<WaterLevelPage />} />
+              <Route path="/rainfall"     element={<RainfallPage />} />
+              <Route path="/flood-map"    element={<FloodMapPage />} />
+              <Route path="/historical"   element={<HistoricalPage />} />
+              <Route path="/alerts"       element={<AlertsPage />} />
 
-            <Route path="/data-sources" element={
-              <ResidentRoute>
-                <DataSourcesPage />
-              </ResidentRoute>
-            } />
+              <Route path="/data-sources" element={
+                <ResidentRoute>
+                  <DataSourcesPage />
+                </ResidentRoute>
+              } />
 
-            <Route path="/register" element={
-              <AdminRoute>
-                <RegistrationPage />
-              </AdminRoute>
-            } />
+              <Route path="/register" element={
+                <AdminRoute>
+                  <RegistrationPage />
+                </AdminRoute>
+              } />
 
-            <Route path="/add-resident" element={
-              <ResidentRoute>
-                <RegistrationPage />
-              </ResidentRoute>
-            } />
-          </Route>
-        </Routes>
-      </Router>
-    </AuthProvider>
+              <Route path="/add-resident" element={
+                <ResidentRoute>
+                  <RegistrationPage />
+                </ResidentRoute>
+              } />
+            </Route>
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
