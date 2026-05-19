@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const MODEL_URL = 'http://localhost:5000/predict_live';
+const MODEL_URL = 'https://asterisk101-flood-prediction.hf.space/predict_live';
 const POLL_INTERVAL_MS = 30_000; // re-fetch every 30 seconds
 
 /**
