@@ -90,7 +90,7 @@ export default function Dashboard() {
   const [forecastLoading, setForecastLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:5000/forecast')
+    fetch('https://asterisk101-flood-prediction.hf.space/forecast')
       .then(res => res.json())
       .then(data => {
         if (data.forecast) setForecast(data.forecast);
