@@ -8,6 +8,8 @@ import { ALERT_LEVELS, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
 
+import { supabase } from '../lib/supabaseClient';
+
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -111,28 +113,48 @@ export default function Dashboard() {
   const alertInfo = ALERT_LEVELS[currentAlert];
 
   const handleEvacuationAlert = () => {
-    Swal.fire({
-      title: '⚠️ Send Evacuation Alert?',
-      html: `
-        <p style="color:#8da4be;margin-bottom:16px">This will send an evacuation alert to all registered officials and residents in Barangay Triangulo.</p>
-        <div style="background:#152a4a;border-radius:8px;padding:14px;text-align:left">
-          <div style="color:#ef4444;font-weight:700;margin-bottom:8px">📢 Alert Message:</div>
-          <div style="color:#e2eaf5;font-size:0.9rem">"Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately."</div>
-        </div>
-      `,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#1e3a5f',
-      confirmButtonText: '🚨 Send Alert Now',
-      cancelButtonText: 'Cancel',
-      background: '#0d1f3c',
-      color: '#e2eaf5',
-    }).then(result => {
-      if (result.isConfirmed) {
+  Swal.fire({
+    title: '⚠️ Send Evacuation Alert?',
+    html: `
+      <p style="color:#8da4be;margin-bottom:16px">This will send an evacuation alert to all registered officials and residents in Barangay Triangulo.</p>
+      <div style="background:#152a4a;border-radius:8px;padding:14px;text-align:left">
+        <div style="color:#ef4444;font-weight:700;margin-bottom:8px">📢 Alert Message:</div>
+        <div style="color:#e2eaf5;font-size:0.9rem">"Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately."</div>
+      </div>
+    `,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#1e3a5f',
+    confirmButtonText: '🚨 Send Alert Now',
+    cancelButtonText: 'Cancel',
+    background: '#0d1f3c',
+    color: '#e2eaf5',
+    }).then(async (result) => {
+      if (!result.isConfirmed) return;
+
+      const sentBy = user?.name ?? user?.email ?? 'Admin';
+      const message = 'Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately.';
+
+      const { error } = await supabase.from('alerts').insert({
+        type:    'CRITICAL',
+        message: message,
+        sent_by: sentBy,
+      });
+
+      if (error) {
+        Swal.fire({
+          title: '⚠️ Failed to Send',
+          text: error.message,
+          icon: 'error',
+          background: '#0d1f3c',
+          color: '#e2eaf5',
+          confirmButtonColor: '#0ea5e9',
+        });
+      } else {
         Swal.fire({
           title: '✅ Alert Sent!',
-          html: `<p style="color:#8da4be">Evacuation alert dispatched to all officials and residents.<br><br><strong style="color:#22c55e">Log entry created.</strong></p>`,
+          html: `<p style="color:#8da4be">Evacuation alert dispatched to all officials and residents.<br><br><strong style="color:#22c55e">Residents will be notified in real time.</strong></p>`,
           icon: 'success',
           background: '#0d1f3c',
           color: '#e2eaf5',
