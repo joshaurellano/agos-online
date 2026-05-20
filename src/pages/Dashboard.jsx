@@ -1,185 +1,43 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
 
-import { ALERT_LEVELS, WEATHER_FORECAST, DATA_SOURCES } from '../data/mockData';
+import { ALERT_LEVELS, DATA_SOURCES } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
-
 import { supabase } from '../lib/supabaseClient';
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
-
-// ── RainViewer radar layer injected into the existing MapContainer ──
-function RainViewerLayer() {
-  const map = useMap();
-  const radarLayerRef = useRef(null);
-
-  useEffect(() => {
-    async function updateRadar() {
-      try {
-        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-        const data = await res.json();
-        const past = data?.radar?.past;
-        if (!past || past.length === 0) return;
-
-        const latestPath = past[past.length - 1].path;
-        const tileUrl = `https://tilecache.rainviewer.com${latestPath}/256/{z}/{x}/{y}/2/1_1.png`;
-
-        if (radarLayerRef.current) {
-          map.removeLayer(radarLayerRef.current);
-        }
-
-        radarLayerRef.current = L.tileLayer(tileUrl, {
-          opacity: 0.5,
-          zIndex: 100,
-          attribution: '© RainViewer',
-        }).addTo(map);
-      } catch (err) {
-        console.warn('RainViewer radar update failed:', err);
-      }
-    }
-
-    updateRadar();
-    const interval = setInterval(updateRadar, 600_000); // refresh every 10 min
-    return () => {
-      clearInterval(interval);
-      if (radarLayerRef.current) map.removeLayer(radarLayerRef.current);
-    };
-  }, [map]);
-
-  return null;
-}
-
-// ── Mini dashboard map with radar overlay ──
-function DashboardMap() {
-
-  return (
-    <MapContainer
-      center={[13.6192, 123.1814]}
-      zoom={11}
-      style={{ width: '100%', height: 300, borderRadius: 'var(--radius)', zIndex: 0 }}
-      scrollWheelZoom={false}
-    >
-      <TileLayer
-        attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        subdomains="abcd"
-        maxZoom={20}
-      />
-      <RainViewerLayer />
-      <Marker position={[13.6192, 123.1814]}>
-        <Popup>
-          <b>Monitoring Station</b><br />Triangulo, Naga City
-        </Popup>
-      </Marker>
-    </MapContainer>
-  );
-}
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('radar'); // 'radar' | 'windy'
   const [forecast, setForecast] = useState([]);
   const [forecastLoading, setForecastLoading] = useState(true);
 
   useEffect(() => {
     fetch('https://asterisk101-flood-prediction.hf.space/forecast')
       .then(res => res.json())
-      .then(data => {
-        if (data.forecast) setForecast(data.forecast);
-      })
+      .then(data => { if (data.forecast) setForecast(data.forecast); })
       .catch(err => console.warn('Forecast fetch failed:', err))
       .finally(() => setForecastLoading(false));
   }, []);
-  const isResident = user?.role_id === 7;
 
+  const isResident = user?.role_id === 7;
   const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
 
-  const waterLevelAvailable = false;
-
-  const currentAlert = prediction
-    ? alertLevelToKey(prediction.alert_level)
-    : 'NORMAL';
-
+  const currentAlert = prediction ? alertLevelToKey(prediction.alert_level) : 'NORMAL';
   const alertInfo = ALERT_LEVELS[currentAlert];
 
-  const handleEvacuationAlert = () => {
-  Swal.fire({
-    title: '⚠️ Send Evacuation Alert?',
-    html: `
-      <p style="color:#8da4be;margin-bottom:16px">This will send an evacuation alert to all registered officials and residents in Barangay Triangulo.</p>
-      <div style="background:#152a4a;border-radius:8px;padding:14px;text-align:left">
-        <div style="color:#ef4444;font-weight:700;margin-bottom:8px">📢 Alert Message:</div>
-        <div style="color:#e2eaf5;font-size:0.9rem">"Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately."</div>
-      </div>
-    `,
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonColor: '#ef4444',
-    cancelButtonColor: '#1e3a5f',
-    confirmButtonText: '🚨 Send Alert Now',
-    cancelButtonText: 'Cancel',
-    background: '#0d1f3c',
-    color: '#e2eaf5',
-    }).then(async (result) => {
-      if (!result.isConfirmed) return;
-
-      const sentBy = user?.name ?? user?.email ?? 'Admin';
-      const message = 'Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately.';
-
-      const { error } = await supabase.from('alerts').insert({
-        type:    'CRITICAL',
-        message: message,
-        sent_by: sentBy,
-      });
-
-      if (error) {
-        Swal.fire({
-          title: '⚠️ Failed to Send',
-          text: error.message,
-          icon: 'error',
-          background: '#0d1f3c',
-          color: '#e2eaf5',
-          confirmButtonColor: '#0ea5e9',
-        });
-      } else {
-        Swal.fire({
-          title: '✅ Alert Sent!',
-          html: `<p style="color:#8da4be">Evacuation alert dispatched to all officials and residents.<br><br><strong style="color:#22c55e">Residents will be notified in real time.</strong></p>`,
-          icon: 'success',
-          background: '#0d1f3c',
-          color: '#e2eaf5',
-          confirmButtonColor: '#0ea5e9',
-        });
-      }
-    });
-  };
-
-  const liveSourceCount = DATA_SOURCES.filter(s => s.status === 'live').length;
-
-  const rainfallDisplay = prediction ? `${prediction.live_metrics.rainfall_mm.toFixed(1)}mm` : '45.1mm';
   const probabilityPct  = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';
   const leadTimeDisplay = prediction?.lead_time_estimate ?? '6-12 hrs';
+  const rainfallDisplay = prediction ? `${prediction.live_metrics.rainfall_mm.toFixed(1)}mm` : '45.1mm';
 
   const BASELINE_LEVEL = 1.4;
   const RISE_RATE = 0.045;
-
   const rainfallMm = prediction?.live_metrics?.rainfall_mm ?? 0;
   const hasRainfall = rainfallMm > 0;
-
   const estimatedLevel = prediction
     ? parseFloat((BASELINE_LEVEL + rainfallMm * RISE_RATE).toFixed(2))
     : null;
-
   const waterLevelDisplay = estimatedLevel !== null ? `${estimatedLevel}m` : 'N/A';
 
   const waterLevelColor = (!estimatedLevel || !hasRainfall) ? 'var(--text-muted)'
@@ -196,6 +54,48 @@ export default function Dashboard() {
     : estimatedLevel >= 3.5 ? 'Est. · Warning threshold exceeded'
     : estimatedLevel >= 2.5 ? 'Est. · Advisory range'
     : 'Est. · Within safe range';
+
+  const handleEvacuationAlert = () => {
+    Swal.fire({
+      title: '⚠️ Send Evacuation Alert?',
+      html: `
+        <p style="color:#8da4be;margin-bottom:16px">This will send an evacuation alert to all registered officials and residents in Barangay Triangulo.</p>
+        <div style="background:#152a4a;border-radius:8px;padding:14px;text-align:left">
+          <div style="color:#ef4444;font-weight:700;margin-bottom:8px">📢 Alert Message:</div>
+          <div style="color:#e2eaf5;font-size:0.9rem">"Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately."</div>
+        </div>
+      `,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#1e3a5f',
+      confirmButtonText: '🚨 Send Alert Now',
+      cancelButtonText: 'Cancel',
+      background: '#0d1f3c',
+      color: '#e2eaf5',
+    }).then(async (result) => {
+      if (!result.isConfirmed) return;
+      const sentBy = user?.name ?? user?.email ?? 'Admin';
+      const message = 'Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately.';
+      const { error } = await supabase.from('alerts').insert({
+        type: 'CRITICAL',
+        message,
+        sent_by: sentBy,
+      });
+      if (error) {
+        Swal.fire({ title: '⚠️ Failed to Send', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
+      } else {
+        Swal.fire({
+          title: '✅ Alert Sent!',
+          html: `<p style="color:#8da4be">Evacuation alert dispatched to all officials and residents.<br><br><strong style="color:#22c55e">Residents will be notified in real time.</strong></p>`,
+          icon: 'success',
+          background: '#0d1f3c',
+          color: '#e2eaf5',
+          confirmButtonColor: '#0ea5e9',
+        });
+      }
+    });
+  };
 
   return (
     <div className="fade-in">
@@ -253,7 +153,6 @@ export default function Dashboard() {
           <div style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '4px' }}>{alertInfo.description}</div>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>🔔 {alertInfo.action}</div>
         </div>
-
         <div style={{
           background: 'rgba(0,0,0,0.2)',
           borderRadius: 'var(--radius-sm)',
@@ -265,9 +164,7 @@ export default function Dashboard() {
             {prediction ? 'Model Status' : 'Status Message'}
           </div>
           <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem', lineHeight: 1.4 }}>
-            {prediction
-              ? prediction.status
-              : '⚠️ Flooding possible in the next 6 hrs'}
+            {prediction ? prediction.status : '⚠️ Flooding possible in the next 6 hrs'}
           </div>
           {prediction && (
             <div style={{ marginTop: '6px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -287,7 +184,13 @@ export default function Dashboard() {
           color={waterLevelColor}
           noData={!estimatedLevel || !hasRainfall}
         />
-        <StatCard icon="🌧" label="Rainfall (Current)" value={rainfallDisplay} sub={prediction ? 'WeatherAPI · Live' : 'PAGASA Station'} color="var(--accent)" />
+        <StatCard
+          icon="🌧"
+          label="Rainfall (Current)"
+          value={rainfallDisplay}
+          sub={prediction ? 'WeatherAPI · Live' : 'PAGASA Station'}
+          color="var(--accent)"
+        />
         <StatCard
           icon="🌀"
           label="Wind Signal"
@@ -324,154 +227,94 @@ export default function Dashboard() {
       </div>
 
       {/* Water Level Gauge */}
-<div className="card" style={{ marginBottom: '20px' }}>
-  <div className="card-title">
-    💧 Estimated Water Level Gauge
-    <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
-      {estimatedLevel ? 'Derived from rainfall · No physical sensor' : 'No live feed'}
-    </span>
-  </div>
-  <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-      <div style={{ width: 16, height: 3, background: 'var(--orange)', borderRadius: 2 }} /> Warning Threshold (3.5m)
-    </div>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-      <div style={{ width: 16, height: 3, background: 'var(--red)', borderRadius: 2 }} /> Critical (4.5m)
-    </div>
-  </div>
-  <div style={{
-    height: 220,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '10px',
-    background: 'var(--blue-mid)',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px dashed var(--blue-border)',
-    position: 'relative',
-    overflow: 'hidden',
-  }}>
-    {estimatedLevel ? (
-      <>
-        {/* Water fill visual */}
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0,
-          height: `${Math.min((estimatedLevel / 6) * 100, 100)}%`,
-          background: estimatedLevel >= 4.5 ? 'rgba(239,68,68,0.15)'
-            : estimatedLevel >= 3.5 ? 'rgba(249,115,22,0.15)'
-            : estimatedLevel >= 2.5 ? 'rgba(56,189,248,0.15)'
-            : 'rgba(34,197,94,0.10)',
-          borderRadius: 'var(--radius-sm)',
-          transition: 'height 0.8s ease',
-        }} />
-        {/* Warning threshold line */}
-        <div style={{
-          position: 'absolute',
-          bottom: `${(3.5 / 6) * 100}%`,
-          left: 0, right: 0,
-          borderTop: '1px dashed var(--orange)',
-          opacity: 0.6,
-        }}>
-          <span style={{ position: 'absolute', right: 8, top: -16, fontSize: '0.65rem', color: 'var(--orange)' }}>3.5m</span>
-        </div>
-        {/* Critical threshold line */}
-        <div style={{
-          position: 'absolute',
-          bottom: `${(4.5 / 6) * 100}%`,
-          left: 0, right: 0,
-          borderTop: '1px dashed var(--red)',
-          opacity: 0.6,
-        }}>
-          <span style={{ position: 'absolute', right: 8, top: -16, fontSize: '0.65rem', color: 'var(--red)' }}>4.5m</span>
-        </div>
-        {/* Value display */}
-        <div style={{ position: 'relative', textAlign: 'center' }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, color: waterLevelColor, lineHeight: 1 }}>
-            {waterLevelDisplay}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-            Baseline 1.4m + rainfall factor (×0.045)
-          </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', opacity: 0.7 }}>
-          </div>
-        </div>
-      </>
-    ) : (
-      <>
-        <div style={{ fontSize: '2rem', opacity: 0.3 }}>📡</div>
-        <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600 }}>No sensor data available</div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.7 }}>
-          Start the model backend to see estimated water level
-        </div>
-      </>
-        )}
-      </div>
-    </div>
-
-      {/* ── NEW: Live Weather Radar Section ── */}
       <div className="card" style={{ marginBottom: '20px' }}>
-        <div className="card-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-          <span>🛰 Live Weather Radar — Naga City Area</span>
-          {/* Tab switcher */}
-          <div style={{ display: 'flex', gap: '6px', fontFamily: 'var(--font-body)', fontWeight: 500 }}>
-            {[
-              { key: 'radar', label: '🌧 Radar Map' },
-              { key: 'windy', label: '💨 Windy Forecast' },
-            ].map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                style={{
-                  padding: '5px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: `1px solid ${activeTab === tab.key ? 'var(--accent)' : 'var(--blue-border)'}`,
-                  background: activeTab === tab.key ? 'rgba(56,189,248,0.15)' : 'var(--blue-mid)',
-                  color: activeTab === tab.key ? 'var(--accent)' : 'var(--text-muted)',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                  fontWeight: activeTab === tab.key ? 700 : 400,
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
+        <div className="card-title">
+          💧 Estimated Water Level Gauge
+          <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+            {estimatedLevel ? 'Derived from rainfall · No physical sensor' : 'No live feed'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+            <div style={{ width: 16, height: 3, background: 'var(--orange)', borderRadius: 2 }} /> Warning Threshold (3.5m)
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+            <div style={{ width: 16, height: 3, background: 'var(--red)', borderRadius: 2 }} /> Critical (4.5m)
           </div>
         </div>
-
-        {activeTab === 'radar' && (
-          <>
-            <DashboardMap />
-            <div style={{ marginTop: '8px', fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: 'var(--green)' }} />
-              RainViewer radar overlay · auto-refreshes every 10 min · © OpenStreetMap / CARTO
-            </div>
-          </>
-        )}
-
-        {activeTab === 'windy' && (
-          <>
-            <div style={{ borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--blue-border)' }}>
-              <iframe
-                width="100%"
-                height="400"
-                src="https://www.windy.com/embed2.html?lat=13.621&lon=123.194&zoom=8&level=surface&overlay=rain&product=ecmwf&message=true&marker=true&location=coordinates"
-                frameBorder="0"
-                title="Windy Live Forecast"
-              />
-            </div>
-            <div style={{ marginTop: '8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              Powered by Windy.com · ECMWF forecast model · Surface rain overlay
-            </div>
-          </>
-        )}
+        <div style={{
+          height: 220,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '10px',
+          background: 'var(--blue-mid)',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px dashed var(--blue-border)',
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          {estimatedLevel ? (
+            <>
+              <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                height: `${Math.min((estimatedLevel / 6) * 100, 100)}%`,
+                background: estimatedLevel >= 4.5 ? 'rgba(239,68,68,0.15)'
+                  : estimatedLevel >= 3.5 ? 'rgba(249,115,22,0.15)'
+                  : estimatedLevel >= 2.5 ? 'rgba(56,189,248,0.15)'
+                  : 'rgba(34,197,94,0.10)',
+                borderRadius: 'var(--radius-sm)',
+                transition: 'height 0.8s ease',
+              }} />
+              <div style={{ position: 'absolute', bottom: `${(3.5 / 6) * 100}%`, left: 0, right: 0, borderTop: '1px dashed var(--orange)', opacity: 0.6 }}>
+                <span style={{ position: 'absolute', right: 8, top: -16, fontSize: '0.65rem', color: 'var(--orange)' }}>3.5m</span>
+              </div>
+              <div style={{ position: 'absolute', bottom: `${(4.5 / 6) * 100}%`, left: 0, right: 0, borderTop: '1px dashed var(--red)', opacity: 0.6 }}>
+                <span style={{ position: 'absolute', right: 8, top: -16, fontSize: '0.65rem', color: 'var(--red)' }}>4.5m</span>
+              </div>
+              <div style={{ position: 'relative', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, color: waterLevelColor, lineHeight: 1 }}>
+                  {waterLevelDisplay}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                  Baseline 1.4m + rainfall factor (×0.045)
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: '2rem', opacity: 0.3 }}>📡</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600 }}>No sensor data available</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.7 }}>
+                Start the model backend to see estimated water level
+              </div>
+            </>
+          )}
+        </div>
       </div>
-      {/* ── END: Live Weather Radar Section ── */}
+
+      {/* Windy Forecast */}
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <div className="card-title">🛰 Live Weather Radar — Naga City Area</div>
+        <div style={{ borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--blue-border)' }}>
+          <iframe
+            width="100%"
+            height="400"
+            src="https://www.windy.com/embed2.html?lat=13.621&lon=123.194&zoom=8&level=surface&overlay=rain&product=ecmwf&message=true&marker=true&location=coordinates"
+            frameBorder="0"
+            title="Windy Live Forecast"
+          />
+        </div>
+        <div style={{ marginTop: '8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+          Powered by Windy.com · ECMWF forecast model · Surface rain overlay
+        </div>
+      </div>
 
       {/* Bottom row */}
       <div className="grid-2" style={{ marginBottom: '20px' }}>
-        {/* Weather Forecast */}
+
+        {/* Weather Forecast Strip */}
         <div className="card">
           <div className="card-title">⛅ Weather Forecast Strip — Next 72 Hours</div>
           {forecastLoading ? (
@@ -517,7 +360,9 @@ export default function Dashboard() {
                   <span style={{ fontWeight: 700, color: info.color, fontSize: '0.85rem', letterSpacing: '0.05em' }}>{info.label}</span>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '1px' }}>{info.description.split('.')[0]}</div>
                 </div>
-                {currentAlert === key && <span style={{ fontSize: '0.68rem', background: `${info.color}30`, color: info.color, padding: '2px 8px', borderRadius: '99px', fontWeight: 700 }}>CURRENT</span>}
+                {currentAlert === key && (
+                  <span style={{ fontSize: '0.68rem', background: `${info.color}30`, color: info.color, padding: '2px 8px', borderRadius: '99px', fontWeight: 700 }}>CURRENT</span>
+                )}
               </div>
             ))}
           </div>
