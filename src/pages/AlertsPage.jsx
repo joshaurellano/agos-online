@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'; // ← added useEffect, useRef
 import { useAuth } from '../hooks/useAuth';
 import { NOTIFICATION_LOG } from '../data/mockData';
+import { supabase } from '../lib/supabaseClient';
 import Swal from 'sweetalert2';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi'; // ← MODEL
 
@@ -50,50 +51,80 @@ export default function AlertsPage() {
 
   const markAllRead = () => setLogs(prev => prev.map(l => ({ ...l, read: true })));
 
-  const sendManualAlert = () => {
-    Swal.fire({
-      title: '📢 Send Manual Alert',
-      html: `
-        <div style="text-align:left">
-          <label style="display:block;font-size:0.8rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Alert Type</label>
-          <select id="swal-type" style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;margin-bottom:14px;font-size:0.9rem">
-            <option value="INFO">ℹ️ Information</option>
-            <option value="ADVISORY">🟡 Advisory</option>
-            <option value="WARNING">🟠 Warning</option>
-            <option value="CRITICAL">🔴 Critical</option>
-          </select>
-          <label style="display:block;font-size:0.8rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Message</label>
-          <textarea id="swal-msg" rows="3" placeholder="Enter your alert message..." style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;font-size:0.9rem;resize:none"></textarea>
-        </div>
-      `,
-      showCancelButton: true,
-      confirmButtonColor: '#0ea5e9',
-      cancelButtonColor: '#1e3a5f',
-      confirmButtonText: '📨 Send Alert',
-      background: '#0d1f3c',
-      color: '#e2eaf5',
-      preConfirm: () => {
-        const type = document.getElementById('swal-type').value;
-        const msg  = document.getElementById('swal-msg').value;
-        if (!msg.trim()) { Swal.showValidationMessage('Please enter a message.'); return false; }
-        return { type, msg };
-      },
-    }).then(r => {
-      if (r.isConfirmed) {
-        const newLog = {
-          id: Date.now(),
-          time: 'Just now',
-          type: r.value.type,
-          message: r.value.msg,
-          sent_by: 'Manual (Admin)',
-          read: true,
-        };
-        setLogs(prev => [newLog, ...prev]);
-        Swal.fire({ title: '✅ Alert Sent!', icon: 'success', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9', timer: 2000, showConfirmButton: false });
-      }
-    });
-  };
+ const sendManualAlert = () => {
+  Swal.fire({
+    title: '📢 Send Manual Alert',
+    html: `
+      <div style="text-align:left">
+        <label style="display:block;font-size:0.8rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Alert Type</label>
+        <select id="swal-type" style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;margin-bottom:14px;font-size:0.9rem">
+          <option value="INFO">ℹ️ Information</option>
+          <option value="ADVISORY">🟡 Advisory</option>
+          <option value="WARNING">🟠 Warning</option>
+          <option value="CRITICAL">🔴 Critical</option>
+        </select>
+        <label style="display:block;font-size:0.8rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Message</label>
+        <textarea id="swal-msg" rows="3" placeholder="Enter your alert message..." style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;font-size:0.9rem;resize:none"></textarea>
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonColor: '#0ea5e9',
+    cancelButtonColor: '#1e3a5f',
+    confirmButtonText: '📨 Send Alert',
+    background: '#0d1f3c',
+    color: '#e2eaf5',
+    preConfirm: () => {
+      const type = document.getElementById('swal-type').value;
+      const msg  = document.getElementById('swal-msg').value;
+      if (!msg.trim()) { Swal.showValidationMessage('Please enter a message.'); return false; }
+      return { type, msg };
+    },
+  }).then(async (r) => {
+    if (!r.isConfirmed) return;
 
+    const sentBy = user?.name ?? user?.email ?? 'Admin';
+
+    // Optimistic local update
+    const newLog = {
+      id: Date.now(),
+      time: 'Just now',
+      type: r.value.type,
+      message: r.value.msg,
+      sent_by: sentBy,
+      read: true,
+    };
+    setLogs(prev => [newLog, ...prev]);
+
+    // Send to Supabase → Flutter picks it up via Realtime
+    const { error } = await supabase.from('alerts').insert({
+      type:    r.value.type,
+      message: r.value.msg,
+      sent_by: sentBy,
+    });
+
+    if (error) {
+      console.error('Supabase insert failed:', error.message);
+      Swal.fire({
+        title: '⚠️ Saved locally only',
+        text: error.message,
+        icon: 'warning',
+        background: '#0d1f3c',
+        color: '#e2eaf5',
+        confirmButtonColor: '#0ea5e9',
+      });
+    } else {
+      Swal.fire({
+        title: '✅ Alert Sent!',
+        icon: 'success',
+        background: '#0d1f3c',
+        color: '#e2eaf5',
+        confirmButtonColor: '#0ea5e9',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    }
+  });
+};
   // --- JSX below is UNCHANGED from your original ---
   return (
     <div className="fade-in">
