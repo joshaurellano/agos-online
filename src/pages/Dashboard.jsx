@@ -74,7 +74,7 @@ function FloodMap({ currentAlert }) {
   return (
     <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_KEY}>
       <Map
-        defaultCenter={{ lat: 13.6190, lng: 123.1825 }}
+        defaultCenter={{ lat: 13.6190, lng: 123.1920 }}
         defaultZoom={16}
         mapId="agos-flood-map"
         style={{ width: '100%', height: 480, borderRadius: 'var(--radius-sm)' }}
@@ -88,10 +88,7 @@ function FloodMap({ currentAlert }) {
           fillColor={color}
           fillOpacity={0.35}
         />
-        <AdvancedMarker
-          position={{ lat: 13.6150, lng: 123.1910 }}
-          title="Barangay Triangulo — Flood Monitoring Station"
-        />
+       
       </Map>
     </APIProvider>
   );
@@ -104,9 +101,9 @@ export default function Dashboard() {
   const [forecastLoading, setForecastLoading] = useState(true);
 
   useEffect(() => {
-    fetch('https://asterisk101-flood-prediction.hf.space/forecast')
+    fetch('https://flood-prediction-api-553657561163.asia-southeast1.run.app/api/forecast')
       .then(res => res.json())
-      .then(data => { if (data.forecast) setForecast(data.forecast); })
+      .then(data => { if (data.hourly) setForecast(data.hourly); })
       .catch(err => console.warn('Forecast fetch failed:', err))
       .finally(() => setForecastLoading(false));
   }, []);
@@ -428,10 +425,12 @@ export default function Dashboard() {
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>
                     {new Date(f.time).toLocaleString('en-PH', { weekday: 'short', hour: 'numeric', hour12: true })}
                   </div>
-                  <img src={f.icon_url} alt={f.condition} style={{ width: 32, height: 32, marginBottom: '2px' }} />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-primary)', fontWeight: 600 }}>{f.temp_c}°C</div>
-                  <div style={{ fontSize: '0.68rem', color: '#38bdf8', marginTop: '2px' }}>{f.rain_chance}% 🌧</div>
-                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>{f.wind_kph} km/h</div>
+                  <div style={{ fontSize: '1.4rem', marginBottom: '2px' }}>
+                    {f.precipitation > 10 ? '⛈' : f.precipitation > 2 ? '🌧' : f.precipitation > 0 ? '🌦' : '☀️'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-primary)', fontWeight: 600 }}>{f.temperature_c}°C</div>
+                  <div style={{ fontSize: '0.68rem', color: '#38bdf8', marginTop: '2px' }}>{f.precipitation} mm 🌧</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>{f.wind_speed_kph} km/h</div>
                 </div>
               ))}
             </div>

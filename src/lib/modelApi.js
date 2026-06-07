@@ -4,26 +4,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const MODEL_URL = 'https://asterisk101-flood-prediction.hf.space/predict_live';
+const MODEL_URL = 'https://flood-prediction-api-553657561163.asia-southeast1.run.app/api/predict-flood';
 const POLL_INTERVAL_MS = 30_000; // re-fetch every 30 seconds
 
-/**
- * Returns { prediction, loading, error, refetch }
- *
- * prediction shape:
- * {
- *   probability: number,       // 0.0 – 1.0
- *   alert_level: 0 | 1 | 2,
- *   status: string,
- *   location: string,
- *   live_metrics: {
- *     rainfall_mm: number,
- *     wind_signal: number,
- *     humidity: number,
- *   },
- *   lead_time_estimate: string,
- * }
- */
 export function useModelPrediction({ pollInterval = POLL_INTERVAL_MS } = {}) {
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading]       = useState(true);
