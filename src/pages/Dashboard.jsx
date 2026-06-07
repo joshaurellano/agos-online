@@ -74,8 +74,8 @@ function FloodMap({ currentAlert }) {
   return (
     <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_KEY}>
       <Map
-        defaultCenter={{ lat: 13.6150, lng: 123.1910 }}
-        defaultZoom={14}
+        defaultCenter={{ lat: 13.6190, lng: 123.1825 }}
+        defaultZoom={16}
         mapId="agos-flood-map"
         style={{ width: '100%', height: 480, borderRadius: 'var(--radius-sm)' }}
         gestureHandling="cooperative"
@@ -88,10 +88,10 @@ function FloodMap({ currentAlert }) {
           fillColor={color}
           fillOpacity={0.35}
         />
-        {/* <AdvancedMarker
+        <AdvancedMarker
           position={{ lat: 13.6150, lng: 123.1910 }}
           title="Barangay Triangulo — Flood Monitoring Station"
-        /> */}
+        />
       </Map>
     </APIProvider>
   );
@@ -171,13 +171,41 @@ export default function Dashboard() {
       const { error } = await supabase.from('alerts').insert({ type: 'CRITICAL', message, sent_by: sentBy });
       if (error) {
         Swal.fire({ title: '⚠️ Failed to Send', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
-      } else {
-        Swal.fire({
-          title: '✅ Alert Sent!',
-          html: `<p style="color:#8da4be">Evacuation alert dispatched to all officials and residents.<br><br><strong style="color:#22c55e">Residents will be notified in real time.</strong></p>`,
-          icon: 'success', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9',
-        });
+        return;
       }
+
+      // 2. Send SMS to all residents via httpsms Edge Function
+      const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', {
+        body: { message, type: 'CRITICAL' },
+      });
+
+      if (smsError) {
+        Swal.fire({
+          title: '⚠️ Alert Saved, SMS Failed',
+          text: 'The alert was recorded but SMS notifications could not be sent. Check your httpsms setup.',
+          icon: 'warning',
+          background: '#0d1f3c',
+          color: '#e2eaf5',
+          confirmButtonColor: '#0ea5e9',
+        });
+        return;
+      }
+
+      // 3. Both succeeded
+      Swal.fire({
+        title: '✅ Alert Sent!',
+        html: `
+          <p style="color:#8da4be;margin-bottom:12px">Evacuation alert dispatched successfully.</p>
+          <div style="background:#112240;border-radius:8px;padding:12px;text-align:left;font-size:0.85rem">
+            <div style="color:#22c55e;margin-bottom:4px">📱 SMS sent to: <strong>${smsData?.sent ?? 0} residents</strong></div>
+            ${smsData?.failed ? `<div style="color:#f97316">⚠️ Failed: ${smsData.failed}</div>` : ''}
+          </div>
+        `,
+        icon: 'success',
+        background: '#0d1f3c',
+        color: '#e2eaf5',
+        confirmButtonColor: '#0ea5e9',
+      });
     });
   };
 
@@ -284,8 +312,10 @@ export default function Dashboard() {
       {/* Flood Map */}
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="card-title">
-          🗺 Flood Risk Forecast
-          
+          🗺 Flood Status Map — Barangay Triangulo
+          <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontFamily: 'var(--font-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)' }}>
+            Overlay reflects current alert level
+          </span>
         </div>
         <FloodMap currentAlert={currentAlert} />
         {/* Alert color legend */}
@@ -298,6 +328,9 @@ export default function Dashboard() {
               </span>
             </div>
           ))}
+          <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+            Approximate boundary · PAGASA & OCD Region V
+          </span>
         </div>
       </div>
 
