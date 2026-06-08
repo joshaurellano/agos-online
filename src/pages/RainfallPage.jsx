@@ -4,8 +4,8 @@ import { useModelPrediction } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
 
 export default function RainfallPage() {
-  const [view, setView]         = useState('chart');
-  const [period, setPeriod]     = useState('hourly');
+  const [view, setView]               = useState('chart');
+  const [period, setPeriod]           = useState('hourly');
   const [dailyData, setDailyData]     = useState([]);
   const [hourlyLogs, setHourlyLogs]   = useState([]);
 
@@ -15,15 +15,15 @@ export default function RainfallPage() {
   useEffect(() => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     supabase
-      .from('prediction_logs')
-      .select('recorded_at, rainfall_mm')
-      .gte('recorded_at', since)
-      .order('recorded_at', { ascending: true })
+      .from('flood_snapshots')
+      .select('created_at, rainfall_mm')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true })
       .then(({ data }) => {
         if (!data) return;
         const buckets = {};
         data.forEach(row => {
-          const hour = new Date(row.recorded_at)
+          const hour = new Date(row.created_at)
             .toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
           if (!buckets[hour]) buckets[hour] = { hour, rainfall: 0, count: 0 };
           buckets[hour].rainfall += row.rainfall_mm;
@@ -34,15 +34,15 @@ export default function RainfallPage() {
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     supabase
-      .from('prediction_logs')
-      .select('recorded_at, rainfall_mm')
-      .gte('recorded_at', sevenDaysAgo)
-      .order('recorded_at', { ascending: true })
+      .from('flood_snapshots')
+      .select('created_at, rainfall_mm')
+      .gte('created_at', sevenDaysAgo)
+      .order('created_at', { ascending: true })
       .then(({ data }) => {
         if (!data) return;
         const buckets = {};
         data.forEach(row => {
-          const date = new Date(row.recorded_at)
+          const date = new Date(row.created_at)
             .toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
           if (!buckets[date]) buckets[date] = { date, rainfall: 0 };
           buckets[date].rainfall = parseFloat(
