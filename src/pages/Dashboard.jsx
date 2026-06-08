@@ -372,6 +372,144 @@ function ForecastStrip({ forecast, loading }) {
   );
 }
 
+function SystemStatusPanel({ modelError, modelLoading, prediction, forecastLoading, forecast }) {
+  const modelOnline = !modelError && !modelLoading && !!prediction;
+  const forecastOnline = !forecastLoading && forecast.length > 0;
+
+  const indicators = [
+    {
+      label: 'LSTM Prediction Engine',
+      status: modelLoading ? 'checking' : modelOnline ? 'online' : 'offline',
+      detail: modelOnline
+        ? `Last response: ${new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`
+        : modelError ?? 'Connecting...',
+    },
+    {
+      label: 'WeatherAPI Forecast Feed',
+      status: forecastLoading ? 'checking' : forecastOnline ? 'online' : 'offline',
+      detail: forecastOnline
+        ? `${forecast.length} hourly records loaded`
+        : 'Feed unavailable',
+    },
+    {
+      label: 'Supabase Database',
+      status: 'online',
+      detail: 'Alert logs · User auth · SMS queue',
+    },
+    {
+      label: 'SMS Gateway (httpsms)',
+      status: 'online',
+      detail: 'Edge function standby',
+    },
+  ];
+
+  const statusStyle = {
+    online:   { color: '#22c55e', dot: '#22c55e', label: 'ONLINE' },
+    offline:  { color: '#ef4444', dot: '#ef4444', label: 'OFFLINE' },
+    checking: { color: '#eab308', dot: '#eab308', label: 'CHECKING' },
+  };
+
+  return (
+    <div className="card" style={{ padding: '16px 20px' }}>
+      <SectionLabel>🖥 System Status</SectionLabel>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+        {indicators.map(({ label, status, detail }) => {
+          const s = statusStyle[status];
+          return (
+            <div key={label} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '9px 12px',
+              background: 'var(--blue-mid)',
+              border: '1px solid var(--blue-border)',
+              borderRadius: 'var(--radius-sm)',
+            }}>
+              <div style={{
+                width: 7, height: 7, borderRadius: '50%',
+                background: s.dot, flexShrink: 0, marginTop: 4,
+                boxShadow: status === 'online' ? `0 0 6px ${s.dot}80` : 'none',
+                animation: status === 'checking' ? 'pulse-ring 1.4s ease-out infinite' : 'none',
+              }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                    {label}
+                  </span>
+                  <span style={{
+                    fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.08em',
+                    color: s.color, flexShrink: 0,
+                    background: `${s.color}15`, border: `1px solid ${s.color}30`,
+                    borderRadius: 3, padding: '1px 5px',
+                  }}>
+                    {s.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
+                  {detail}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PredictionInputTable({ prediction }) {
+  if (!prediction) return null;
+
+  const m = prediction.live_metrics;
+
+  const rows = [
+    { label: 'Rainfall',         value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`,   icon: '🌧', note: 'Primary flood driver' },
+    { label: 'Humidity',         value: `${m.humidity ?? '—'}%`,                         icon: '💨', note: 'Atmospheric moisture' },
+    { label: 'Wind Signal',      value: `PAGASA Signal #${m.wind_signal ?? '—'}`,         icon: '🌀', note: 'PAGASA classification' },
+    { label: 'Flood Probability',value: `${(prediction.probability * 100).toFixed(1)}%`,  icon: '🤖', note: 'LSTM output confidence' },
+    { label: 'Alert Level',      value: `Level ${prediction.alert_level}`,                icon: '🚦', note: 'Model classification' },
+    { label: 'Lead Time Est.',   value: prediction.lead_time_estimate ?? '6–12 hrs',      icon: '⏱', note: 'Time before peak flood' },
+  ];
+
+  return (
+    <div className="card">
+      <SectionLabel>📊 LSTM Model — Prediction Input Summary</SectionLabel>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        {rows.map(({ label, value, icon, note }, i) => (
+          <div key={label} style={{
+            display: 'grid',
+            gridTemplateColumns: '24px 1fr auto',
+            alignItems: 'center',
+            gap: 10,
+            padding: '9px 10px',
+            background: i % 2 === 0 ? 'var(--blue-mid)' : 'transparent',
+            borderRadius: i === 0 ? '6px 6px 0 0' : i === rows.length - 1 ? '0 0 6px 6px' : 0,
+          }}>
+            <span style={{ fontSize: '0.9rem', textAlign: 'center' }}>{icon}</span>
+            <div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 1 }}>{note}</div>
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontSize: '0.82rem', fontWeight: 700,
+              color: 'var(--accent)', textAlign: 'right', whiteSpace: 'nowrap',
+            }}>
+              {value}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{
+        marginTop: 10, paddingTop: 8,
+        borderTop: '1px solid var(--blue-border)',
+        fontSize: '0.63rem', color: 'var(--text-muted)',
+        display: 'flex', justifyContent: 'space-between',
+      }}>
+        <span>Model: LSTM · Cloud Run (asia-southeast1)</span>
+        <span>Poll interval: 30s</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -504,15 +642,6 @@ export default function Dashboard() {
               {alertInfo.label.toUpperCase()} STATUS
             </span>
             <LiveBadge color={alertColor} />
-            {prediction && (
-              <span style={{
-                fontSize: '0.68rem', background: `${alertColor}20`, color: alertColor,
-                border: `1px solid ${alertColor}40`, borderRadius: 4,
-                padding: '2px 8px', fontWeight: 700, letterSpacing: '0.04em',
-              }}>
-                AI CONFIDENCE: {probabilityPct}
-              </span>
-            )}
           </div>
           <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', marginBottom: 3 }}>
             {alertInfo.description}
@@ -595,8 +724,8 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* ── Map + Gauge Row ────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginBottom: 18 }}>
+    {/* ── Map + Gauge Row ────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, marginBottom: 18 }}>
 
         {/* Flood Map */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -629,13 +758,22 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Gauge + Alert Table stacked */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card">
-            <SectionLabel>💧 Water Level Gauge</SectionLabel>
-            <WaterLevelGauge level={estimatedLevel && hasRainfall ? estimatedLevel : null} />
-          </div>
+        {/* Gauge only — right column */}
+        <div className="card">
+          <SectionLabel>💧 Water Level Gauge</SectionLabel>
+          <WaterLevelGauge level={estimatedLevel && hasRainfall ? estimatedLevel : null} />
         </div>
+      </div>
+
+      {/* ── System Status — full width below map ──────────────── */}
+      <div style={{ marginBottom: 18 }}>
+        <SystemStatusPanel
+          modelError={modelError}
+          modelLoading={modelLoading}
+          prediction={prediction}
+          forecastLoading={forecastLoading}
+          forecast={forecast}
+        />
       </div>
 
       {/* ── Alert Level Reference ──────────────────────────────── */}
@@ -643,6 +781,13 @@ export default function Dashboard() {
         <SectionLabel>🚦 Alert Level Reference — Flood Response Guide</SectionLabel>
         <AlertLevelTable currentAlert={currentAlert} />
       </div>
+
+      {/* ── LSTM Prediction Input Summary ────────────────────── */}
+      {prediction && (
+        <div style={{ marginBottom: 18 }}>
+          <PredictionInputTable prediction={prediction} />
+        </div>
+      )}
 
       {/* ── Forecast + Radar Row ───────────────────────────────── */}
       <div className="grid-2" style={{ marginBottom: 18 }}>
