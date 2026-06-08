@@ -9,12 +9,12 @@ import { CgLogOut } from "react-icons/cg";
 
 const NAV_ITEMS = [
   { path: '/dashboard',    label: 'Dashboard',         icon: <Icon icon="fluent-color:calendar-data-bar-16" width={20} /> },
-  { path: '/water-level',  label: 'Water Level',       icon: <Icon icon="noto:water-wave" width={20} /> },
+  //{ path: '/water-level',  label: 'Water Level',       icon: <Icon icon="noto:water-wave" width={20} /> },
   { path: '/rainfall',     label: 'Rainfall',          icon: <Icon icon="noto:cloud-with-rain" width={20} /> },
   { path: '/flood-map',    label: 'Flood Map',         icon: <Icon icon="fluent-color:location-ripple-16" width={20} /> },
   { path: '/historical',   label: 'Historical Events', icon: <Icon icon="flat-color-icons:overtime" width={20} /> },
-  { path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} />, hideFromResidents: true },
-  { path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} />, hideFromResidents: true },
+  //{ path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} />, hideFromResidents: true },
+  //{ path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} />, hideFromResidents: true },
   { path: '/register',      label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true },
   { path: '/add-resident',  label: 'Add Resident',      icon: <Icon icon="fluent-color:people-community-16" width={20} />, hideFromResidents: true },
 ];

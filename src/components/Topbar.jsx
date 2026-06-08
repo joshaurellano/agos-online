@@ -37,7 +37,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         {/* Alert level indicator */}
-        <div style={{
+        {/* <div style={{
           display: 'flex', alignItems: 'center', gap: '8px',
           padding: '6px 14px', borderRadius: '99px',
           background: `${levelColor}15`, border: `1px solid ${levelColor}40`,
@@ -46,7 +46,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: levelColor, letterSpacing: '0.05em' }}>
             {alertLevel}
           </span>
-        </div>
+        </div> */}
 
         {/* Dark / Light toggle */}
         <button
