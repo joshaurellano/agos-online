@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef  } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { APIProvider, Map, Polygon } from '@vis.gl/react-google-maps';
@@ -809,6 +809,26 @@ export default function Dashboard() {
 
   const isResident = user?.role_id === 7;
   const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
+
+  const prevAlertDisplay = useRef(null);
+
+  useEffect(() => {
+    if (!prediction) return;
+    const current = prediction.alert_level;
+    if (prevAlertDisplay.current !== null && prevAlertDisplay.current !== current) {
+      Swal.fire({
+        title: `⚠️ Alert Level Changed`,
+        html: `<p style="color:#8da4be">Flood alert has changed from <strong style="color:#e2eaf5">${prevAlertDisplay.current}</strong> → <strong style="color:${ALERT_COLORS[current]}">${current}</strong>.</p><p style="color:#8da4be;margin-top:8px;font-size:0.85rem">Alert level changed. An SMS notification will be sent to registered users.</p>`,
+        icon: current === 'NORMAL' ? 'success' : 'warning',
+        background: '#0d1f3c',
+        color: '#e2eaf5',
+        confirmButtonColor: '#0ea5e9',
+        timer: 8000,
+        timerProgressBar: true,
+      });
+    }
+    prevAlertDisplay.current = current;
+  }, [prediction]);
 
   const currentAlert = prediction?.alert_level ?? 'NORMAL';
   const alertInfo    = ALERT_LEVELS[currentAlert];
