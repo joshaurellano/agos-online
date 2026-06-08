@@ -830,8 +830,10 @@ export default function Dashboard() {
     prevAlertDisplay.current = current;
   }, [prediction]);
 
-  const currentAlert = prediction?.alert_level ?? 'NORMAL';
-  const alertInfo    = ALERT_LEVELS[currentAlert];
+  const currentAlert = typeof prediction?.alert_level === 'number'
+    ? alertLevelToKey(prediction.alert_level)
+    : (prediction?.alert_level ?? prediction?.alert_key ?? 'NORMAL');
+  const alertInfo = ALERT_LEVELS[currentAlert] ?? ALERT_LEVELS['NORMAL'];
   const alertColor   = ALERT_COLORS[currentAlert];
 
   const probabilityPct  = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';

@@ -22,7 +22,6 @@ export function alertLevelFromKey(key) {
   }
 }
 
-// SMS messages per alert level
 const ALERT_MESSAGES = {
   ADVISORY: 'AGOS Alert - Barangay Triangulo: ADVISORY level reached. Elevated water levels detected. Residents near waterways should stay alert and monitor updates.',
   WARNING:  'AGOS Alert - Barangay Triangulo: WARNING level reached. Significant flooding expected. Prepare for possible evacuation. Secure valuables now.',
@@ -36,15 +35,13 @@ async function sendAlertSms(alertKey) {
 
   console.log(`📲 Alert level changed to ${alertKey} — sending SMS...`);
 
-  // Log to alerts table
   const { error: dbError } = await supabase.from('alerts').insert({
-    type:     alertKey,
+    type:    alertKey,
     message,
-    sent_by:  'AGOS Auto-Alert',
+    sent_by: 'AGOS Auto-Alert',
   });
   if (dbError) console.warn('Alert log failed:', dbError.message);
 
-  // Trigger SMS via Edge Function
   const { error: smsError } = await supabase.functions.invoke('send-alert', {
     body: { message, type: alertKey },
   });
@@ -72,44 +69,62 @@ async function saveSnapshot(data) {
   if (error) console.warn('Snapshot save failed:', error.message);
 }
 
-export function useModelPrediction({ pollInterval = POLL_INTERVAL_MS } = {}) {
+export function useModelPrediction() {
   const [prediction, setPrediction] = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Track previous alert level to detect changes
-  // Initialized to null so first poll never triggers SMS
-  const prevAlertRef = useRef(null);
-
-  const fetchPrediction = useCallback(async () => {
+  const fetchLatest = useCallback(async () => {
     try {
-      setError(null);
-      const res = await fetch(MODEL_URL);
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);
-      const data = await res.json();
+      const { data: raw, error: dbError } = await supabase
+        .from('flood_snapshots')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-      const currentAlert = data.alert_level; // e.g. "NORMAL", "ADVISORY"
+      if (dbError) throw new Error(dbError.message);
 
-      // Fire SMS only when alert level actually changes (skip first load)
-      if (prevAlertRef.current !== null && prevAlertRef.current !== currentAlert) {
-        await sendAlertSms(currentAlert);
+      if (raw) {
+        console.log('📦 Latest snapshot from Supabase:', {
+          id:          raw.id,
+          alert_key:   raw.alert_key,
+          probability: raw.probability,
+          rainfall_mm: raw.rainfall_mm,
+          created_at:  raw.created_at,
+        });
+
+        const normalized = {
+          alert_level:        raw.alert_key ?? 'NORMAL',
+          probability:        raw.probability ?? 0,
+          status:             raw.status ?? null,
+          lead_time_estimate: raw.lead_time_estimate ?? null,
+          live_metrics: {
+            rainfall_mm: raw.rainfall_mm ?? 0,
+            humidity:    raw.humidity    ?? null,
+            wind_signal: raw.wind_signal ?? 0,
+          },
+        };
+        setPrediction(normalized);
+        setError(null);
+
+        console.log('✅ Prediction state updated at', new Date().toLocaleTimeString());
+      } else {
+        console.warn('⚠️ No snapshots found in flood_snapshots table');
       }
-
-      prevAlertRef.current = currentAlert;
-      setPrediction(data);
-      await saveSnapshot(data);
     } catch (err) {
-      setError(err.message || 'Model backend unreachable');
+      console.error('❌ Snapshot fetch error:', err.message);
+      setError(err.message || 'Could not load snapshot');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchPrediction();
-    const id = setInterval(fetchPrediction, pollInterval);
+    fetchLatest();
+    const id = setInterval(fetchLatest, 30_000);
     return () => clearInterval(id);
-  }, [fetchPrediction, pollInterval]);
+  }, [fetchLatest]);
 
-  return { prediction, loading, error, refetch: fetchPrediction };
+  return { prediction, loading, error, refetch: fetchLatest };
 }
