@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { APIProvider, Map, Polygon } from '@vis.gl/react-google-maps';
-
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ReferenceLine, ResponsiveContainer, Area, AreaChart, Legend,
+} from 'recharts';
 import { ALERT_LEVELS, DATA_SOURCES } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
@@ -510,6 +513,352 @@ function PredictionInputTable({ prediction }) {
   );
 }
 
+function SevenDayForecastChart() {
+  const [chartData,    setChartData]    = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [lastFetched,  setLastFetched]  = useState(null);
+
+  const fetchSnapshots = useCallback(async () => {
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+
+    const { data, error } = await supabase
+      .from('flood_snapshots')
+      .select('created_at, water_level, rainfall_mm, probability, alert_key')
+      .gte('created_at', since.toISOString())
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn('Snapshot fetch failed:', error.message);
+      setLoading(false);
+      return;
+    }
+
+    // Group into daily buckets
+    const byDay = {};
+    (data ?? []).forEach(row => {
+      const key = new Date(row.created_at).toDateString();
+      if (!byDay[key]) byDay[key] = { date: new Date(row.created_at), rows: [] };
+      byDay[key].rows.push(row);
+    });
+
+    const days = Object.values(byDay).map(({ date, rows }) => {
+      const avgWater    = rows.reduce((s, r) => s + (r.water_level   || 0), 0) / rows.length;
+      const avgRain     = rows.reduce((s, r) => s + (r.rainfall_mm   || 0), 0) / rows.length;
+      const avgProb     = rows.reduce((s, r) => s + (r.probability   || 0), 0) / rows.length;
+      const floodRisk   = Math.min(Math.round(avgProb * 100), 100);
+      const dominant    = rows.reduce((acc, r) => {
+        acc[r.alert_key] = (acc[r.alert_key] || 0) + 1;
+        return acc;
+      }, {});
+      const alertKey = Object.entries(dominant).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'NORMAL';
+
+      return {
+        day:        date.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
+        shortDay:   date.toLocaleDateString('en-PH', { weekday: 'short' }),
+        dateObj:    date,
+        waterLevel: parseFloat(avgWater.toFixed(2)),
+        rainfall:   parseFloat(avgRain.toFixed(1)),
+        floodRisk,
+        alertKey,
+        snapshots:  rows.length,
+        isProjected: false,
+      };
+    });
+
+    // Fill missing future days up to 7 with decay projection
+    const today      = new Date();
+    today.setHours(0, 0, 0, 0);
+    const filled     = [...days];
+    const lastKnown  = filled[filled.length - 1];
+    const lastRain   = lastKnown?.rainfall ?? 0;
+    const daysHave   = filled.length;
+
+    for (let i = daysHave; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + (i - daysHave + 1));
+      const projRain  = parseFloat(Math.max(lastRain * Math.pow(0.75, i - daysHave + 1), 0).toFixed(1));
+      const projLevel = parseFloat((1.4 + projRain * 0.045).toFixed(2));
+      filled.push({
+        day:        d.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
+        shortDay:   d.toLocaleDateString('en-PH', { weekday: 'short' }),
+        dateObj:    d,
+        waterLevel: projLevel,
+        rainfall:   projRain,
+        floodRisk:  Math.min(Math.round((projLevel / 6) * 100), 100),
+        alertKey:   'NORMAL',
+        snapshots:  0,
+        isProjected: true,
+      });
+    }
+
+    setChartData(filled.slice(-7));
+    setLastFetched(new Date());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchSnapshots();
+
+    // Re-fetch chart every 60s so it stays in sync with new snapshots
+    const t = setInterval(fetchSnapshots, 60_000);
+    return () => clearInterval(t);
+  }, [fetchSnapshots]);
+
+  // ── Realtime subscription — update chart whenever a new snapshot is inserted
+  useEffect(() => {
+    const channel = supabase
+      .channel('flood_snapshots_live')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'flood_snapshots' },
+        () => fetchSnapshots()
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [fetchSnapshots]);
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0]?.payload;
+    const wlColor = !d ? '#8da4be'
+      : d.waterLevel >= 4.5 ? '#ef4444'
+      : d.waterLevel >= 3.5 ? '#f97316'
+      : d.waterLevel >= 2.5 ? '#eab308'
+      : '#22c55e';
+    return (
+      <div style={{
+        background: '#0d1f3c', border: '1px solid #1e3a5f',
+        borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+      }}>
+        <div style={{ fontWeight: 700, color: '#e2eaf5', marginBottom: 6 }}>
+          {label}
+          {d?.isProjected && <span style={{ fontSize: '0.62rem', color: '#4a6080', fontWeight: 400 }}> · projected</span>}
+          {!d?.isProjected && d?.snapshots > 0 && (
+            <span style={{ fontSize: '0.62rem', color: '#38bdf8', fontWeight: 400 }}> · {d.snapshots} readings</span>
+          )}
+        </div>
+        {payload.map(p => (
+          <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: p.color }} />
+            <span style={{ color: '#8da4be' }}>{p.name}:</span>
+            <span style={{ fontWeight: 700, color: p.dataKey === 'waterLevel' ? wlColor : p.color }}>
+              {p.value}{p.dataKey === 'waterLevel' ? 'm' : p.dataKey === 'rainfall' ? 'mm' : '%'}
+            </span>
+          </div>
+        ))}
+        {d?.waterLevel >= 3.5 && (
+          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #1e3a5f', fontSize: '0.68rem', color: '#f97316' }}>
+            ⚠ Warning threshold exceeded
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const projectedStartIdx = chartData.findIndex(d => d.isProjected);
+  const hasLiveData = chartData.some(d => !d.isProjected && d.snapshots > 0);
+
+  if (loading) {
+    return (
+      <div className="card" style={{ marginBottom: 18 }}>
+        <SectionLabel>📈 7-Day Flood Forecast Trend</SectionLabel>
+        <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: 8, opacity: 0.4 }}>📊</div>
+            Loading snapshot history from Supabase...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <SectionLabel>📈 7-Day Flood Forecast Trend</SectionLabel>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
+            Avg daily water level · rainfall · flood risk % &nbsp;·&nbsp;
+            {hasLiveData
+              ? <span style={{ color: '#22c55e' }}>Live Supabase snapshots</span>
+              : <span style={{ color: '#eab308' }}>⚠ No snapshots yet — model must run at least once</span>
+            }
+            {lastFetched && (
+              <span style={{ marginLeft: 8, color: '#4a6080' }}>
+                · synced {lastFetched.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          {[
+            { color: '#38bdf8', label: 'Water Level (m)' },
+            { color: '#f97316', label: 'Rainfall (mm)' },
+            { color: '#a855f7', label: 'Flood Risk (%)' },
+          ].map(({ color, label }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 20, height: 2, background: color, borderRadius: 1 }} />
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{label}</span>
+            </div>
+          ))}
+          {projectedStartIdx > -1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 20, height: 0, borderTop: '2px dashed #4a6080' }} />
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Projected</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div style={{ position: 'relative' }}>
+        {projectedStartIdx > 0 && (
+          <div style={{
+            position: 'absolute',
+            left: `${(projectedStartIdx / Math.max(chartData.length, 1)) * 100}%`,
+            right: 0, top: 0, bottom: 20,
+            background: 'rgba(74,96,128,0.05)',
+            borderLeft: '1px dashed #1e3a5f',
+            zIndex: 0, pointerEvents: 'none',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
+            paddingRight: 8, paddingTop: 4,
+          }}>
+            <span style={{ fontSize: '0.58rem', color: '#4a6080', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              Projected
+            </span>
+          </div>
+        )}
+
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={chartData} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
+            <XAxis
+              dataKey="shortDay"
+              tick={{ fill: '#4a6080', fontSize: 11, fontWeight: 600 }}
+              tickLine={false}
+              axisLine={{ stroke: '#1e3a5f' }}
+            />
+            <YAxis
+              yAxisId="left"
+              domain={[0, 6]}
+              tick={{ fill: '#4a6080', fontSize: 10 }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={v => `${v}m`}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              domain={[0, 100]}
+              tick={{ fill: '#4a6080', fontSize: 10 }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={v => `${v}`}
+            />
+            <Tooltip content={<CustomTooltip />} />
+
+            <ReferenceLine yAxisId="left" y={2.5} stroke="#eab308" strokeDasharray="4 3" strokeOpacity={0.5}
+              label={{ value: 'Advisory', position: 'insideTopLeft', fill: '#eab308', fontSize: 9 }} />
+            <ReferenceLine yAxisId="left" y={3.5} stroke="#f97316" strokeDasharray="4 3" strokeOpacity={0.5}
+              label={{ value: 'Warning', position: 'insideTopLeft', fill: '#f97316', fontSize: 9 }} />
+            <ReferenceLine yAxisId="left" y={4.5} stroke="#ef4444" strokeDasharray="4 3" strokeOpacity={0.5}
+              label={{ value: 'Critical', position: 'insideTopLeft', fill: '#ef4444', fontSize: 9 }} />
+
+            <Line
+              yAxisId="left" type="monotone" dataKey="waterLevel" name="Water Level"
+              stroke="#38bdf8" strokeWidth={2.5}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                const dotColor = payload.waterLevel >= 4.5 ? '#ef4444'
+                  : payload.waterLevel >= 3.5 ? '#f97316'
+                  : payload.waterLevel >= 2.5 ? '#eab308'
+                  : '#22c55e';
+                return (
+                  <circle key={`wl-${payload.day}`}
+                    cx={cx} cy={cy}
+                    r={payload.isProjected ? 3 : 5}
+                    fill={payload.isProjected ? '#0d1f3c' : dotColor}
+                    stroke={dotColor}
+                    strokeWidth={payload.isProjected ? 1.5 : 2}
+                  />
+                );
+              }}
+              activeDot={{ r: 6, strokeWidth: 2 }}
+            />
+            <Line
+              yAxisId="right" type="monotone" dataKey="rainfall" name="Rainfall"
+              stroke="#f97316" strokeWidth={2}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                return (
+                  <circle key={`rf-${payload.day}`}
+                    cx={cx} cy={cy}
+                    r={payload.isProjected ? 3 : 4}
+                    fill={payload.isProjected ? '#0d1f3c' : '#f97316'}
+                    stroke="#f97316" strokeWidth={1.5}
+                  />
+                );
+              }}
+              activeDot={{ r: 5 }}
+            />
+            <Line
+              yAxisId="right" type="monotone" dataKey="floodRisk" name="Flood Risk"
+              stroke="#a855f7" strokeWidth={1.5} strokeDasharray="5 3"
+              dot={false} activeDot={{ r: 4, fill: '#a855f7' }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Day strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${chartData.length}, 1fr)`, gap: 4, marginTop: 12 }}>
+        {chartData.map((d, i) => {
+          const isToday = new Date().toDateString() === d.dateObj?.toDateString();
+          const wlColor = d.waterLevel >= 4.5 ? '#ef4444'
+            : d.waterLevel >= 3.5 ? '#f97316'
+            : d.waterLevel >= 2.5 ? '#eab308'
+            : '#22c55e';
+          return (
+            <div key={i} style={{
+              textAlign: 'center', padding: '8px 4px',
+              background: isToday ? 'rgba(56,189,248,0.08)' : d.isProjected ? 'transparent' : 'var(--blue-mid)',
+              border: `1px solid ${isToday ? 'rgba(56,189,248,0.3)' : 'var(--blue-border)'}`,
+              borderRadius: 6,
+              opacity: d.isProjected ? 0.65 : 1,
+            }}>
+              <div style={{ fontSize: '0.6rem', color: isToday ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 700, marginBottom: 3 }}>
+                {isToday ? 'TODAY' : d.shortDay}
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', fontWeight: 800, color: wlColor }}>
+                {d.waterLevel}m
+              </div>
+              <div style={{ fontSize: '0.58rem', color: '#f97316', marginTop: 1 }}>
+                {d.rainfall}mm
+              </div>
+              {!d.isProjected && d.snapshots > 0 && (
+                <div style={{ fontSize: '0.52rem', color: '#38bdf8', marginTop: 2 }}>{d.snapshots} rdgs</div>
+              )}
+              {d.isProjected && (
+                <div style={{ fontSize: '0.52rem', color: '#4a6080', marginTop: 2 }}>proj.</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 8, fontSize: '0.62rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+        <span>Source: flood_snapshots table · Supabase Realtime · Averaged per day · Poll: 30s</span>
+        <span>No physical sensor · For situational awareness only</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -758,11 +1107,17 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Gauge only — right column */}
-        <div className="card">
-          <SectionLabel>💧 Water Level Gauge</SectionLabel>
-          <WaterLevelGauge level={estimatedLevel && hasRainfall ? estimatedLevel : null} />
-        </div>
+        {/* Gauge + Alert Level Reference — right column */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div>
+              <SectionLabel>💧 Water Level Gauge</SectionLabel>
+              <WaterLevelGauge level={estimatedLevel && hasRainfall ? estimatedLevel : null} />
+            </div>
+            <div>
+              <SectionLabel>🚦 Alert Level Reference</SectionLabel>
+              <AlertLevelTable currentAlert={currentAlert} />
+            </div>
+          </div>
       </div>
 
       {/* ── System Status — full width below map ──────────────── */}
@@ -776,18 +1131,15 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* ── Alert Level Reference ──────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 18 }}>
-        <SectionLabel>🚦 Alert Level Reference — Flood Response Guide</SectionLabel>
-        <AlertLevelTable currentAlert={currentAlert} />
-      </div>
-
       {/* ── LSTM Prediction Input Summary ────────────────────── */}
       {prediction && (
         <div style={{ marginBottom: 18 }}>
           <PredictionInputTable prediction={prediction} />
         </div>
       )}
+
+      {/* ── 7-Day Flood Forecast Chart ────────────────────────── */}
+      <SevenDayForecastChart />
 
       {/* ── Forecast + Radar Row ───────────────────────────────── */}
       <div className="grid-2" style={{ marginBottom: 18 }}>
