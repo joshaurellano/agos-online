@@ -30,8 +30,8 @@ function App() {
               <Route path="/dashboard"    element={<Dashboard />} />
               <Route path="/water-level"  element={<WaterLevelPage />} />
               <Route path="/rainfall"     element={<RainfallPage />} />
-              <Route path="/flood-map"    element={<FloodMapPage />} />
-              <Route path="/historical"   element={<HistoricalPage />} />
+              <Route path="/evacuation-map"    element={<FloodMapPage />} />
+              <Route path="/reports"   element={<HistoricalPage />} />
               <Route path="/alerts"       element={<AlertsPage />} />
 
               <Route path="/data-sources" element={

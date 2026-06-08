@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 
-const MODEL_URL = 'https://flood-prediction-api-553657561163.asia-southeast1.run.app/api/predict-flood';
+const MODEL_URL = 'https://flood-api-553657561163.asia-southeast1.run.app/api/predict-flood';
 const POLL_INTERVAL_MS = 30_000;
 
 export function alertLevelToKey(alert_level) {
@@ -13,15 +13,25 @@ export function alertLevelToKey(alert_level) {
   }
 }
 
+export function alertLevelFromKey(key) {
+  switch (key) {
+    case 'CRITICAL':  return 3;
+    case 'WARNING':   return 2;
+    case 'ADVISORY':  return 1;
+    default:          return 0;  
+  }
+}
+
 async function saveSnapshot(data) {
+  console.log('💾 Saving snapshot:', data);
   const BASELINE_LEVEL = 1.4;
   const RISE_RATE      = 0.045;
   const rainfall       = data?.live_metrics?.rainfall_mm ?? 0;
   const waterLevel     = parseFloat((BASELINE_LEVEL + rainfall * RISE_RATE).toFixed(2));
 
   const { error } = await supabase.from('flood_snapshots').insert({
-    alert_level:  data.alert_level,
-    alert_key:    alertLevelToKey(data.alert_level),
+    alert_level:  alertLevelFromKey(data.alert_level),   // integer: 0/1/2/3
+    alert_key:    data.alert_level,                       // string: "NORMAL"/"ADVISORY"/etc.
     probability:  data.probability,
     rainfall_mm:  rainfall,
     humidity:     data?.live_metrics?.humidity ?? null,
