@@ -873,24 +873,45 @@ export default function Dashboard() {
       color: '#e2eaf5',
     }).then(async (result) => {
       if (!result.isConfirmed) return;
+
       const sentBy  = user?.name ?? user?.email ?? 'Admin';
       const message = 'Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately.';
+
+      // 1. Save to Supabase alerts table
       const { error } = await supabase.from('alerts').insert({ type: 'CRITICAL', message, sent_by: sentBy });
       if (error) {
         Swal.fire({ title: '⚠️ Failed to Save', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
+
+      // 2. Send SMS via existing edge function
       const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', { body: { message, type: 'CRITICAL' } });
       if (smsError) {
-        Swal.fire({ title: '⚠️ Alert Saved, SMS Failed', text: 'The alert was recorded but SMS could not be sent. Check your httpsms setup.', icon: 'warning', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
+        Swal.fire({ title: '⚠️ Alert Saved, SMS Failed', text: 'The alert was recorded but SMS could not be sent.', icon: 'warning', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
+
+      // 3. ← NEW: Send FCM push notification to all mobile app users
+      const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
+        body: {
+          title: '🔴 EVACUATION ALERT — Barangay Triangulo',
+          body: message,
+          level: 'CRITICAL',
+          topic: 'flood_alerts',   // matches subscribeToTopic() in your Flutter app
+        },
+      });
+      if (fcmError) {
+        console.error('FCM push failed:', fcmError.message);
+        // Don't block success — SMS already sent, just warn
+      }
+
       Swal.fire({
         title: '✅ Alert Dispatched',
         html: `<p style="color:#8da4be;margin-bottom:12px">Evacuation alert sent successfully.</p>
           <div style="background:#112240;border-radius:8px;padding:12px;text-align:left;font-size:0.85rem">
             <div style="color:#22c55e;margin-bottom:4px">📱 SMS sent to: <strong>${smsData?.sent ?? 0} residents</strong></div>
             ${smsData?.failed ? `<div style="color:#f97316">⚠️ Failed: ${smsData.failed}</div>` : ''}
+            <div style="color:#22c55e;margin-top:4px">🔔 Push notification sent to all app users</div>
           </div>`,
         icon: 'success', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9',
       });
