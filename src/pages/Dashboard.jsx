@@ -853,17 +853,43 @@ export default function Dashboard() {
     : '#22c55e';
 
   // ── Evacuation handler ──
+  const EVACUATION_PRESETS = [
+    { label: '🟡 Advisory',  type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated in Barangay Triangulo. Stay alert and prepare your emergency go-bags.' },
+    { label: '🟠 Warning',   type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
+    { label: '🔴 Critical',  type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent in Barangay Triangulo. EVACUATE NOW to designated evacuation centers.' },
+    { label: '✍️ Custom',    type: 'CRITICAL', msg: '' },
+  ];
+
   const handleEvacuationAlert = () => {
+    let selectedIndex = 2; // default to Critical
+
     Swal.fire({
-      title: '⚠️ Send Evacuation Alert?',
+      title: '🚨 Send Emergency Alert',
       html: `
-        <p style="color:#8da4be;margin-bottom:16px">This will send an SMS evacuation alert to all registered officials and residents in Barangay Triangulo.</p>
-        <div style="background:#152a4a;border-radius:8px;padding:14px;text-align:left">
-          <div style="color:#ef4444;font-weight:700;margin-bottom:8px">📢 Alert Message:</div>
-          <div style="color:#e2eaf5;font-size:0.9rem">"Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately."</div>
+        <div style="text-align:left">
+          <label style="display:block;font-size:0.75rem;color:#8da4be;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">Select Message</label>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+            ${EVACUATION_PRESETS.map((p, i) => `
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#152a4a;border:1px solid ${i === 2 ? '#ef4444' : '#1e3a5f'};border-radius:8px;cursor:pointer" id="preset-label-${i}">
+                <input type="radio" name="preset" value="${i}" ${i === 2 ? 'checked' : ''} style="margin-top:3px;accent-color:#ef4444"
+                  onchange="
+                    document.querySelectorAll('[id^=preset-label]').forEach(el => el.style.borderColor='#1e3a5f');
+                    document.getElementById('preset-label-${i}').style.borderColor='#ef4444';
+                    document.getElementById('swal-msg').value='${p.msg.replace(/'/g, "\\'")}';
+                    document.getElementById('swal-msg').disabled=${p.msg !== ''};
+                    document.getElementById('swal-msg').style.opacity=${p.msg !== '' ? '0.6' : '1'};
+                  ">
+                <div>
+                  <div style="font-size:0.82rem;font-weight:700;color:#e2eaf5">${p.label}</div>
+                  ${p.msg ? `<div style="font-size:0.7rem;color:#8da4be;margin-top:2px">${p.msg}</div>` : '<div style="font-size:0.7rem;color:#8da4be;margin-top:2px">Type your own message below</div>'}
+                </div>
+              </label>
+            `).join('')}
+          </div>
+          <label style="display:block;font-size:0.75rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Message</label>
+          <textarea id="swal-msg" rows="3" disabled style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;font-size:0.82rem;resize:none;opacity:0.6;box-sizing:border-box">${EVACUATION_PRESETS[2].msg}</textarea>
         </div>
       `,
-      icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       cancelButtonColor: '#1e3a5f',
@@ -871,33 +897,43 @@ export default function Dashboard() {
       cancelButtonText: 'Cancel',
       background: '#0d1f3c',
       color: '#e2eaf5',
+      preConfirm: () => {
+        const checkedRadio = document.querySelector('input[name="preset"]:checked');
+        const idx = checkedRadio ? parseInt(checkedRadio.value) : 2;
+        const msg = document.getElementById('swal-msg').value.trim();
+        if (!msg) { Swal.showValidationMessage('Please enter a message.'); return false; }
+        return { msg, type: EVACUATION_PRESETS[idx].type };
+      },
     }).then(async (result) => {
       if (!result.isConfirmed) return;
 
       const sentBy  = user?.name ?? user?.email ?? 'Admin';
-      const message = 'Flooding possible in the next 6 hours. Please proceed to designated evacuation centers immediately.';
+      const message = result.value.msg;
+      const alertType = result.value.type;
 
       // 1. Save to Supabase alerts table
-      const { error } = await supabase.from('alerts').insert({ type: 'CRITICAL', message, sent_by: sentBy });
+      const { error } = await supabase.from('alerts').insert({ type: alertType, message, sent_by: sentBy });
       if (error) {
         Swal.fire({ title: '⚠️ Failed to Save', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
 
       // 2. Send SMS via existing edge function
-      const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', { body: { message, type: 'CRITICAL' } });
+      const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', { body: { message, type: alertType } });
       if (smsError) {
         Swal.fire({ title: '⚠️ Alert Saved, SMS Failed', text: 'The alert was recorded but SMS could not be sent.', icon: 'warning', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
 
-      // 3. ← NEW: Send FCM push notification to all mobile app users
+      // 3. Send FCM push notification to all mobile app users
       const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
         body: {
-          title: '🔴 EVACUATION ALERT — Barangay Triangulo',
+          title: alertType === 'CRITICAL' ? '🔴 EVACUATION ALERT — Barangay Triangulo'
+               : alertType === 'WARNING'  ? '🟠 WARNING — Barangay Triangulo'
+               : '🟡 ADVISORY — Barangay Triangulo',
           body: message,
-          level: 'CRITICAL',
-          topic: 'flood_alerts',   // matches subscribeToTopic() in your Flutter app
+          level: alertType,
+          topic: 'flood_alerts',
         },
       });
       if (fcmError) {

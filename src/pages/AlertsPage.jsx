@@ -16,8 +16,50 @@ const TYPE_STYLES = {
 export default function AlertsPage() {
   const { user } = useAuth();
   const isResident = user?.roles?.role_id === 7;
-  const [logs, setLogs]     = useState(NOTIFICATION_LOG);
+  const [logs, setLogs]     = useState([]);
   const [filter, setFilter] = useState('ALL');
+
+  // Fetch alerts from Supabase on mount
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      const { data, error } = await supabase
+        .from('alerts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (!error && data) {
+        setLogs(data.map(a => ({
+          id:      a.id,
+          time:    new Date(a.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+          type:    a.type,
+          message: a.message,
+          sent_by: a.sent_by,
+          read:    a.read ?? false,
+        })));
+      }
+    };
+
+    fetchAlerts();
+
+    // Realtime subscription — new inserts appear instantly
+    const channel = supabase
+      .channel('alerts-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alerts' }, (payload) => {
+        const a = payload.new;
+        setLogs(prev => [{
+          id:      a.id,
+          time:    new Date(a.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
+          type:    a.type,
+          message: a.message,
+          sent_by: a.sent_by,
+          read:    false,
+        }, ...prev]);
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
 
   // ← MODEL: subscribe to live prediction
   const { prediction } = useModelPrediction();
