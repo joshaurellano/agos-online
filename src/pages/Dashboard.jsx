@@ -840,17 +840,18 @@ export default function Dashboard() {
   const rainfallMm      = prediction?.live_metrics?.rainfall_mm ?? 0;
   const hasRainfall     = rainfallMm > 0;
 
-  const BASELINE_LEVEL  = 1.4;
-  const RISE_RATE       = 0.045;
-  const estimatedLevel  = prediction
-    ? parseFloat((BASELINE_LEVEL + rainfallMm * RISE_RATE).toFixed(2))
-    : null;
+  const leadTime = !prediction
+    ? null
+    : prediction.probability >= 0.75 ? '1–2 hrs'
+    : prediction.probability >= 0.50 ? '2–3 hrs'
+    : '> 3 hrs';
 
-  const waterLevelColor = !estimatedLevel || !hasRainfall ? 'var(--text-muted)'
-    : estimatedLevel >= 4.5 ? '#ef4444'
-    : estimatedLevel >= 3.5 ? '#f97316'
-    : estimatedLevel >= 2.5 ? '#eab308'
+  const leadTimeColor = !prediction ? 'var(--text-muted)'
+    : prediction.probability >= 0.75 ? '#ef4444'
+    : prediction.probability >= 0.50 ? '#f97316'
     : '#22c55e';
+
+  const humidityVal = prediction?.live_metrics?.humidity ?? null;
 
   // ── Evacuation handler ──
   const EVACUATION_PRESETS = [
@@ -1017,7 +1018,9 @@ export default function Dashboard() {
           </div>
           {prediction && (
             <div style={{ marginTop: 6, fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              Lead time estimate: <strong style={{ color: 'var(--text-secondary)' }}>{prediction.lead_time_estimate ?? '6–12 hrs'}</strong>
+              Est. lead time:{' '}
+              <strong style={{ color: leadTimeColor }}>{leadTime}</strong>
+              <span style={{ marginLeft: 6, opacity: 0.6 }}>· 7-hr lookback window</span>
             </div>
           )}
           <div style={{ marginTop: 4, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
@@ -1029,14 +1032,18 @@ export default function Dashboard() {
       {/* ── KPI Metrics Row ────────────────────────────────────── */}
       <div className="grid-4" style={{ marginBottom: 18 }}>
         <MetricCard
-          icon="💧"
-          label="Est. Water Level"
-          value={estimatedLevel && hasRainfall ? `${estimatedLevel}` : 'N/A'}
-          unit={estimatedLevel && hasRainfall ? 'm' : undefined}
-          sub={!estimatedLevel ? 'Model offline — no data' : !hasRainfall ? 'No active rainfall · Baseline 1.4m' : estimatedLevel >= 4.5 ? 'Critical threshold exceeded' : estimatedLevel >= 3.5 ? 'Warning threshold exceeded' : estimatedLevel >= 2.5 ? 'Advisory range' : 'Within safe range'}
-          color={waterLevelColor}
-          noData={!estimatedLevel || !hasRainfall}
-          badge={estimatedLevel && hasRainfall ? (estimatedLevel >= 4.5 ? '⛔ CRITICAL' : estimatedLevel >= 3.5 ? '⚠ WARNING' : estimatedLevel >= 2.5 ? '📢 ADVISORY' : '✅ NORMAL') : null}
+          icon="⏱"
+          label="Lead Time Estimate"
+          value={leadTime ?? '—'}
+          sub={
+            !prediction ? 'Model offline — no data'
+            : prediction.probability >= 0.75 ? 'High risk · Immediate monitoring required'
+            : prediction.probability >= 0.50 ? 'Elevated risk · Conditions deteriorating'
+            : 'Low risk · Conditions within normal range'
+          }
+          color={leadTimeColor}
+          noData={!prediction}
+          badge={prediction ? 'LSTM · 7-hr window' : null}
         />
         <MetricCard
           icon="🌧"
@@ -1048,29 +1055,34 @@ export default function Dashboard() {
           badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
         />
         <MetricCard
-          icon="🌀"
-          label="PAGASA Wind Signal"
-          value={prediction ? `#${prediction.live_metrics.wind_signal}` : '—'}
-          sub={!prediction ? 'No active signal data'
-            : prediction.live_metrics.wind_signal >= 4 ? 'Extremely destructive · >185 km/h'
-            : prediction.live_metrics.wind_signal === 3 ? 'Destructive winds · >121 km/h'
-            : prediction.live_metrics.wind_signal === 2 ? 'Damaging winds · >61 km/h'
-            : prediction.live_metrics.wind_signal === 1 ? 'Strong winds · >30 km/h'
-            : 'No active wind signal'}
-          color={!prediction ? 'var(--text-muted)'
-            : prediction.live_metrics.wind_signal >= 3 ? '#ef4444'
-            : prediction.live_metrics.wind_signal === 2 ? '#f97316'
-            : prediction.live_metrics.wind_signal === 1 ? 'var(--accent)'
-            : '#22c55e'}
+          icon="💧"
+          label="Humidity"
+          value={humidityVal !== null ? `${humidityVal}` : '—'}
+          unit="%"
+          sub={prediction ? 'Atmospheric moisture · LSTM input feature' : 'LSTM Model · Cloud Run'}
+          color={
+            !humidityVal ? 'var(--text-muted)'
+            : humidityVal >= 90 ? '#ef4444'
+            : humidityVal >= 80 ? '#f97316'
+            : humidityVal >= 70 ? '#eab308'
+            : '#22c55e'
+          }
+          badge={
+            !humidityVal ? null
+            : humidityVal >= 90 ? '🔴 Saturated'
+            : humidityVal >= 80 ? '🟡 High'
+            : '🟢 Normal'
+          }
         />
         <MetricCard
           icon="🤖"
           label="Flood Probability"
           value={modelLoading ? '...' : probabilityPct}
-          sub={prediction ? `Humidity: ${prediction.live_metrics.humidity}% · LSTM v1` : 'LSTM Model · Cloud Run'}
+          sub={prediction ? `Wind Signal #${prediction.live_metrics.wind_signal} · LSTM v1` : 'LSTM Model · Cloud Run'}
           color={!prediction ? 'var(--text-muted)'
-            : prediction.alert_level === 2 ? '#ef4444'
-            : prediction.alert_level === 1 ? '#f97316'
+            : prediction.probability >= 0.75 ? '#ef4444'
+            : prediction.probability >= 0.50 ? '#f97316'
+            : prediction.probability >= 0.25 ? '#eab308'
             : '#22c55e'}
           badge={prediction ? 'LSTM Prediction' : null}
         />
@@ -1114,7 +1126,7 @@ export default function Dashboard() {
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div>
               <SectionLabel>💧 Water Level Gauge</SectionLabel>
-              <WaterLevelGauge level={estimatedLevel && hasRainfall ? estimatedLevel : null} />
+              <WaterLevelGauge level={null} />
             </div>
             <div>
               <SectionLabel>🚦 Alert Level Reference</SectionLabel>
