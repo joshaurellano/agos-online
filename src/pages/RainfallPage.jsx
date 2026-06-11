@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback  } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { useModelPrediction } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
@@ -12,51 +12,56 @@ export default function RainfallPage() {
   const { prediction } = useModelPrediction();
   const liveRainfall = prediction?.live_metrics?.rainfall_mm;
 
+  const fetchRainfall = useCallback(async () => {
+  const since        = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [hourlyRes, dailyRes] = await Promise.all([
+    supabase.from('flood_snapshots').select('created_at, rainfall_mm').gte('created_at', since).order('created_at', { ascending: true }),
+    supabase.from('flood_snapshots').select('created_at, rainfall_mm').gte('created_at', sevenDaysAgo).order('created_at', { ascending: true }),
+  ]);
+
+  if (hourlyRes.data) {
+    const buckets = {};
+    hourlyRes.data.forEach(row => {
+      const hour = new Date(row.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+      if (!buckets[hour]) buckets[hour] = { hour, rainfall: 0, count: 0 };
+      buckets[hour].rainfall += row.rainfall_mm;
+      buckets[hour].count    += 1;
+    });
+    setHourlyLogs(Object.values(buckets));
+  }
+
+  if (dailyRes.data) {
+    const buckets = {};
+    dailyRes.data.forEach(row => {
+      const date = new Date(row.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+      if (!buckets[date]) buckets[date] = { date, rainfall: 0 };
+      buckets[date].rainfall = parseFloat((buckets[date].rainfall + row.rainfall_mm).toFixed(2));
+    });
+    setDailyData(Object.values(buckets));
+  }
+}, []);
+
   useEffect(() => {
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    supabase
-      .from('flood_snapshots')
-      .select('created_at, rainfall_mm')
-      .gte('created_at', since)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        if (!data) return;
-        const buckets = {};
-        data.forEach(row => {
-          const hour = new Date(row.created_at)
-            .toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-          if (!buckets[hour]) buckets[hour] = { hour, rainfall: 0, count: 0 };
-          buckets[hour].rainfall += row.rainfall_mm;
-          buckets[hour].count    += 1;
-        });
-        setHourlyLogs(Object.values(buckets));
-      });
+    fetchRainfall();
 
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    supabase
-      .from('flood_snapshots')
-      .select('created_at, rainfall_mm')
-      .gte('created_at', sevenDaysAgo)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        if (!data) return;
-        const buckets = {};
-        data.forEach(row => {
-          const date = new Date(row.created_at)
-            .toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
-          if (!buckets[date]) buckets[date] = { date, rainfall: 0 };
-          buckets[date].rainfall = parseFloat(
-            (buckets[date].rainfall + row.rainfall_mm).toFixed(2)
-          );
-        });
-        setDailyData(Object.values(buckets));
-      });
-  }, []);
+    // Realtime subscription — refresh on every new flood_snapshot insert
+    const channel = supabase
+      .channel('rainfall-realtime')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'flood_snapshots' },
+        () => fetchRainfall()
+      )
+      .subscribe();
 
-  const data    = period === 'hourly' ? hourlyLogs : dailyData;
-  const dataKey = period === 'hourly' ? 'hour'     : 'date';
-  const total   = data.reduce((s, d) => s + d.rainfall, 0).toFixed(1);
-  const peak    = Math.max(0, ...data.map(d => d.rainfall)).toFixed(1);
+    return () => supabase.removeChannel(channel);
+  }, [fetchRainfall]);
+
+    const data    = period === 'hourly' ? hourlyLogs : dailyData;
+    const dataKey = period === 'hourly' ? 'hour'     : 'date';
+    const total   = data.reduce((s, d) => s + d.rainfall, 0).toFixed(1);
+    const peak    = Math.max(0, ...data.map(d => d.rainfall)).toFixed(1);
 
   return (
     <div className="fade-in">
