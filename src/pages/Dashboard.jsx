@@ -508,7 +508,8 @@ function FloodForecastChart() {
         .from('flood_snapshots')
         .select('created_at, probability')
         .gte('created_at', since.toISOString())
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(10000);
 
       if (error) { console.warn('Fetch failed:', error.message); setLoading(false); return; }
 
@@ -521,35 +522,25 @@ function FloodForecastChart() {
       })));
 
     } else {
-      // Last 7 days — averaged per day
-      const since = new Date();
-      since.setDate(since.getDate() - 7);
-      const { data, error } = await supabase
-        .from('flood_snapshots')
-        .select('created_at, probability')
-        .gte('created_at', since.toISOString())
-        .order('created_at', { ascending: true });
+    // Last 7 days — averaged per day, computed server-side via RPC
+    const { data, error } = await supabase.rpc('get_daily_flood_avg', { days_back: 7 });
 
-      if (error) { console.warn('Fetch failed:', error.message); setLoading(false); return; }
+    if (error) { console.warn('Fetch failed:', error.message); setLoading(false); return; }
 
-      const byDay = {};
-      (data ?? []).forEach(row => {
-        const key = new Date(row.created_at).toDateString();
-        if (!byDay[key]) byDay[key] = { date: new Date(row.created_at), probs: [] };
-        byDay[key].probs.push(row.probability ?? 0);
-      });
-
-      const days = Object.values(byDay).map(({ date, probs }) => ({
+    const days = (data ?? []).map(row => {
+      const date = new Date(row.day);
+      return {
         label: date.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
         shortLabel: date.toLocaleDateString('en-PH', { weekday: 'short' }),
         time: date,
-        floodRisk: Math.min(Math.round((probs.reduce((s, p) => s + p, 0) / probs.length) * 100), 100),
-        readings: probs.length,
+        floodRisk: Math.min(Math.round((row.avg_probability ?? 0) * 100), 100),
+        readings: Number(row.readings ?? 0),
         isToday: new Date().toDateString() === date.toDateString(),
-      }));
+      };
+    });
 
-      setChartData(days.slice(-7));
-    }
+    setChartData(days.slice(-7));
+  }
 
     setLastFetched(new Date());
     setLoading(false);
@@ -853,6 +844,29 @@ export default function Dashboard() {
 
   const humidityVal = prediction?.live_metrics?.humidity ?? null;
 
+  // ── Probability trend from recent snapshots ──
+  // Computed inside FloodForecastChart already, but we also need it here
+  // for the KPI area. We derive it from the chartData via a shared approach:
+  // Trend is computed inside the chart component — expose via the Lead Time card sub-text.
+  // For the alert header, pull last 5 snapshots directly.
+  const [recentTrend, setRecentTrend] = useState(null); // 'rising' | 'falling' | 'stable'
+
+  useEffect(() => {
+    supabase
+      .from('flood_snapshots')
+      .select('probability, created_at')
+      .order('created_at', { ascending: false })
+      .limit(6)
+      .then(({ data }) => {
+        if (!data || data.length < 3) return;
+        const probs = data.map(r => r.probability).reverse(); // oldest first
+        const first = probs.slice(0, 3).reduce((s, v) => s + v, 0) / 3;
+        const last  = probs.slice(-3).reduce((s, v) => s + v, 0) / 3;
+        const delta = last - first;
+        setRecentTrend(delta > 0.04 ? 'rising' : delta < -0.04 ? 'falling' : 'stable');
+      });
+  }, [prediction]); // re-check every time prediction updates (every 30s)
+
   // ── Evacuation handler ──
   const EVACUATION_PRESETS = [
     { label: '🟡 Advisory',  type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated in Barangay Triangulo. Stay alert and prepare your emergency go-bags.' },
@@ -1023,6 +1037,21 @@ export default function Dashboard() {
               <span style={{ marginLeft: 6, opacity: 0.6 }}>· 7-hr lookback window</span>
             </div>
           )}
+          {recentTrend && (
+            <div style={{ marginTop: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+              Trend:{' '}
+              <strong style={{
+                color: recentTrend === 'rising' ? '#ef4444'
+                    : recentTrend === 'falling' ? '#22c55e'
+                    : 'var(--text-secondary)'
+              }}>
+                {recentTrend === 'rising'  ? '⬆ Rising'
+              : recentTrend === 'falling' ? '⬇ Falling'
+              : '➡ Stable'}
+              </strong>
+              <span style={{ marginLeft: 4, opacity: 0.5 }}>· last 6 readings</span>
+            </div>
+          )}
           <div style={{ marginTop: 4, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
             Updated: {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
           </div>
@@ -1032,16 +1061,23 @@ export default function Dashboard() {
       {/* ── KPI Metrics Row ────────────────────────────────────── */}
       <div className="grid-4" style={{ marginBottom: 18 }}>
         <MetricCard
-          icon="⏱"
+          icon={recentTrend === 'rising' ? '📈' : recentTrend === 'falling' ? '📉' : '⏱'}
           label="Lead Time Estimate"
           value={leadTime ?? '—'}
           sub={
             !prediction ? 'Model offline — no data'
+            : recentTrend === 'rising'  ? '⬆ Risk trending upward — monitor closely'
+            : recentTrend === 'falling' ? '⬇ Risk trending downward — conditions improving'
+            : recentTrend === 'stable'  ? '➡ Risk stable — no significant change'
             : prediction.probability >= 0.75 ? 'High risk · Immediate monitoring required'
             : prediction.probability >= 0.50 ? 'Elevated risk · Conditions deteriorating'
             : 'Low risk · Conditions within normal range'
           }
-          color={leadTimeColor}
+          color={
+            recentTrend === 'rising'  ? '#ef4444'
+            : recentTrend === 'falling' ? '#22c55e'
+            : leadTimeColor
+          }
           noData={!prediction}
           badge={prediction ? 'LSTM · 7-hr window' : null}
         />

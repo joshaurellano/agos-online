@@ -605,6 +605,144 @@ function ReportForm({ user, onSubmitted, onCancel }) {
   );
 }
 
+function ModelAccuracyPanel({ reports }) {
+  const compared = reports.filter(r =>
+    r.model_alert_level && r.model_alert_level !== 'N/A' && r.severity
+  );
+  if (compared.length === 0) return null;
+
+  const LEVEL_RANK = { NORMAL: 0, ADVISORY: 1, WARNING: 2, CRITICAL: 3 };
+
+  let exact = 0, within1 = 0, over = 0, under = 0;
+  compared.forEach(r => {
+    const predicted = LEVEL_RANK[r.model_alert_level] ?? -1;
+    const actual    = LEVEL_RANK[r.severity]          ?? -1;
+    if (predicted === -1 || actual === -1) return;
+    const diff = predicted - actual;
+    if (diff === 0)       exact++;
+    else if (diff === 1)  over++;
+    else if (diff === -1) under++;
+    else if (Math.abs(diff) <= 1) within1++;
+  });
+
+  const accuracy    = compared.length ? ((exact / compared.length) * 100).toFixed(0) : 0;
+  const within1Pct  = compared.length ? (((exact + within1) / compared.length) * 100).toFixed(0) : 0;
+
+  const rows = compared.map(r => {
+    const predicted = LEVEL_RANK[r.model_alert_level] ?? -1;
+    const actual    = LEVEL_RANK[r.severity]          ?? -1;
+    const diff      = predicted - actual;
+    const match     = diff === 0   ? 'exact'
+                    : diff > 0     ? 'over'
+                    : diff === -1  ? 'under-1'
+                    : 'under-miss';
+    return { ...r, diff, match };
+  });
+
+  const matchColor = (m) =>
+    m === 'exact'      ? '#22c55e' :
+    m === 'over'       ? '#eab308' :
+    m === 'under-1'    ? '#f97316' : '#ef4444';
+
+  const matchLabel = (m) =>
+    m === 'exact'      ? '✅ Exact match' :
+    m === 'over'       ? '🟡 Over-predicted' :
+    m === 'under-1'    ? '🟠 Under by 1 level' : '🔴 Significant miss';
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div style={{
+        fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
+        textTransform: 'uppercase', color: 'var(--text-muted)',
+        marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--blue-border)',
+      }}>
+        🤖 AGOS Model Accuracy — Predicted vs. Actual Alert Level
+      </div>
+
+      {/* Summary stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+        {[
+          { label: 'Records Compared', value: compared.length,   color: 'var(--accent)' },
+          { label: 'Exact Match',       value: `${accuracy}%`,    color: '#22c55e' },
+          { label: 'Within 1 Level',    value: `${within1Pct}%`,  color: '#eab308' },
+          { label: 'Over-predicted',    value: over,              color: '#f97316' },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{
+            background: 'var(--blue-card)', borderRadius: 6, padding: '10px 14px',
+            border: '1px solid var(--blue-border)', borderTop: `3px solid ${color}`,
+          }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 4 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Accuracy note */}
+      <div style={{
+        padding: '8px 12px', marginBottom: 14,
+        background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)',
+        borderRadius: 6, fontSize: '0.72rem', color: 'var(--text-muted)',
+      }}>
+        ℹ️ Accuracy is computed by comparing <strong style={{ color: 'var(--text-secondary)' }}>AGOS Model Alert Level</strong> (what the system predicted at time of incident) against the <strong style={{ color: 'var(--text-secondary)' }}>Actual Severity</strong> recorded by the reporting officer. Only reports with both fields filled are included.
+      </div>
+
+      {/* Per-record comparison table */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--blue-border)' }}>
+              {['Date', 'Location', 'AGOS Predicted', 'Actual Severity', 'Result'].map(h => (
+                <th key={h} style={{
+                  padding: '8px 12px', textAlign: 'left',
+                  color: 'var(--text-muted)', fontWeight: 700,
+                  textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.08em',
+                }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} style={{ borderBottom: '1px solid rgba(30,58,95,0.4)' }}>
+                <td style={{ padding: '8px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  {new Date(r.date_occurred).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </td>
+                <td style={{ padding: '8px 12px', color: 'var(--text-secondary)' }}>{r.location}</td>
+                <td style={{ padding: '8px 12px' }}>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: 700,
+                    background: `${SEVERITY_COLORS[r.model_alert_level]}18`,
+                    color: SEVERITY_COLORS[r.model_alert_level] ?? '#8da4be',
+                    border: `1px solid ${SEVERITY_COLORS[r.model_alert_level] ?? '#8da4be'}40`,
+                    borderRadius: 4, padding: '2px 8px',
+                  }}>{r.model_alert_level}</span>
+                </td>
+                <td style={{ padding: '8px 12px' }}>
+                  <span style={{
+                    fontSize: '0.68rem', fontWeight: 700,
+                    background: `${SEVERITY_COLORS[r.severity]}18`,
+                    color: SEVERITY_COLORS[r.severity] ?? '#8da4be',
+                    border: `1px solid ${SEVERITY_COLORS[r.severity] ?? '#8da4be'}40`,
+                    borderRadius: 4, padding: '2px 8px',
+                  }}>{r.severity}</span>
+                </td>
+                <td style={{ padding: '8px 12px' }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: matchColor(r.match) }}>
+                    {matchLabel(r.match)}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ marginTop: 8, fontSize: '0.62rem', color: 'var(--text-muted)', textAlign: 'right' }}>
+        Based on {compared.length} of {reports.length} total reports · Only records with both fields populated are compared
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function HistoricalPage() {
@@ -750,6 +888,8 @@ export default function HistoricalPage() {
 
       {/* ── Summary Stats ─────────────────────────────────────────── */}
       {!loading && reports.length > 0 && <StatSummary reports={reports} />}
+
+      {!loading && reports.length > 0 && <ModelAccuracyPanel reports={reports} />}
 
       {/* ── Filters + Search ──────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: 14, padding: '12px 16px' }}>
