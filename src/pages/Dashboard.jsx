@@ -282,16 +282,6 @@ function SystemStatusPanel({ modelError, modelLoading, prediction, forecastLoadi
       status: forecastLoading ? 'checking' : forecastOnline ? 'online' : 'offline',
       detail: forecastOnline ? `${forecast.length} hourly records loaded` : 'Feed unavailable',
     },
-    {
-      label: 'Supabase Database',
-      status: 'online',
-      detail: 'Alert logs · User auth · SMS queue',
-    },
-    {
-      label: 'SMS Gateway (httpsms)',
-      status: 'online',
-      detail: 'Edge function standby',
-    },
   ];
 
   const statusStyle = {
@@ -352,14 +342,14 @@ function PredictionInputTable({ prediction }) {
   const rows = [
     { label: 'Rainfall',          value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`, icon: '🌧', note: 'Primary flood driver' },
     { label: 'Humidity',          value: `${m.humidity ?? '—'}%`,                      icon: '💨', note: 'Atmospheric moisture' },
-    { label: 'Wind Signal',       value: `PAGASA Signal #${m.wind_signal ?? '—'}`,     icon: '🌀', note: 'PAGASA classification' },
+    { label: 'Wind Signal',       value: `Signal #${m.wind_signal ?? '—'}`,     icon: '🌀', note: 'PAGASA classification' },
     { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '🤖', note: 'LSTM output confidence' },
     { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '🚦', note: 'Model classification' },
     { label: 'Lead Time Est.',    value: prediction.lead_time_estimate ?? '1–3 hrs',  icon: '⏱', note: 'Time before flood' },
   ];
   return (
     <div className="card">
-      <SectionLabel>📊 LSTM Model — Prediction Input Summary</SectionLabel>
+      <SectionLabel>📊 Prediction Input Summary</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
         {rows.map(({ label, value, icon, note }, i) => (
           <div key={label} style={{
@@ -1084,17 +1074,17 @@ export default function Dashboard() {
               fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.14em',
               textTransform: 'uppercase', color: '#ef4444', marginBottom: 6,
             }}>
-              🚨 Emergency Action — Admin Only
+              🚨 Emergency Action
             </div>
             <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>
-              One-Click Evacuation Alert
+              Send Flood Alert
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Broadcasts an SMS evacuation notice to all registered officials and residents in Barangay Triangulo via httpsms.
+              Broadcasts flood alert notice to all registered officials and residents in Barangay Triangulo via httpsms.
             </div>
           </div>
           <button className="btn btn-danger" onClick={handleEvacuationAlert} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-            🚨 Send Evacuation Alert
+            🚨 Send Flood Alert
           </button>
         </div>
       )}
