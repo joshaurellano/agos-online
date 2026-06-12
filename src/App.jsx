@@ -11,6 +11,7 @@ import FloodMapPage from './pages/FloodMapPage';
 import HistoricalPage from './pages/HistoricalPage';
 import AlertsPage from './pages/AlertsPage';
 import DataSourcesPage from './pages/DataSourcesPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -33,6 +34,8 @@ function App() {
               <Route path="/evacuation-map"    element={<FloodMapPage />} />
               <Route path="/reports"   element={<HistoricalPage />} />
               <Route path="/alerts"       element={<AlertsPage />} />
+
+              <Route path="/analytics" element={<AnalyticsPage />} />
 
               <Route path="/data-sources" element={
                 <ResidentRoute>

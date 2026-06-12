@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   //{ path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} />, hideFromResidents: true },
   { path: '/register',      label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true },
   { path: '/add-resident',  label: 'Add Resident',      icon: <Icon icon="fluent-color:people-community-16" width={20} />, hideFromResidents: true },
+  { path: '/analytics',     label: 'Analytics',         icon: <Icon icon="GraphBarIcon" width={20} />, hideFromResidents: true },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
