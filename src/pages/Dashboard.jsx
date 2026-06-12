@@ -647,6 +647,181 @@ function FloodForecastChart() {
   );
 }
 
+function RiverDischargePanel() {
+  const [dischargeData, setDischargeData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    fetch(
+      'https://flood-api.open-meteo.com/v1/flood' +
+      '?latitude=13.6171&longitude=123.1806' +
+      '&daily=river_discharge' +
+      '&timezone=Asia%2FSingapore' +
+      '&forecast_days=10'
+    )
+      .then(res => {
+        if (!res.ok) throw new Error('Failed');
+        return res.json();
+      })
+      .then(data => {
+        const times = data.daily?.time ?? [];
+        const values = data.daily?.river_discharge ?? [];
+        const parsed = times.map((t, i) => ({
+          label: new Date(t).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
+          shortLabel: new Date(t).toLocaleDateString('en-PH', { weekday: 'short' }),
+          discharge: values[i] !== null ? parseFloat(values[i].toFixed(1)) : null,
+          isToday: new Date().toDateString() === new Date(t).toDateString(),
+        }));
+        setDischargeData(parsed);
+        setError(false);
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const maxDischarge = Math.max(...dischargeData.map(d => d.discharge ?? 0), 1);
+  const todayData = dischargeData.find(d => d.isToday);
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <SectionLabel>🌊 Naga River Discharge Forecast</SectionLabel>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
+            Open-Meteo Flood API · GloFAS Reanalysis · Naga River (13.617°N, 123.181°E) · 10-Day Outlook
+          </div>
+        </div>
+
+        {/* Today's value */}
+        {todayData && !loading && (
+          <div style={{
+            background: 'var(--blue-mid)',
+            border: '1px solid var(--blue-border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '8px 14px',
+            textAlign: 'right',
+          }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+              Today's Estimate
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontSize: '1.4rem',
+              fontWeight: 800, color: 'var(--accent)', lineHeight: 1,
+            }}>
+              {todayData.discharge ?? '—'}
+              <span style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>m³/s</span>
+            </div>
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2 }}>
+              GloFAS modeled estimate
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Disclaimer banner */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10,
+        background: 'rgba(251,191,36,0.05)',
+        border: '1px solid rgba(251,191,36,0.2)',
+        borderLeft: '3px solid #fbbf24',
+        borderRadius: 'var(--radius-sm)',
+        padding: '10px 14px',
+        marginBottom: 16,
+        fontSize: '0.72rem',
+        color: 'var(--text-secondary)',
+        lineHeight: 1.5,
+      }}>
+        <span style={{ flexShrink: 0, marginTop: 1 }}>⚠️</span>
+        <span>
+          <strong style={{ color: '#fbbf24' }}>Modeled Estimate Only.</strong>{' '}
+          Values are derived from the GloFAS (Global Flood Awareness System) reanalysis model via Open-Meteo.
+          Official Alert, Alarm, and Critical discharge thresholds for the Naga River are defined by{' '}
+          <strong>PAGASA Region V</strong> and the <strong>Naga City LDRRMO</strong> and are not reflected here.
+          This data is intended for situational awareness and research purposes only.
+        </span>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+          Loading river discharge data...
+        </div>
+      ) : error ? (
+        <div style={{
+          padding: 16, background: 'var(--blue-mid)',
+          borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue-border)',
+          color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center',
+        }}>
+          ⚠️ River discharge feed unavailable — Open-Meteo Flood API unreachable
+        </div>
+      ) : (
+        <>
+          {/* Bar chart */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${dischargeData.length}, 1fr)`,
+            gap: 6,
+            marginBottom: 12,
+          }}>
+            {dischargeData.map((d, i) => {
+              const heightPct = d.discharge !== null
+                ? Math.max(8, (d.discharge / maxDischarge) * 100)
+                : 8;
+              return (
+                <div key={i} style={{ textAlign: 'center' }}>
+                  <div style={{
+                    fontSize: '0.58rem',
+                    color: d.isToday ? 'var(--accent)' : 'var(--text-muted)',
+                    fontWeight: 700, marginBottom: 4, letterSpacing: '0.04em',
+                  }}>
+                    {d.isToday ? 'TODAY' : d.shortLabel}
+                  </div>
+
+                  {/* Bar */}
+                  <div style={{ height: 80, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: 4 }}>
+                    <div style={{
+                      width: '70%',
+                      height: `${heightPct}%`,
+                      background: d.isToday ? 'var(--accent)' : 'rgba(56,189,248,0.4)',
+                      borderRadius: '3px 3px 0 0',
+                      boxShadow: d.isToday ? '0 0 8px rgba(56,189,248,0.5)' : 'none',
+                      transition: 'height 0.4s ease',
+                    }} />
+                  </div>
+
+                  <div style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: '0.7rem', fontWeight: 700,
+                    color: d.isToday ? 'var(--accent)' : 'var(--text-secondary)',
+                    lineHeight: 1,
+                  }}>
+                    {d.discharge ?? '—'}
+                  </div>
+                  <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginTop: 1 }}>m³/s</div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Footer */}
+      <div style={{
+        marginTop: 8, paddingTop: 8,
+        borderTop: '1px solid var(--blue-border)',
+        fontSize: '0.62rem', color: 'var(--text-muted)',
+        display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4,
+      }}>
+        <span>Source: Open-Meteo Flood API · GloFAS reanalysis · Naga River basin</span>
+        <span>No physical sensor · For situational awareness only</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -1042,6 +1217,9 @@ export default function Dashboard() {
           />
         </div>
       </div>
+      
+      {/* ── River Discharge ───────────────────────────────── */}
+      <RiverDischargePanel />
 
       {/* ── 7. LSTM Prediction Input Summary ─────────────────── */}
       {prediction && (
