@@ -1,30 +1,23 @@
-import { useState, useEffect, useCallback, useRef  } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { APIProvider, Map, Polygon } from '@vis.gl/react-google-maps';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ReferenceLine, ResponsiveContainer, Area, AreaChart, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ReferenceLine, ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
-import { ALERT_LEVELS, DATA_SOURCES } from '../data/mockData';
+import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ALERT_COLORS = {
   NORMAL:   '#22c55e',
   ADVISORY: '#eab308',
   WARNING:  '#f97316',
   CRITICAL: '#ef4444',
-};
-
-const ALERT_THRESHOLDS = {
-  NORMAL:   { min: 0,   max: 2.4,  label: 'Safe Range',         wl: '< 2.5m' },
-  ADVISORY: { min: 2.5, max: 3.4,  label: 'Advisory Threshold', wl: '2.5 – 3.4m' },
-  WARNING:  { min: 3.5, max: 4.4,  label: 'Warning Threshold',  wl: '3.5 – 4.4m' },
-  CRITICAL: { min: 4.5, max: 999,  label: 'Critical Threshold', wl: '≥ 4.5m' },
 };
 
 const TRIANGULO_BOUNDARY = [
@@ -103,7 +96,6 @@ function MetricCard({ icon, label, value, sub, color, noData, unit, badge }) {
       transition: 'border-color 0.3s ease',
       position: 'relative', overflow: 'hidden',
     }}>
-      {/* faint icon watermark */}
       <div style={{
         position: 'absolute', right: 12, top: 10,
         fontSize: '2.4rem', opacity: 0.07, pointerEvents: 'none', userSelect: 'none',
@@ -141,88 +133,6 @@ function MetricCard({ icon, label, value, sub, color, noData, unit, badge }) {
   );
 }
 
-function WaterLevelGauge({ level, maxLevel = 6 }) {
-  const pct = level ? Math.min((level / maxLevel) * 100, 100) : 0;
-  const color = !level ? 'var(--text-muted)'
-    : level >= 4.5 ? '#ef4444'
-    : level >= 3.5 ? '#f97316'
-    : level >= 2.5 ? '#eab308'
-    : '#22c55e';
-
-  const thresholds = [
-    { value: 2.5, color: '#eab308', label: 'Advisory' },
-    { value: 3.5, color: '#f97316', label: 'Warning' },
-    { value: 4.5, color: '#ef4444', label: 'Critical' },
-  ];
-
-  return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', height: 200 }}>
-      {/* Vertical bar gauge */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
-        {/* Scale labels */}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingBottom: 2 }}>
-          {[6, 5, 4, 3, 2, 1, 0].map(v => (
-            <span key={v} style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1, textAlign: 'right' }}>
-              {v}m
-            </span>
-          ))}
-        </div>
-        {/* Bar track */}
-        <div style={{
-          width: 40, height: '100%', background: 'var(--blue-mid)',
-          border: '1px solid var(--blue-border)', borderRadius: 6, position: 'relative', overflow: 'hidden',
-        }}>
-          {/* Threshold lines */}
-          {thresholds.map(t => (
-            <div key={t.value} style={{
-              position: 'absolute', bottom: `${(t.value / maxLevel) * 100}%`,
-              left: 0, right: 0, borderTop: `1px dashed ${t.color}`,
-              opacity: 0.7, zIndex: 2,
-            }} />
-          ))}
-          {/* Fill */}
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0,
-            height: `${pct}%`, background: color,
-            opacity: 0.85, transition: 'height 1s ease, background 0.4s ease',
-            zIndex: 1,
-          }} />
-        </div>
-      </div>
-
-      {/* Reading + legend */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>
-            Est. Water Level
-          </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '2.4rem', fontWeight: 800, color, lineHeight: 1 }}>
-            {level ? `${level}m` : 'N/A'}
-          </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 4 }}>
-            {!level ? 'No model data available' : level >= 4.5 ? 'Critical — immediate action required' : level >= 3.5 ? 'Warning — monitor closely' : level >= 2.5 ? 'Advisory — elevated risk' : 'Within normal range'}
-          </div>
-        </div>
-
-        {/* Threshold legend */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {thresholds.map(t => (
-            <div key={t.value} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 18, height: 2, background: t.color, borderRadius: 1, opacity: 0.8 }} />
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                {t.label} ({t.value}m)
-              </span>
-            </div>
-          ))}
-          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 4, opacity: 0.7 }}>
-            Derived · baseline 1.4m + rain factor ×0.045
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function FloodMap({ currentAlert }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
   return (
@@ -249,10 +159,10 @@ function FloodMap({ currentAlert }) {
 
 function AlertLevelTable({ currentAlert }) {
   const levels = [
-    { key: 'NORMAL',   range: '< 2.5m',      action: 'Continue normal activities. Monitor updates.' },
-    { key: 'ADVISORY', range: '2.5 – 3.4m',  action: 'Stay alert. Prepare emergency go-bags.' },
-    { key: 'WARNING',  range: '3.5 – 4.4m',  action: 'Move valuables to higher ground. Be ready to evacuate.' },
-    { key: 'CRITICAL', range: '≥ 4.5m',      action: 'Evacuate immediately to designated evacuation centers.' },
+    { key: 'NORMAL',   range: '< 2.5m',     action: 'Continue normal activities. Monitor updates.' },
+    { key: 'ADVISORY', range: '2.5 – 3.4m', action: 'Stay alert. Prepare emergency go-bags.' },
+    { key: 'WARNING',  range: '3.5 – 4.4m', action: 'Move valuables to higher ground. Be ready to evacuate.' },
+    { key: 'CRITICAL', range: '≥ 4.5m',     action: 'Evacuate immediately to designated evacuation centers.' },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -325,10 +235,10 @@ function ForecastStrip({ forecast, loading }) {
   return (
     <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
       {forecast.map((f, idx) => {
-        const precipPct = (f.precipitation / maxPrecip) * 100;
-        const isHeavy = f.precipitation > 10;
-        const isMod = f.precipitation > 2;
-        const emoji = isHeavy ? '⛈' : isMod ? '🌧' : f.precipitation > 0 ? '🌦' : '☀️';
+        const precipPct   = (f.precipitation / maxPrecip) * 100;
+        const isHeavy     = f.precipitation > 10;
+        const isMod       = f.precipitation > 2;
+        const emoji       = isHeavy ? '⛈' : isMod ? '🌧' : f.precipitation > 0 ? '🌦' : '☀️';
         const precipColor = isHeavy ? '#ef4444' : isMod ? '#f97316' : '#38bdf8';
 
         return (
@@ -343,7 +253,6 @@ function ForecastStrip({ forecast, loading }) {
             </div>
             <div style={{ fontSize: '1.3rem', marginBottom: 4 }}>{emoji}</div>
             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>{f.temperature_c}°C</div>
-            {/* Mini precip bar */}
             <div style={{ height: 3, background: 'var(--blue-border)', borderRadius: 2, marginBottom: 4, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${precipPct}%`, background: precipColor, borderRadius: 2, transition: 'width 0.5s ease' }} />
             </div>
@@ -357,7 +266,7 @@ function ForecastStrip({ forecast, loading }) {
 }
 
 function SystemStatusPanel({ modelError, modelLoading, prediction, forecastLoading, forecast }) {
-  const modelOnline = !modelError && !modelLoading && !!prediction;
+  const modelOnline   = !modelError && !modelLoading && !!prediction;
   const forecastOnline = !forecastLoading && forecast.length > 0;
 
   const indicators = [
@@ -371,9 +280,7 @@ function SystemStatusPanel({ modelError, modelLoading, prediction, forecastLoadi
     {
       label: 'WeatherAPI Forecast Feed',
       status: forecastLoading ? 'checking' : forecastOnline ? 'online' : 'offline',
-      detail: forecastOnline
-        ? `${forecast.length} hourly records loaded`
-        : 'Feed unavailable',
+      detail: forecastOnline ? `${forecast.length} hourly records loaded` : 'Feed unavailable',
     },
     {
       label: 'Supabase Database',
@@ -441,29 +348,23 @@ function SystemStatusPanel({ modelError, modelLoading, prediction, forecastLoadi
 
 function PredictionInputTable({ prediction }) {
   if (!prediction) return null;
-
   const m = prediction.live_metrics;
-
   const rows = [
-    { label: 'Rainfall',         value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`,   icon: '🌧', note: 'Primary flood driver' },
-    { label: 'Humidity',         value: `${m.humidity ?? '—'}%`,                         icon: '💨', note: 'Atmospheric moisture' },
-    { label: 'Wind Signal',      value: `PAGASA Signal #${m.wind_signal ?? '—'}`,         icon: '🌀', note: 'PAGASA classification' },
-    { label: 'Flood Probability',value: `${(prediction.probability * 100).toFixed(1)}%`,  icon: '🤖', note: 'LSTM output confidence' },
-    { label: 'Alert Level',      value: `Level ${prediction.alert_level}`,                icon: '🚦', note: 'Model classification' },
-    { label: 'Lead Time Est.',   value: prediction.lead_time_estimate ?? '6–12 hrs',      icon: '⏱', note: 'Time before peak flood' },
+    { label: 'Rainfall',          value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`, icon: '🌧', note: 'Primary flood driver' },
+    { label: 'Humidity',          value: `${m.humidity ?? '—'}%`,                      icon: '💨', note: 'Atmospheric moisture' },
+    { label: 'Wind Signal',       value: `PAGASA Signal #${m.wind_signal ?? '—'}`,     icon: '🌀', note: 'PAGASA classification' },
+    { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '🤖', note: 'LSTM output confidence' },
+    { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '🚦', note: 'Model classification' },
+    { label: 'Lead Time Est.',    value: prediction.lead_time_estimate ?? '1–3 hrs',  icon: '⏱', note: 'Time before flood' },
   ];
-
   return (
     <div className="card">
       <SectionLabel>📊 LSTM Model — Prediction Input Summary</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
         {rows.map(({ label, value, icon, note }, i) => (
           <div key={label} style={{
-            display: 'grid',
-            gridTemplateColumns: '24px 1fr auto',
-            alignItems: 'center',
-            gap: 10,
-            padding: '9px 10px',
+            display: 'grid', gridTemplateColumns: '24px 1fr auto',
+            alignItems: 'center', gap: 10, padding: '9px 10px',
             background: i % 2 === 0 ? 'var(--blue-mid)' : 'transparent',
             borderRadius: i === 0 ? '6px 6px 0 0' : i === rows.length - 1 ? '0 0 6px 6px' : 0,
           }}>
@@ -495,14 +396,13 @@ function PredictionInputTable({ prediction }) {
 }
 
 function FloodForecastChart() {
-  const [view, setView] = useState('hourly'); // 'hourly' | 'daily'
+  const [view, setView]           = useState('hourly');
   const [chartData, setChartData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]     = useState(true);
   const [lastFetched, setLastFetched] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (view === 'hourly') {
-      // Last 24 hours — one point per snapshot row
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const { data, error } = await supabase
         .from('flood_snapshots')
@@ -520,33 +420,28 @@ function FloodForecastChart() {
         time: new Date(row.created_at),
         floodRisk: Math.min(Math.round((row.probability ?? 0) * 100), 100),
       })));
-
     } else {
-    // Last 7 days — averaged per day, computed server-side via RPC
-    const { data, error } = await supabase.rpc('get_daily_flood_avg', { days_back: 7 });
+      const { data, error } = await supabase.rpc('get_daily_flood_avg', { days_back: 7 });
+      if (error) { console.warn('Fetch failed:', error.message); setLoading(false); return; }
 
-    if (error) { console.warn('Fetch failed:', error.message); setLoading(false); return; }
-
-    const days = (data ?? []).map(row => {
-      const date = new Date(row.day);
-      return {
-        label: date.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
-        shortLabel: date.toLocaleDateString('en-PH', { weekday: 'short' }),
-        time: date,
-        floodRisk: Math.min(Math.round((row.avg_probability ?? 0) * 100), 100),
-        readings: Number(row.readings ?? 0),
-        isToday: new Date().toDateString() === date.toDateString(),
-      };
-    });
-
-    setChartData(days.slice(-7));
-  }
+      const days = (data ?? []).map(row => {
+        const date = new Date(row.day);
+        return {
+          label:      date.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
+          shortLabel: date.toLocaleDateString('en-PH', { weekday: 'short' }),
+          time:       date,
+          floodRisk:  Math.min(Math.round((row.avg_probability ?? 0) * 100), 100),
+          readings:   Number(row.readings ?? 0),
+          isToday:    new Date().toDateString() === date.toDateString(),
+        };
+      });
+      setChartData(days.slice(-7));
+    }
 
     setLastFetched(new Date());
     setLoading(false);
   }, [view]);
 
-  // Initial fetch + 30s poll
   useEffect(() => {
     setLoading(true);
     fetchData();
@@ -554,7 +449,6 @@ function FloodForecastChart() {
     return () => clearInterval(t);
   }, [fetchData]);
 
-  // Realtime insert subscription
   useEffect(() => {
     const channel = supabase
       .channel('flood_forecast_live')
@@ -566,7 +460,6 @@ function FloodForecastChart() {
     return () => supabase.removeChannel(channel);
   }, [fetchData]);
 
-  // Color based on risk %
   const getRiskColor = (pct) =>
     pct >= 75 ? '#ef4444' :
     pct >= 50 ? '#f97316' :
@@ -574,7 +467,7 @@ function FloodForecastChart() {
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
-    const val = payload[0]?.value;
+    const val   = payload[0]?.value;
     const color = getRiskColor(val);
     return (
       <div style={{
@@ -599,8 +492,6 @@ function FloodForecastChart() {
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
-
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <SectionLabel>🤖 LSTM Flood Probability Trend</SectionLabel>
@@ -613,21 +504,15 @@ function FloodForecastChart() {
             )}
           </div>
         </div>
-
-        {/* Toggle */}
         <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
           {['hourly', 'daily'].map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              style={{
-                padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
-                letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
-                background: view === v ? 'var(--accent)' : 'transparent',
-                color: view === v ? '#fff' : 'var(--text-muted)',
-                transition: 'all 0.2s',
-              }}
-            >
+            <button key={v} onClick={() => setView(v)} style={{
+              padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+              letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+              background: view === v ? 'var(--accent)' : 'transparent',
+              color: view === v ? '#fff' : 'var(--text-muted)',
+              transition: 'all 0.2s',
+            }}>
               {v === 'hourly' ? '24-Hour' : '7-Day'}
             </button>
           ))}
@@ -654,7 +539,6 @@ function FloodForecastChart() {
         </div>
       ) : (
         <>
-          {/* Latest reading callout */}
           {latestRisk !== null && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -707,14 +591,12 @@ function FloodForecastChart() {
                 tickFormatter={v => `${v}%`}
               />
               <Tooltip content={<CustomTooltip />} />
-
               <ReferenceLine y={25} stroke="#eab308" strokeDasharray="4 3" strokeOpacity={0.4}
                 label={{ value: 'Elevated', position: 'insideTopLeft', fill: '#eab308', fontSize: 9 }} />
               <ReferenceLine y={50} stroke="#f97316" strokeDasharray="4 3" strokeOpacity={0.4}
                 label={{ value: 'High', position: 'insideTopLeft', fill: '#f97316', fontSize: 9 }} />
               <ReferenceLine y={75} stroke="#ef4444" strokeDasharray="4 3" strokeOpacity={0.4}
                 label={{ value: 'Critical', position: 'insideTopLeft', fill: '#ef4444', fontSize: 9 }} />
-
               <Area
                 type="monotone"
                 dataKey="floodRisk"
@@ -724,7 +606,7 @@ function FloodForecastChart() {
                 fill="url(#riskGradient)"
                 dot={(props) => {
                   const { cx, cy, payload } = props;
-                  if (view === 'hourly' && chartData.length > 48) return null; // skip dots if too dense
+                  if (view === 'hourly' && chartData.length > 48) return null;
                   const color = getRiskColor(payload.floodRisk);
                   return (
                     <circle key={`dot-${payload.label}`}
@@ -738,7 +620,6 @@ function FloodForecastChart() {
             </AreaChart>
           </ResponsiveContainer>
 
-          {/* Daily summary strip (only in daily view) */}
           {view === 'daily' && (
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${chartData.length}, 1fr)`, gap: 4, marginTop: 12 }}>
               {chartData.map((d, i) => {
@@ -778,11 +659,12 @@ function FloodForecastChart() {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [forecast, setForecast] = useState([]);
+  const { user }    = useAuth();
+  const navigate    = useNavigate();
+  const [forecast, setForecast]               = useState([]);
   const [forecastLoading, setForecastLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [lastUpdated, setLastUpdated]         = useState(new Date());
+  const [recentTrend, setRecentTrend]         = useState(null);
 
   useEffect(() => {
     fetch('https://flood-api-553657561163.asia-southeast1.run.app/api/forecast')
@@ -792,7 +674,6 @@ export default function Dashboard() {
       .finally(() => setForecastLoading(false));
   }, []);
 
-  // Refresh timestamp every minute
   useEffect(() => {
     const t = setInterval(() => setLastUpdated(new Date()), 60000);
     return () => clearInterval(t);
@@ -808,48 +689,16 @@ export default function Dashboard() {
     const current = prediction.alert_level;
     if (prevAlertDisplay.current !== null && prevAlertDisplay.current !== current) {
       Swal.fire({
-        title: `⚠️ Alert Level Changed`,
-        html: `<p style="color:#8da4be">Flood alert has changed from <strong style="color:#e2eaf5">${prevAlertDisplay.current}</strong> → <strong style="color:${ALERT_COLORS[current]}">${current}</strong>.</p><p style="color:#8da4be;margin-top:8px;font-size:0.85rem">Alert level changed. An SMS notification will be sent to registered users.</p>`,
+        title: '⚠️ Alert Level Changed',
+        html: `<p style="color:#8da4be">Flood alert has changed from <strong style="color:#e2eaf5">${prevAlertDisplay.current}</strong> → <strong style="color:${ALERT_COLORS[current]}">${current}</strong>.</p><p style="color:#8da4be;margin-top:8px;font-size:0.85rem">An SMS notification will be sent to registered users.</p>`,
         icon: current === 'NORMAL' ? 'success' : 'warning',
-        background: '#0d1f3c',
-        color: '#e2eaf5',
+        background: '#0d1f3c', color: '#e2eaf5',
         confirmButtonColor: '#0ea5e9',
-        timer: 8000,
-        timerProgressBar: true,
+        timer: 8000, timerProgressBar: true,
       });
     }
     prevAlertDisplay.current = current;
   }, [prediction]);
-
-  const currentAlert = typeof prediction?.alert_level === 'number'
-    ? alertLevelToKey(prediction.alert_level)
-    : (prediction?.alert_level ?? prediction?.alert_key ?? 'NORMAL');
-  const alertInfo = ALERT_LEVELS[currentAlert] ?? ALERT_LEVELS['NORMAL'];
-  const alertColor   = ALERT_COLORS[currentAlert];
-
-  const probabilityPct  = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';
-  const rainfallMm      = prediction?.live_metrics?.rainfall_mm ?? 0;
-  const hasRainfall     = rainfallMm > 0;
-
-  const leadTime = !prediction
-    ? null
-    : prediction.probability >= 0.75 ? '1–2 hrs'
-    : prediction.probability >= 0.50 ? '2–3 hrs'
-    : '> 3 hrs';
-
-  const leadTimeColor = !prediction ? 'var(--text-muted)'
-    : prediction.probability >= 0.75 ? '#ef4444'
-    : prediction.probability >= 0.50 ? '#f97316'
-    : '#22c55e';
-
-  const humidityVal = prediction?.live_metrics?.humidity ?? null;
-
-  // ── Probability trend from recent snapshots ──
-  // Computed inside FloodForecastChart already, but we also need it here
-  // for the KPI area. We derive it from the chartData via a shared approach:
-  // Trend is computed inside the chart component — expose via the Lead Time card sub-text.
-  // For the alert header, pull last 5 snapshots directly.
-  const [recentTrend, setRecentTrend] = useState(null); // 'rising' | 'falling' | 'stable'
 
   useEffect(() => {
     supabase
@@ -859,25 +708,42 @@ export default function Dashboard() {
       .limit(6)
       .then(({ data }) => {
         if (!data || data.length < 3) return;
-        const probs = data.map(r => r.probability).reverse(); // oldest first
+        const probs = data.map(r => r.probability).reverse();
         const first = probs.slice(0, 3).reduce((s, v) => s + v, 0) / 3;
         const last  = probs.slice(-3).reduce((s, v) => s + v, 0) / 3;
         const delta = last - first;
         setRecentTrend(delta > 0.04 ? 'rising' : delta < -0.04 ? 'falling' : 'stable');
       });
-  }, [prediction]); // re-check every time prediction updates (every 30s)
+  }, [prediction]);
 
-  // ── Evacuation handler ──
+  const currentAlert = typeof prediction?.alert_level === 'number'
+    ? alertLevelToKey(prediction.alert_level)
+    : (prediction?.alert_level ?? prediction?.alert_key ?? 'NORMAL');
+  const alertInfo  = ALERT_LEVELS[currentAlert] ?? ALERT_LEVELS['NORMAL'];
+  const alertColor = ALERT_COLORS[currentAlert];
+
+  const probabilityPct = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';
+  const rainfallMm     = prediction?.live_metrics?.rainfall_mm ?? 0;
+  const humidityVal    = prediction?.live_metrics?.humidity ?? null;
+
+  const leadTime = !prediction ? null
+    : prediction.probability >= 0.75 ? '1–2 hrs'
+    : prediction.probability >= 0.50 ? '2–3 hrs'
+    : '> 3 hrs';
+
+  const leadTimeColor = !prediction ? 'var(--text-muted)'
+    : prediction.probability >= 0.75 ? '#ef4444'
+    : prediction.probability >= 0.50 ? '#f97316'
+    : '#22c55e';
+
   const EVACUATION_PRESETS = [
-    { label: '🟡 Advisory',  type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated in Barangay Triangulo. Stay alert and prepare your emergency go-bags.' },
-    { label: '🟠 Warning',   type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
-    { label: '🔴 Critical',  type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent in Barangay Triangulo. EVACUATE NOW to designated evacuation centers.' },
-    { label: '✍️ Custom',    type: 'CRITICAL', msg: '' },
+    { label: '🟡 Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated in Barangay Triangulo. Stay alert and prepare your emergency go-bags.' },
+    { label: '🟠 Warning',  type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
+    { label: '🔴 Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent in Barangay Triangulo. EVACUATE NOW to designated evacuation centers.' },
+    { label: '✍️ Custom',   type: 'CRITICAL', msg: '' },
   ];
 
   const handleEvacuationAlert = () => {
-    let selectedIndex = 2; // default to Critical
-
     Swal.fire({
       title: '🚨 Send Emergency Alert',
       html: `
@@ -910,8 +776,7 @@ export default function Dashboard() {
       cancelButtonColor: '#1e3a5f',
       confirmButtonText: '🚨 Send Alert Now',
       cancelButtonText: 'Cancel',
-      background: '#0d1f3c',
-      color: '#e2eaf5',
+      background: '#0d1f3c', color: '#e2eaf5',
       preConfirm: () => {
         const checkedRadio = document.querySelector('input[name="preset"]:checked');
         const idx = checkedRadio ? parseInt(checkedRadio.value) : 2;
@@ -922,39 +787,31 @@ export default function Dashboard() {
     }).then(async (result) => {
       if (!result.isConfirmed) return;
 
-      const sentBy  = user?.name ?? user?.email ?? 'Admin';
-      const message = result.value.msg;
+      const sentBy    = user?.name ?? user?.email ?? 'Admin';
+      const message   = result.value.msg;
       const alertType = result.value.type;
 
-      // 1. Save to Supabase alerts table
       const { error } = await supabase.from('alerts').insert({ type: alertType, message, sent_by: sentBy });
       if (error) {
         Swal.fire({ title: '⚠️ Failed to Save', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
 
-      // 2. Send SMS via existing edge function
       const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', { body: { message, type: alertType } });
       if (smsError) {
         Swal.fire({ title: '⚠️ Alert Saved, SMS Failed', text: 'The alert was recorded but SMS could not be sent.', icon: 'warning', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
 
-      // 3. Send FCM push notification to all mobile app users
       const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
         body: {
           title: alertType === 'CRITICAL' ? '🔴 EVACUATION ALERT — Barangay Triangulo'
                : alertType === 'WARNING'  ? '🟠 WARNING — Barangay Triangulo'
                : '🟡 ADVISORY — Barangay Triangulo',
-          body: message,
-          level: alertType,
-          topic: 'flood_alerts',
+          body: message, level: alertType, topic: 'flood_alerts',
         },
       });
-      if (fcmError) {
-        console.error('FCM push failed:', fcmError.message);
-        // Don't block success — SMS already sent, just warn
-      }
+      if (fcmError) console.error('FCM push failed:', fcmError.message);
 
       Swal.fire({
         title: '✅ Alert Dispatched',
@@ -972,7 +829,7 @@ export default function Dashboard() {
   return (
     <div className="fade-in">
 
-      {/* ── Offline Banner ──────────────────────────────────────── */}
+      {/* ── 1. Offline Banner ──────────────────────────────────── */}
       {modelError && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
@@ -982,13 +839,14 @@ export default function Dashboard() {
         }}>
           <span style={{ flexShrink: 0 }}>⚠</span>
           <span>
-            <strong>Model backend offline</strong> — displaying fallback data.
-            Start <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code> to enable live predictions.
+            <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
+            <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
+            to enable live predictions.
           </span>
         </div>
       )}
 
-      {/* ── Alert Status Header ─────────────────────────────────── */}
+      {/* ── 2. Alert Status Header ─────────────────────────────── */}
       <div style={{
         background: `linear-gradient(135deg, ${alertColor}10 0%, transparent 60%)`,
         border: `1px solid ${alertColor}40`,
@@ -1018,7 +876,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Status panel */}
         <div style={{
           background: 'rgba(0,0,0,0.2)', border: `1px solid ${alertColor}25`,
           borderRadius: 'var(--radius-sm)', padding: '12px 16px',
@@ -1042,12 +899,12 @@ export default function Dashboard() {
               Trend:{' '}
               <strong style={{
                 color: recentTrend === 'rising' ? '#ef4444'
-                    : recentTrend === 'falling' ? '#22c55e'
-                    : 'var(--text-secondary)'
+                     : recentTrend === 'falling' ? '#22c55e'
+                     : 'var(--text-secondary)'
               }}>
                 {recentTrend === 'rising'  ? '⬆ Rising'
-              : recentTrend === 'falling' ? '⬇ Falling'
-              : '➡ Stable'}
+               : recentTrend === 'falling' ? '⬇ Falling'
+               : '➡ Stable'}
               </strong>
               <span style={{ marginLeft: 4, opacity: 0.5 }}>· last 6 readings</span>
             </div>
@@ -1058,7 +915,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── KPI Metrics Row ────────────────────────────────────── */}
+      {/* ── 3. KPI Metrics Row ─────────────────────────────────── */}
       <div className="grid-4" style={{ marginBottom: 18 }}>
         <MetricCard
           icon={recentTrend === 'rising' ? '📈' : recentTrend === 'falling' ? '📉' : '⏱'}
@@ -1066,12 +923,12 @@ export default function Dashboard() {
           value={leadTime ?? '—'}
           sub={
             !prediction ? 'Model offline — no data'
-            : recentTrend === 'rising'  ? '⬆ Risk trending upward — monitor closely'
-            : recentTrend === 'falling' ? '⬇ Risk trending downward — conditions improving'
-            : recentTrend === 'stable'  ? '➡ Risk stable — no significant change'
-            : prediction.probability >= 0.75 ? 'High risk · Immediate monitoring required'
-            : prediction.probability >= 0.50 ? 'Elevated risk · Conditions deteriorating'
-            : 'Low risk · Conditions within normal range'
+            : recentTrend === 'rising'  ? '⬆ Risk trending upward'
+            : recentTrend === 'falling' ? '⬇ Risk trending downward'
+            : recentTrend === 'stable'  ? '➡ Risk stable'
+            : prediction.probability >= 0.75 ? 'High risk · Immediate monitoring'
+            : prediction.probability >= 0.50 ? 'Elevated risk · Deteriorating'
+            : 'Low risk · Within normal range'
           }
           color={
             recentTrend === 'rising'  ? '#ef4444'
@@ -1095,7 +952,7 @@ export default function Dashboard() {
           label="Humidity"
           value={humidityVal !== null ? `${humidityVal}` : '—'}
           unit="%"
-          sub={prediction ? 'Atmospheric moisture · LSTM input feature' : 'LSTM Model · Cloud Run'}
+          sub={prediction ? 'Atmospheric moisture · LSTM input' : 'LSTM Model · Cloud Run'}
           color={
             !humidityVal ? 'var(--text-muted)'
             : humidityVal >= 90 ? '#ef4444'
@@ -1124,10 +981,8 @@ export default function Dashboard() {
         />
       </div>
 
-    {/* ── Map + Gauge Row ────────────────────────────────────── */}
+      {/* ── 4. Map + Alert Level Reference ────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, marginBottom: 18 }}>
-
-        {/* Flood Map */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1158,43 +1013,19 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Gauge + Alert Level Reference — right column */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div>
-              <SectionLabel>💧 Water Level Gauge</SectionLabel>
-              <WaterLevelGauge level={null} />
-            </div>
-            <div>
-              <SectionLabel>🚦 Alert Level Reference</SectionLabel>
-              <AlertLevelTable currentAlert={currentAlert} />
-            </div>
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div>
+            <SectionLabel>🚦 Alert Level Reference</SectionLabel>
+            <AlertLevelTable currentAlert={currentAlert} />
           </div>
-      </div>
-
-      {/* ── System Status — full width below map ──────────────── */}
-      <div style={{ marginBottom: 18 }}>
-        <SystemStatusPanel
-          modelError={modelError}
-          modelLoading={modelLoading}
-          prediction={prediction}
-          forecastLoading={forecastLoading}
-          forecast={forecast}
-        />
-      </div>
-
-      {/* ── LSTM Prediction Input Summary ────────────────────── */}
-      {prediction && (
-        <div style={{ marginBottom: 18 }}>
-          <PredictionInputTable prediction={prediction} />
         </div>
-      )}
+      </div>
 
-      {/* ── 7-Day Flood Forecast Chart ────────────────────────── */}
+      {/* ── 5. LSTM Flood Probability Chart ───────────────────── */}
       <FloodForecastChart />
 
-      {/* ── Forecast + Radar Row ───────────────────────────────── */}
+      {/* ── 6. Forecast + Radar Row ────────────────────────────── */}
       <div className="grid-2" style={{ marginBottom: 18 }}>
-
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <SectionLabel>⛅ 72-Hour Rainfall Forecast</SectionLabel>
@@ -1221,13 +1052,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Evacuation CTA ─────────────────────────────────────── */}
+      {/* ── 7. LSTM Prediction Input Summary ─────────────────── */}
+      {prediction && (
+        <div style={{ marginBottom: 18 }}>
+          <PredictionInputTable prediction={prediction} />
+        </div>
+      )}
+
+      {/* ── 8. System Status ──────────────────────────────────── */}
+      <div style={{ marginBottom: 18 }}>
+        <SystemStatusPanel
+          modelError={modelError}
+          modelLoading={modelLoading}
+          prediction={prediction}
+          forecastLoading={forecastLoading}
+          forecast={forecast}
+        />
+      </div>
+
+      {/* ── 9. Evacuation CTA ─────────────────────────────────── */}
       {!isResident && (
         <div className="card" style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          alignItems: 'center',
-          gap: 20,
+          display: 'grid', gridTemplateColumns: '1fr auto',
+          alignItems: 'center', gap: 20,
           background: 'rgba(239,68,68,0.04)',
           border: '1px solid rgba(239,68,68,0.2)',
           padding: '20px 24px',
