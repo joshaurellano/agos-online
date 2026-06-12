@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { isAdmin, isResident } from '../lib/roles';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../hooks/useAuth';
 
@@ -747,8 +748,7 @@ function ModelAccuracyPanel({ reports }) {
 
 export default function HistoricalPage() {
   const { user } = useAuth();
-  const isResident = user?.role_id === 7;
-
+  const userIsResident = isResident(user);
   const [reports,        setReports]        = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [showForm,       setShowForm]       = useState(false);
@@ -856,7 +856,7 @@ export default function HistoricalPage() {
               </button>
             </>
           )}
-          {!isResident && !showForm && (
+          {!userIsResident  && !showForm && (
             <button className="btn btn-primary" onClick={() => setShowForm(true)} style={{ fontSize: '0.85rem' }}>
               + File New Report
             </button>
@@ -992,7 +992,7 @@ export default function HistoricalPage() {
             <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 600 }}>
               {reports.length === 0 ? 'No reports filed yet.' : 'No records match the selected filters.'}
             </div>
-            {reports.length === 0 && !isResident && (
+            {reports.length === 0 && !userIsResident  && (
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 6, opacity: 0.7 }}>
                 Use "File New Report" to log the first incident.
               </div>
@@ -1005,7 +1005,7 @@ export default function HistoricalPage() {
                 key={r.id}
                 report={r}
                 onStatusChange={handleStatusChange}
-                canEdit={!isResident}
+                canEdit={!userIsResident }
               />
             ))}
           </div>

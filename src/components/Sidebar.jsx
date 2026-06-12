@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { Nav, Button, Image } from 'react-bootstrap';
 import { useAuth } from '../hooks/useAuth';
+import { isAdmin, isResident } from '../lib/roles';
 
 import { FaUserCircle } from "react-icons/fa";
 import { Icon } from '@iconify/react';
@@ -21,7 +22,7 @@ const NAV_ITEMS = [
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth();
-  const isAdmin = user.roles?.role_desc === 'Admin';
+  const isAdminUser = isAdmin(user);
 
   return (
     <>
@@ -51,7 +52,8 @@ export default function Sidebar({ mobileOpen, onClose }) {
         <Nav className="flex-column flex-grow-1 py-2 overflow-auto">
           {NAV_ITEMS.filter(item => {
             if (item.adminOnly && !isAdmin) return false;
-            if (item.hideFromResidents && user?.role_id === 7) return false;
+            if (item.hideFromResidents && isResident(user)) return false;
+
             return true;
           }).map(item => (
             <Nav.Link
