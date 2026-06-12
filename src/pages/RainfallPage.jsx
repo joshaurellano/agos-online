@@ -1,52 +1,51 @@
-import { useState, useEffect, useCallback  } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { useModelPrediction } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
 
 export default function RainfallPage() {
-  const [view, setView]               = useState('chart');
-  const [period, setPeriod]           = useState('hourly');
-  const [dailyData, setDailyData]     = useState([]);
-  const [hourlyLogs, setHourlyLogs]   = useState([]);
+  const [view, setView]             = useState('chart');
+  const [period, setPeriod]         = useState('hourly');
+  const [dailyData, setDailyData]   = useState([]);
+  const [hourlyLogs, setHourlyLogs] = useState([]);
 
   const { prediction } = useModelPrediction();
   const liveRainfall = prediction?.live_metrics?.rainfall_mm;
 
-  const fetchRainfall = useCallback(async () => {
-  const since        = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+const fetchRainfall = useCallback(async () => {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  const [hourlyRes, dailyRes] = await Promise.all([
+  const [hourlyRes, dailyRpc] = await Promise.all([
     supabase.from('flood_snapshots').select('created_at, rainfall_mm').gte('created_at', since).order('created_at', { ascending: true }),
-    supabase.from('flood_snapshots').select('created_at, rainfall_mm').gte('created_at', sevenDaysAgo).order('created_at', { ascending: true }),
+    supabase.rpc('get_daily_rainfall', { days_back: 7 }),
   ]);
 
   if (hourlyRes.data) {
     const buckets = {};
     hourlyRes.data.forEach(row => {
-      const hour = new Date(row.created_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
-      if (!buckets[hour]) buckets[hour] = { hour, rainfall: 0, count: 0 };
-      buckets[hour].rainfall += row.rainfall_mm;
-      buckets[hour].count    += 1;
+      const d     = new Date(row.created_at);
+      const key   = `${d.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}-${d.toLocaleString('en-PH', { hour: '2-digit', hour12: false, timeZone: 'Asia/Manila' })}`;
+      const label = d.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' });
+      if (!buckets[key]) buckets[key] = { hour: label, rainfall: 0, count: 0 };
+      buckets[key].rainfall += row.rainfall_mm;
+      buckets[key].count    += 1;
     });
-    setHourlyLogs(Object.values(buckets));
+    setHourlyLogs(
+      Object.values(buckets).map(b => ({
+        ...b,
+        rainfall: parseFloat((b.rainfall / b.count).toFixed(2)),
+      }))
+    );
   }
 
-  if (dailyRes.data) {
-    const buckets = {};
-    dailyRes.data.forEach(row => {
-      const date = new Date(row.created_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
-      if (!buckets[date]) buckets[date] = { date, rainfall: 0 };
-      buckets[date].rainfall = parseFloat((buckets[date].rainfall + row.rainfall_mm).toFixed(2));
-    });
-    setDailyData(Object.values(buckets));
+  if (dailyRpc.data) {
+    setDailyData(dailyRpc.data.map(r => ({ date: r.day, rainfall: r.rainfall })));
   }
 }, []);
 
   useEffect(() => {
     fetchRainfall();
 
-    // Realtime subscription — refresh on every new flood_snapshot insert
     const channel = supabase
       .channel('rainfall-realtime')
       .on('postgres_changes',
@@ -58,10 +57,10 @@ export default function RainfallPage() {
     return () => supabase.removeChannel(channel);
   }, [fetchRainfall]);
 
-    const data    = period === 'hourly' ? hourlyLogs : dailyData;
-    const dataKey = period === 'hourly' ? 'hour'     : 'date';
-    const total   = data.reduce((s, d) => s + d.rainfall, 0).toFixed(1);
-    const peak    = Math.max(0, ...data.map(d => d.rainfall)).toFixed(1);
+  const data    = period === 'hourly' ? hourlyLogs : dailyData;
+  const dataKey = period === 'hourly' ? 'hour'     : 'date';
+  const total   = data.reduce((s, d) => s + d.rainfall, 0).toFixed(1);
+  const peak    = Math.max(0, ...data.map(d => d.rainfall)).toFixed(1);
 
   return (
     <div className="fade-in">
@@ -104,12 +103,28 @@ export default function RainfallPage() {
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
-              <XAxis dataKey={dataKey} tick={{ fill: '#4a6080', fontSize: 10 }} tickLine={false} interval={period === 'hourly' ? 2 : 0} />
+              <XAxis
+                dataKey={dataKey}
+                tick={{ fill: '#4a6080', fontSize: 10 }}
+                tickLine={false}
+                interval={period === 'hourly' ? 2 : 0}
+              />
               <YAxis tick={{ fill: '#4a6080', fontSize: 10 }} unit="mm" tickLine={false} />
-              <Tooltip contentStyle={{ background: '#112240', border: '1px solid #1e3a5f', borderRadius: 8, color: '#e2eaf5', fontSize: 12 }} formatter={v => [`${v}mm`, 'Rainfall']} />
-              <ReferenceLine y={50} stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2" label={{ value: 'Heavy Rain Threshold', fill: '#ef4444', fontSize: 9, position: 'insideTopRight' }} />
+              <Tooltip
+                contentStyle={{ background: '#112240', border: '1px solid #1e3a5f', borderRadius: 8, color: '#e2eaf5', fontSize: 12 }}
+                formatter={v => [`${v}mm`, 'Rainfall']}
+              />
+              <ReferenceLine
+                y={50}
+                stroke="#ef4444"
+                strokeWidth={1.5}
+                strokeDasharray="4 2"
+                label={{ value: 'Heavy Rain Threshold', fill: '#ef4444', fontSize: 9, position: 'insideTopRight' }}
+              />
               <Bar dataKey="rainfall" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40} />
-              {period === 'daily' && <ReferenceLine y={18.5} stroke="#eab308" strokeWidth={1} strokeDasharray="3 3" />}
+              {period === 'daily' && (
+                <ReferenceLine y={18.5} stroke="#eab308" strokeWidth={1} strokeDasharray="3 3" />
+              )}
             </BarChart>
           </ResponsiveContainer>
         ) : (
