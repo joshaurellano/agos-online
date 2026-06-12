@@ -10,6 +10,7 @@ import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
+import { isAdmin, isResident } from '../lib/roles';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -669,7 +670,7 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
-  const isResident = user?.role_id === 7;
+  const userIsResident = isResident(user);
   const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
 
   const prevAlertDisplay = useRef(null);
@@ -1061,7 +1062,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── 9. Evacuation CTA ─────────────────────────────────── */}
-      {!isResident && (
+      {!userIsResident  && (
         <div className="card" style={{
           display: 'grid', gridTemplateColumns: '1fr auto',
           alignItems: 'center', gap: 20,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'; // ← added useEffect, useRef
 import { useAuth } from '../hooks/useAuth';
 import { NOTIFICATION_LOG } from '../data/mockData';
+import { isAdmin, isResident } from '../lib/roles';
 import { supabase } from '../lib/supabaseClient';
 import Swal from 'sweetalert2';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi'; // ← MODEL
@@ -15,7 +16,7 @@ const TYPE_STYLES = {
 
 export default function AlertsPage() {
   const { user } = useAuth();
-  const isResident = user?.roles?.role_id === 7;
+  const isResident = isResident(user);
   const [logs, setLogs]     = useState([]);
   const [filter, setFilter] = useState('ALL');
 
