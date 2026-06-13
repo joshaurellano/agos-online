@@ -1082,6 +1082,27 @@ export default function Dashboard() {
       </div>
 
       {/* ── 3. KPI Metrics Row ─────────────────────────────────── */}
+      {userIsResident ? (
+        <div className="grid-2" style={{ marginBottom: 18 }}>
+          <MetricCard
+            icon="🚦"
+            label="Current Alert Level"
+            value={ALERT_LEVELS[currentAlert]?.label ?? currentAlert}
+            sub="Barangay Triangulo · See reference table for recommended actions"
+            color={ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL}
+            badge="Live"
+          />
+          <MetricCard
+            icon="🌧"
+            label="Rainfall Intensity"
+            value={prediction ? `${rainfallMm.toFixed(1)}` : '—'}
+            unit="mm/hr"
+            sub={prediction ? 'OpenMeteo · Live feed' : 'PAGASA Station · Naga City'}
+            color="var(--accent)"
+            badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
+          />
+        </div>
+      ) : (
       <div className="grid-4" style={{ marginBottom: 18 }}>
         <MetricCard
           icon={recentTrend === 'rising' ? '📈' : recentTrend === 'falling' ? '📉' : '⏱'}
@@ -1146,6 +1167,7 @@ export default function Dashboard() {
           badge={prediction ? 'LSTM Prediction' : null}
         />
       </div>
+      )}
 
       {/* ── 4. Map + Alert Level Reference ────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, marginBottom: 18 }}>
@@ -1219,16 +1241,17 @@ export default function Dashboard() {
       </div>
       
       {/* ── River Discharge ───────────────────────────────── */}
-      <RiverDischargePanel />
+      {!userIsResident && <RiverDischargePanel />}
 
       {/* ── 7. LSTM Prediction Input Summary ─────────────────── */}
-      {prediction && (
+      {!userIsResident && prediction && (
         <div style={{ marginBottom: 18 }}>
           <PredictionInputTable prediction={prediction} />
         </div>
       )}
 
       {/* ── 8. System Status ──────────────────────────────────── */}
+      {!userIsResident && (
       <div style={{ marginBottom: 18 }}>
         <SystemStatusPanel
           modelError={modelError}
@@ -1238,6 +1261,7 @@ export default function Dashboard() {
           forecast={forecast}
         />
       </div>
+      )}
 
       {/* ── 9. Evacuation CTA ─────────────────────────────────── */}
       {!userIsResident  && (

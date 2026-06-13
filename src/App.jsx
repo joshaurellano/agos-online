@@ -32,7 +32,11 @@ function App() {
               <Route path="/water-level"  element={<WaterLevelPage />} />
               <Route path="/rainfall"     element={<RainfallPage />} />
               <Route path="/evacuation-map"    element={<FloodMapPage />} />
-              <Route path="/reports"   element={<HistoricalPage />} />
+              <Route path="/reports"   element={
+                <ResidentRoute>
+                  <HistoricalPage />
+                </ResidentRoute>
+              } />
               <Route path="/alerts"       element={<AlertsPage />} />
 
               <Route path="/analytics" element={<AnalyticsPage />} />
