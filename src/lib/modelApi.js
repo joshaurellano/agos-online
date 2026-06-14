@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 import { useDataSource } from '../hooks/useDataSource';
 
@@ -23,10 +23,10 @@ export function alertLevelFromKey(key) {
 }
 
 const ALERT_MESSAGES = {
-  ADVISORY: 'ADVISORY level reached. Elevated water levels possible within the next 1-3 hours. Stay alert and monitor updates.',
-  WARNING:  'WARNING level reached. Significant flooding expected within the next 1-3 hours. Prepare for possible evacuation. Secure valuables now.',
-  CRITICAL: 'CRITICAL level reached. Severe flooding imminent — possible within the next 1-3 hours. EVACUATE IMMEDIATELY to your designated evacuation center.',
-  NORMAL:   'Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.',
+  ADVISORY: (leadTime) => `AGOS Alert - Barangay Triangulo: ADVISORY level reached. Elevated flood risk detected. Estimated time: ${leadTime ?? '> 3 hrs'}. Stay alert and prepare your emergency go-bags.`,
+  WARNING:  (leadTime) => `AGOS Alert - Barangay Triangulo: WARNING level reached. Significant flooding expected within ${leadTime ?? '2–3 hrs'}. Move valuables to higher ground and prepare for possible evacuation.`,
+  CRITICAL: (leadTime) => `AGOS Alert - Barangay Triangulo: CRITICAL level reached. Severe flooding imminent within ${leadTime ?? '1–2 hrs'}. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  NORMAL:   ()         => `AGOS Alert - Barangay Triangulo: Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.`,
 };
 
 const FCM_TITLES = {
@@ -36,33 +36,25 @@ const FCM_TITLES = {
   NORMAL:   '🟢 ALL CLEAR — Barangay Triangulo',
 };
 
-// Fires whenever the model's alert level changes (in either live or mock mode):
-// 1. Logs the alert in Supabase (drives the Alerts page + realtime feed)
-// 2. Dispatches SMS via the 'send-alert' edge function
-// 3. Dispatches a push notification via the 'send-push-notification' edge function
-async function dispatchAutoAlert(alertKey) {
-  const message = ALERT_MESSAGES[alertKey];
+async function dispatchAutoAlert(alertKey, leadTime) {
+  const message = ALERT_MESSAGES[alertKey]?.(leadTime);
   if (!message) return;
 
-  console.log(`📲 Alert level changed to ${alertKey} — dispatching alert (DB log + SMS + push)...`);
+  console.log(`📲 Alert level changed to ${alertKey} — dispatching alert...`);
 
-  // 1. Log the alert
   const { error: dbError } = await supabase.from('alerts').insert({
     type:    alertKey,
     message,
     sent_by: 'AGOS Auto-Alert',
   });
   if (dbError) console.warn('Alert log failed:', dbError.message);
-  else console.log(`✅ Alert logged for ${alertKey}`);
 
-  // 2. SMS dispatch
   const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', {
     body: { message, type: alertKey },
   });
   if (smsError) console.warn('SMS dispatch failed:', smsError.message);
   else console.log(`✅ SMS dispatched for ${alertKey}`, smsData);
 
-  // 3. FCM push notification
   const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
     body: {
       title: FCM_TITLES[alertKey] ?? `AGOS Alert — ${alertKey}`,
@@ -75,6 +67,7 @@ async function dispatchAutoAlert(alertKey) {
   else console.log(`✅ Push notification dispatched for ${alertKey}`);
 }
 
+// Saves snapshot to Supabase for the FloodForecastChart
 async function saveSnapshot(data) {
   const BASELINE_LEVEL = 1.4;
   const RISE_RATE      = 0.045;
@@ -82,47 +75,33 @@ async function saveSnapshot(data) {
   const waterLevel     = parseFloat((BASELINE_LEVEL + rainfall * RISE_RATE).toFixed(2));
 
   const { error } = await supabase.from('flood_snapshots').insert({
-    alert_level: alertLevelFromKey(data.alert_level),
-    alert_key:   data.alert_level,
-    probability: data.probability,
-    rainfall_mm: rainfall,
-    humidity:    data?.live_metrics?.humidity ?? null,
-    wind_signal: data?.live_metrics?.wind_signal ?? null,
-    water_level: waterLevel,
-    status:      data.status ?? null,
+    alert_level:        alertLevelFromKey(data.alert_level),
+    alert_key:          data.alert_level,
+    probability:        data.probability,
+    rainfall_mm:        rainfall,
+    humidity:           data?.live_metrics?.humidity  ?? null,
+    wind_signal:        data?.live_metrics?.wind_signal ?? null,
+    water_level:        waterLevel,
+    status:             data.status ?? null,
+    lead_time_estimate: data.lead_time_estimate ?? null,
   });
 
   if (error) console.warn('Snapshot save failed:', error.message);
+  else console.log('💾 Snapshot saved to Supabase');
 }
 
-// Module-level (persists across hook remounts / page navigations within the
-// same session) so an alert dispatch fires exactly once per genuine level
-// change, regardless of how many pages mount useModelPrediction.
 let lastDispatchedAlertKey = null;
 
 export function useModelPrediction() {
-  const { apiBaseUrl, isMock } = useDataSource();
+  const { apiBaseUrl } = useDataSource();
   const [prediction, setPrediction] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
 
-  const handleNewPrediction = useCallback((normalized) => {
-    setPrediction(normalized);
-    setError(null);
-
-    const currentKey = normalized.alert_level;
-    if (lastDispatchedAlertKey !== null && lastDispatchedAlertKey !== currentKey) {
-      dispatchAutoAlert(currentKey).catch(err =>
-        console.error('Alert dispatch failed:', err.message)
-      );
-    }
-    lastDispatchedAlertKey = currentKey;
-  }, []);
-
-  const fetchFromMockApi = useCallback(async () => {
+  const fetchLatest = useCallback(async () => {
     try {
       const res = await fetch(`${apiBaseUrl}/api/predict-flood`);
-      if (!res.ok) throw new Error(`Mock API error: ${res.status}`);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
 
       const normalized = {
@@ -137,64 +116,32 @@ export function useModelPrediction() {
         },
       };
 
-      console.log('🧪 Prediction loaded from MOCK API:', normalized);
-      handleNewPrediction(normalized);
-    } catch (err) {
-      console.error('❌ Mock API fetch error:', err.message);
-      setError(err.message || 'Could not load mock prediction');
-    } finally {
-      setLoading(false);
-    }
-  }, [apiBaseUrl, handleNewPrediction]);
+      console.log('🌐 Live prediction from API:', normalized);
+      setPrediction(normalized);
+      setError(null);
 
-  const fetchFromSupabase = useCallback(async () => {
-    try {
-      const { data: raw, error: dbError } = await supabase
-        .from('flood_snapshots')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (dbError) throw new Error(dbError.message);
-
-      if (raw) {
-        console.log('📦 Latest snapshot from Supabase:', {
-          id:          raw.id,
-          alert_key:   raw.alert_key,
-          probability: raw.probability,
-          rainfall_mm: raw.rainfall_mm,
-          created_at:  raw.created_at,
-        });
-
-        const normalized = {
-          alert_level:        raw.alert_key ?? 'NORMAL',
-          probability:        raw.probability ?? 0,
-          status:             raw.status ?? null,
-          lead_time_estimate: raw.lead_time_estimate ?? null,
-          live_metrics: {
-            rainfall_mm: raw.rainfall_mm ?? 0,
-            humidity:    raw.humidity    ?? null,
-            wind_signal: raw.wind_signal ?? 0,
-          },
-        };
-        handleNewPrediction(normalized);
-
-        console.log('✅ Prediction state updated at', new Date().toLocaleTimeString());
-      } else {
-        console.warn('⚠️ No snapshots found in flood_snapshots table');
+      // Dispatch alert if level changed
+      const currentKey = normalized.alert_level;
+      if (lastDispatchedAlertKey !== null && lastDispatchedAlertKey !== currentKey) {
+        dispatchAutoAlert(currentKey, normalized.lead_time_estimate).catch(err =>
+          console.error('Alert dispatch failed:', err.message)
+        );
       }
+      
+      lastDispatchedAlertKey = currentKey;
+
+      // Save snapshot for FloodForecastChart (fire and forget)
+      saveSnapshot(normalized).catch(err =>
+        console.warn('Snapshot save error:', err.message)
+      );
+
     } catch (err) {
-      console.error('❌ Snapshot fetch error:', err.message);
-      setError(err.message || 'Could not load snapshot');
+      console.error('❌ API fetch error:', err.message);
+      setError(err.message || 'Could not load prediction');
     } finally {
       setLoading(false);
     }
-  }, [handleNewPrediction]);
-
-  const fetchLatest = useCallback(() => {
-    return isMock ? fetchFromMockApi() : fetchFromSupabase();
-  }, [isMock, fetchFromMockApi, fetchFromSupabase]);
+  }, [apiBaseUrl]);
 
   useEffect(() => {
     setLoading(true);
