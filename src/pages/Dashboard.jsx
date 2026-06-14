@@ -859,7 +859,7 @@ export default function Dashboard() {
     if (prevAlertDisplay.current !== null && prevAlertDisplay.current !== current) {
       Swal.fire({
         title: '⚠️ Alert Level Changed',
-        html: `<p style="color:#8da4be">Flood alert has changed from <strong style="color:#e2eaf5">${prevAlertDisplay.current}</strong> → <strong style="color:${ALERT_COLORS[current]}">${current}</strong>.</p><p style="color:#8da4be;margin-top:8px;font-size:0.85rem">An SMS notification will be sent to registered users.</p>`,
+        html: `<p style="color:#8da4be">Flood alert has changed from <strong style="color:#e2eaf5">${prevAlertDisplay.current}</strong> → <strong style="color:${ALERT_COLORS[current]}">${current}</strong>.</p><p style="color:#8da4be;margin-top:8px;font-size:0.85rem">A notification will be sent to registered users.</p>`,
         icon: current === 'NORMAL' ? 'success' : 'warning',
         background: '#0d1f3c', color: '#e2eaf5',
         confirmButtonColor: '#0ea5e9',
