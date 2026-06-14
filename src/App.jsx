@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
+import { DataSourceProvider } from './hooks/useDataSource';
 
 import LoginPage from './pages/LoginPage';
 import RegistrationPage from './pages/RegistrationPage';
@@ -22,45 +23,47 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <Router>
-          <Routes>
-            <Route path="/"      element={<LoginPage />} />
-            <Route path="/login" element={<LoginPage />} />
+        <DataSourceProvider>
+          <Router>
+            <Routes>
+              <Route path="/"      element={<LoginPage />} />
+              <Route path="/login" element={<LoginPage />} />
 
-            <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-              <Route path="/dashboard"    element={<Dashboard />} />
-              <Route path="/water-level"  element={<WaterLevelPage />} />
-              <Route path="/rainfall"     element={<RainfallPage />} />
-              <Route path="/evacuation-map"    element={<FloodMapPage />} />
-              <Route path="/reports"   element={
-                <ResidentRoute>
-                  <HistoricalPage />
-                </ResidentRoute>
-              } />
-              <Route path="/alerts"       element={<AlertsPage />} />
+              <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+                <Route path="/dashboard"    element={<Dashboard />} />
+                <Route path="/water-level"  element={<WaterLevelPage />} />
+                <Route path="/rainfall"     element={<RainfallPage />} />
+                <Route path="/evacuation-map"    element={<FloodMapPage />} />
+                <Route path="/reports"   element={
+                  <ResidentRoute>
+                    <HistoricalPage />
+                  </ResidentRoute>
+                } />
+                <Route path="/alerts"       element={<AlertsPage />} />
 
-              <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
 
-              <Route path="/data-sources" element={
-                <ResidentRoute>
-                  <DataSourcesPage />
-                </ResidentRoute>
-              } />
+                <Route path="/data-sources" element={
+                  <ResidentRoute>
+                    <DataSourcesPage />
+                  </ResidentRoute>
+                } />
 
-              <Route path="/register" element={
-                <AdminRoute>
-                  <RegistrationPage />
-                </AdminRoute>
-              } />
+                <Route path="/register" element={
+                  <AdminRoute>
+                    <RegistrationPage />
+                  </AdminRoute>
+                } />
 
-              <Route path="/add-resident" element={
-                <ResidentRoute>
-                  <RegistrationPage />
-                </ResidentRoute>
-              } />
-            </Route>
-          </Routes>
-        </Router>
+                <Route path="/add-resident" element={
+                  <ResidentRoute>
+                    <RegistrationPage />
+                  </ResidentRoute>
+                } />
+              </Route>
+            </Routes>
+          </Router>
+        </DataSourceProvider>
       </AuthProvider>
     </ThemeProvider>
   );

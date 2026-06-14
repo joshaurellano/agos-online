@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import { useDataSource } from '../hooks/useDataSource';
+import { isAdmin } from '../lib/roles';
 
 export default function Topbar({ title, onMenuClick, alertLevel }) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { isMock, toggleDataSource } = useDataSource();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -15,13 +19,43 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
   const levelColors = { NORMAL: '#22c55e', ADVISORY: '#eab308', WARNING: '#f97316', CRITICAL: '#ef4444' };
   const levelColor = levelColors[alertLevel] || '#22c55e';
 
+  const handleToggleDataSource = async () => {
+    const switchingTo = isMock ? 'live' : 'mock';
+    const result = await Swal.fire({
+      title: switchingTo === 'mock' ? 'Switch to Mock Data?' : 'Switch to Live Data?',
+      html: switchingTo === 'mock'
+        ? '<p style="color:#8da4be">The dashboard will use the <strong style="color:#eab308">mock API server</strong> for predictions and forecasts.</p>'
+        : '<p style="color:#8da4be">The dashboard will reconnect to the <strong style="color:#22c55e">live model server</strong> for real predictions and forecasts.</p>',
+      icon: 'question',
+      background: '#0d1f3c', color: '#e2eaf5',
+      showCancelButton: true,
+      confirmButtonText: 'Switch',
+      confirmButtonColor: switchingTo === 'mock' ? '#eab308' : '#0ea5e9',
+      cancelButtonColor: '#334155',
+    });
+
+    if (result.isConfirmed) {
+      toggleDataSource();
+      Swal.fire({
+        title: switchingTo === 'mock' ? 'Mock Data Active' : 'Live Data Active',
+        text: switchingTo === 'mock'
+          ? 'AGOS is now displaying simulated data from the mock server.'
+          : 'AGOS is now displaying real-time data from the live model server.',
+        icon: 'success',
+        background: '#0d1f3c', color: '#e2eaf5',
+        confirmButtonColor: '#0ea5e9',
+        timer: 4000, timerProgressBar: true,
+      });
+    }
+  };
+
   return (
     <div className="topbar">
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <button
           onClick={onMenuClick}
           style={{ display: 'none', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '1.3rem', cursor: 'pointer', padding: '4px' }}
-          className="mobile-menu-btn"
+          // className="mobile-menu-btn"
         >
           ☰
         </button>
@@ -36,17 +70,28 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        {/* Alert level indicator */}
-        {/* <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '6px 14px', borderRadius: '99px',
-          background: `${levelColor}15`, border: `1px solid ${levelColor}40`,
-        }}>
-          <span className="status-dot live" style={{ background: levelColor, boxShadow: `0 0 0 0 ${levelColor}` }} />
-          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: levelColor, letterSpacing: '0.05em' }}>
-            {alertLevel}
-          </span>
-        </div> */}
+
+        {/* Admin-only: Live / Mock data source toggle */}
+        {isAdmin(user) && (
+          <button
+            className="btn"
+            onClick={handleToggleDataSource}
+            title={isMock
+              ? 'Currently using MOCK data — click to switch to live data'
+              : 'Currently using LIVE data — click to switch to mock data'}
+            style={{
+              background: isMock ? '#eab308' : '#22c55e',
+              color: '#0d1f3c',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              padding: '8px 14px',
+              border: 'none',
+            }}
+          >
+            {isMock ? 'MOCK DATA' : 'LIVE DATA'}
+            <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>⇄</span>
+          </button>
+        )}
 
         {/* Dark / Light toggle */}
         <button

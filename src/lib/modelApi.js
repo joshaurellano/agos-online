@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './supabaseClient';
+import { useDataSource } from '../hooks/useDataSource';
 
-const MODEL_URL = 'https://flood-api-553657561163.asia-southeast1.run.app/api/predict-flood';
 const POLL_INTERVAL_MS = 30_000;
 
 export function alertLevelToKey(alert_level) {
@@ -23,30 +23,56 @@ export function alertLevelFromKey(key) {
 }
 
 const ALERT_MESSAGES = {
-  ADVISORY: 'AGOS Alert - Barangay Triangulo: ADVISORY level reached. Elevated water levels detected. Residents near waterways should stay alert and monitor updates.',
-  WARNING:  'AGOS Alert - Barangay Triangulo: WARNING level reached. Significant flooding expected. Prepare for possible evacuation. Secure valuables now.',
-  CRITICAL: 'AGOS Alert - Barangay Triangulo: CRITICAL level reached. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.',
-  NORMAL:   'AGOS Alert - Barangay Triangulo: Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.',
+  ADVISORY: 'ADVISORY level reached. Elevated water levels possible within the next 1-3 hours. Stay alert and monitor updates.',
+  WARNING:  'WARNING level reached. Significant flooding expected within the next 1-3 hours. Prepare for possible evacuation. Secure valuables now.',
+  CRITICAL: 'CRITICAL level reached. Severe flooding imminent — possible within the next 1-3 hours. EVACUATE IMMEDIATELY to your designated evacuation center.',
+  NORMAL:   'Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.',
 };
 
-async function sendAlertSms(alertKey) {
+const FCM_TITLES = {
+  ADVISORY: '🟡 ADVISORY — Barangay Triangulo',
+  WARNING:  '🟠 WARNING — Barangay Triangulo',
+  CRITICAL: '🔴 EVACUATION ALERT — Barangay Triangulo',
+  NORMAL:   '🟢 ALL CLEAR — Barangay Triangulo',
+};
+
+// Fires whenever the model's alert level changes (in either live or mock mode):
+// 1. Logs the alert in Supabase (drives the Alerts page + realtime feed)
+// 2. Dispatches SMS via the 'send-alert' edge function
+// 3. Dispatches a push notification via the 'send-push-notification' edge function
+async function dispatchAutoAlert(alertKey) {
   const message = ALERT_MESSAGES[alertKey];
   if (!message) return;
 
-  console.log(`📲 Alert level changed to ${alertKey} — sending SMS...`);
+  console.log(`📲 Alert level changed to ${alertKey} — dispatching alert (DB log + SMS + push)...`);
 
+  // 1. Log the alert
   const { error: dbError } = await supabase.from('alerts').insert({
     type:    alertKey,
     message,
     sent_by: 'AGOS Auto-Alert',
   });
   if (dbError) console.warn('Alert log failed:', dbError.message);
+  else console.log(`✅ Alert logged for ${alertKey}`);
 
-  const { error: smsError } = await supabase.functions.invoke('send-alert', {
+  // 2. SMS dispatch
+  const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', {
     body: { message, type: alertKey },
   });
   if (smsError) console.warn('SMS dispatch failed:', smsError.message);
-  else console.log(`✅ SMS dispatched for ${alertKey}`);
+  else console.log(`✅ SMS dispatched for ${alertKey}`, smsData);
+
+  // 3. FCM push notification
+  const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
+    body: {
+      title: FCM_TITLES[alertKey] ?? `AGOS Alert — ${alertKey}`,
+      body:  message,
+      level: alertKey,
+      topic: 'flood_alerts',
+    },
+  });
+  if (fcmError) console.warn('Push notification dispatch failed:', fcmError.message);
+  else console.log(`✅ Push notification dispatched for ${alertKey}`);
 }
 
 async function saveSnapshot(data) {
@@ -69,12 +95,59 @@ async function saveSnapshot(data) {
   if (error) console.warn('Snapshot save failed:', error.message);
 }
 
+// Module-level (persists across hook remounts / page navigations within the
+// same session) so an alert dispatch fires exactly once per genuine level
+// change, regardless of how many pages mount useModelPrediction.
+let lastDispatchedAlertKey = null;
+
 export function useModelPrediction() {
+  const { apiBaseUrl, isMock } = useDataSource();
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchLatest = useCallback(async () => {
+  const handleNewPrediction = useCallback((normalized) => {
+    setPrediction(normalized);
+    setError(null);
+
+    const currentKey = normalized.alert_level;
+    if (lastDispatchedAlertKey !== null && lastDispatchedAlertKey !== currentKey) {
+      dispatchAutoAlert(currentKey).catch(err =>
+        console.error('Alert dispatch failed:', err.message)
+      );
+    }
+    lastDispatchedAlertKey = currentKey;
+  }, []);
+
+  const fetchFromMockApi = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/predict-flood`);
+      if (!res.ok) throw new Error(`Mock API error: ${res.status}`);
+      const data = await res.json();
+
+      const normalized = {
+        alert_level:        data.alert_level ?? 'NORMAL',
+        probability:        data.probability ?? 0,
+        status:             data.status ?? null,
+        lead_time_estimate: data.lead_time_estimate ?? null,
+        live_metrics: {
+          rainfall_mm: data?.live_metrics?.rainfall_mm ?? 0,
+          humidity:    data?.live_metrics?.humidity    ?? null,
+          wind_signal: data?.live_metrics?.wind_signal ?? 0,
+        },
+      };
+
+      console.log('🧪 Prediction loaded from MOCK API:', normalized);
+      handleNewPrediction(normalized);
+    } catch (err) {
+      console.error('❌ Mock API fetch error:', err.message);
+      setError(err.message || 'Could not load mock prediction');
+    } finally {
+      setLoading(false);
+    }
+  }, [apiBaseUrl, handleNewPrediction]);
+
+  const fetchFromSupabase = useCallback(async () => {
     try {
       const { data: raw, error: dbError } = await supabase
         .from('flood_snapshots')
@@ -105,8 +178,7 @@ export function useModelPrediction() {
             wind_signal: raw.wind_signal ?? 0,
           },
         };
-        setPrediction(normalized);
-        setError(null);
+        handleNewPrediction(normalized);
 
         console.log('✅ Prediction state updated at', new Date().toLocaleTimeString());
       } else {
@@ -118,11 +190,16 @@ export function useModelPrediction() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [handleNewPrediction]);
+
+  const fetchLatest = useCallback(() => {
+    return isMock ? fetchFromMockApi() : fetchFromSupabase();
+  }, [isMock, fetchFromMockApi, fetchFromSupabase]);
 
   useEffect(() => {
+    setLoading(true);
     fetchLatest();
-    const id = setInterval(fetchLatest, 30_000);
+    const id = setInterval(fetchLatest, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [fetchLatest]);
 
