@@ -895,10 +895,7 @@ export default function Dashboard() {
   const rainfallMm     = prediction?.live_metrics?.rainfall_mm ?? 0;
   const humidityVal    = prediction?.live_metrics?.humidity ?? null;
 
-  const leadTime = !prediction ? null
-    : prediction.probability >= 0.75 ? '1–2 hrs'
-    : prediction.probability >= 0.50 ? '2–3 hrs'
-    : '> 3 hrs';
+  const leadTime = prediction?.lead_time_estimate ?? null;
 
   const leadTimeColor = !prediction ? 'var(--text-muted)'
     : prediction.probability >= 0.75 ? '#ef4444'
