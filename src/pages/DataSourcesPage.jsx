@@ -1,4 +1,8 @@
 import { DATA_SOURCES } from '../data/mockData';
+import { useAuth } from '../hooks/useAuth';
+import { useDataSource } from '../hooks/useDataSource';
+import { isAdmin } from '../lib/roles';
+import Swal from 'sweetalert2';
 
 const SOURCE_ICONS = {
   rainfall: '🌧',
@@ -17,10 +21,73 @@ const STATUS_INFO = {
 };
 
 export default function DataSourcesPage() {
+  const { user } = useAuth();
+  const { isMock, toggleDataSource } = useDataSource();
   const liveCount = DATA_SOURCES.filter(s => s.status === 'live').length;
+
+  const handleToggleDataSource = async () => {
+    const switchingTo = isMock ? 'live' : 'mock';
+    const result = await Swal.fire({
+      title: switchingTo === 'mock' ? 'Switch to Mock Data?' : 'Switch to Live Data?',
+      html: switchingTo === 'mock'
+        ? '<p style="color:#8da4be">The system will use the <strong style="color:#eab308">mock API server</strong> for predictions and forecasts. Use this for demos and presentations.</p>'
+        : '<p style="color:#8da4be">The system will reconnect to the <strong style="color:#22c55e">live model server</strong> for real predictions and forecasts.</p>',
+      icon: 'question',
+      background: '#0d1f3c', color: '#e2eaf5',
+      showCancelButton: true,
+      confirmButtonText: 'Switch',
+      confirmButtonColor: switchingTo === 'mock' ? '#eab308' : '#0ea5e9',
+      cancelButtonColor: '#334155',
+    });
+
+    if (result.isConfirmed) {
+      toggleDataSource();
+      Swal.fire({
+        title: switchingTo === 'mock' ? 'Mock Data Active' : 'Live Data Active',
+        text: switchingTo === 'mock'
+          ? 'AGOS is now displaying simulated data from the mock server.'
+          : 'AGOS is now displaying real-time data from the live model server.',
+        icon: 'success',
+        background: '#0d1f3c', color: '#e2eaf5',
+        confirmButtonColor: '#0ea5e9',
+        timer: 4000, timerProgressBar: true,
+      });
+    }
+  };
 
   return (
     <div className="fade-in">
+      <div className="card" style={{
+        marginBottom: '20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: '12px',
+        border: `1px solid ${isMock ? 'rgba(234,179,8,0.4)' : 'rgba(34,197,94,0.4)'}`,
+        background: isMock ? 'rgba(234,179,8,0.06)' : 'rgba(34,197,94,0.06)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span
+            className={isMock ? 'status-dot simulated' : 'status-dot live'}
+            style={{ background: isMock ? '#eab308' : '#22c55e', width: 12, height: 12 }}
+          />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: isMock ? '#eab308' : '#22c55e' }}>
+              {isMock ? 'MOCK DATA MODE' : 'LIVE DATA MODE'}
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {isMock
+                ? 'Predictions and forecasts are being served by the mock API server for demonstration.'
+                : 'Predictions and forecasts are being served by the live flood prediction model.'}
+            </div>
+          </div>
+        </div>
+
+        {isAdmin(user) && (
+          <button className="btn btn-ghost" onClick={handleToggleDataSource}>
+            Switch to {isMock ? 'Live' : 'Mock'} Data
+          </button>
+        )}
+      </div>
+
       <div className="grid-3" style={{ marginBottom: '20px' }}>
         {[
           { label: 'Sources Live', value: `${liveCount}/${DATA_SOURCES.length}`, icon: '📡', color: 'var(--green)' },

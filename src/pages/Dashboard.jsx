@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
+import { useDataSource } from '../hooks/useDataSource';
 import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
@@ -826,6 +827,7 @@ function RiverDischargePanel() {
 
 export default function Dashboard() {
   const { user }    = useAuth();
+  const { apiBaseUrl } = useDataSource();
   const navigate    = useNavigate();
   const [forecast, setForecast]               = useState([]);
   const [forecastLoading, setForecastLoading] = useState(true);
@@ -833,12 +835,13 @@ export default function Dashboard() {
   const [recentTrend, setRecentTrend]         = useState(null);
 
   useEffect(() => {
-    fetch('https://flood-api-553657561163.asia-southeast1.run.app/api/forecast')
+    setForecastLoading(true);
+    fetch(`${apiBaseUrl}/api/forecast`)
       .then(res => res.json())
       .then(data => { if (data.hourly) setForecast(data.hourly); })
       .catch(err => console.warn('Forecast fetch failed:', err))
       .finally(() => setForecastLoading(false));
-  }, []);
+  }, [apiBaseUrl]);
 
   useEffect(() => {
     const t = setInterval(() => setLastUpdated(new Date()), 60000);

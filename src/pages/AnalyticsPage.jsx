@@ -3,6 +3,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts';
+import { useDataSource } from '../hooks/useDataSource';
 
 const MOCK_14_DAY_FORECAST = [
   { day: 'Day 1', prob: 0.25 }, { day: 'Day 2', prob: 0.28 },
@@ -45,6 +46,7 @@ const getAlertDetails = (probability) => {
 };
 
 export default function AnalyticsPage() {
+  const { apiBaseUrl } = useDataSource();
   const [predictiveCurve, setPredictiveCurve] = useState([]);
   const [selectedForecastIndex, setSelectedForecastIndex] = useState(0);
   const [prediction, setPrediction] = useState(null);
@@ -53,7 +55,7 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     setModelLoading(true);
-    fetch('https://flood-api-553657561163.asia-southeast1.run.app/api/predict-flood')
+    fetch(`${apiBaseUrl}/api/predict-flood`)
       .then(res => {
         if (!res.ok) throw new Error("FastAPI Server Offline");
         return res.json();
@@ -83,7 +85,7 @@ export default function AnalyticsPage() {
         setModelError(true);
       })
       .finally(() => setModelLoading(false));
-  }, []);
+  }, [apiBaseUrl]);
 
   // Derived values — order matters
   const activeCurveData = predictiveCurve.length > 0 ? predictiveCurve : MOCK_14_DAY_FORECAST;
