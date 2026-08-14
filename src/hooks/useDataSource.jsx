@@ -8,8 +8,8 @@ const STORAGE_KEY = 'agos-data-source';
 // 'live'  -> the actual deployed model server
 // 'mock'  -> the mock server used for demos/presentations (same endpoints/shape)
 export const API_BASE_URLS = {
-  live: 'https://flood-api-553657561163.asia-southeast1.run.app',
-  mock: 'https://flood-api-mock.onrender.com',
+  live: import.meta.env.VITE_LIVE_URL,
+  mock: import.meta.env.VITE_MOCK_URL
 };
 
 export function DataSourceProvider({ children }) {
