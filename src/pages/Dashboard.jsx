@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
-import { APIProvider, Map, Polygon } from '@vis.gl/react-google-maps';
-import {
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Tooltip as LeafletTooltip } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
 import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useDataSource } from '../hooks/useDataSource';
-import { useModelPrediction, alertLevelToKey } from '../lib/modelApi';
+import { useModelPrediction, useFloodForecast14Day } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
 
@@ -137,25 +138,37 @@ function MetricCard({ icon, label, value, sub, color, noData, unit, badge }) {
 
 function FloodMap({ currentAlert }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
+
+  // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
+  const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
+
   return (
-    <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_KEY}>
-      <Map
-        defaultCenter={{ lat: 13.6140, lng: 123.1915 }}
-        defaultZoom={15}
-        mapId="agos-flood-map"
-        style={{ width: '100%', height: 420, borderRadius: 'var(--radius-sm)' }}
-        gestureHandling="cooperative"
+    <MapContainer
+      center={[13.6140, 123.1915]}
+      zoom={15}
+      scrollWheelZoom={true}
+      style={{ width: '100%', height: 420, borderRadius: 'var(--radius-sm)' }}
+    >
+      <TileLayer
+        // OpenStreetMap standard tiles — free, no key required
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      />
+      <LeafletPolygon
+        positions={boundaryPositions}
+        pathOptions={{
+          color: color,
+          weight: 2,
+          opacity: 0.95,
+          fillColor: color,
+          fillOpacity: 0.28,
+        }}
       >
-        <Polygon
-          paths={TRIANGULO_BOUNDARY}
-          strokeColor={color}
-          strokeOpacity={0.95}
-          strokeWeight={2}
-          fillColor={color}
-          fillOpacity={0.28}
-        />
-      </Map>
-    </APIProvider>
+        <LeafletTooltip sticky>
+          Barangay Triangulo — {currentAlert}
+        </LeafletTooltip>
+      </LeafletPolygon>
+    </MapContainer>
   );
 }
 
@@ -648,177 +661,86 @@ function FloodForecastChart() {
   );
 }
 
-function RiverDischargePanel() {
-  const [dischargeData, setDischargeData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+function FloodForecast14Day() {
+  const { forecast14, meta14, loading14, error14 } = useFloodForecast14Day();
 
-  useEffect(() => {
-    fetch(
-      'https://flood-api.open-meteo.com/v1/flood' +
-      '?latitude=13.6171&longitude=123.1806' +
-      '&daily=river_discharge' +
-      '&timezone=Asia%2FSingapore' +
-      '&forecast_days=10'
-    )
-      .then(res => {
-        if (!res.ok) throw new Error('Failed');
-        return res.json();
-      })
-      .then(data => {
-        const times = data.daily?.time ?? [];
-        const values = data.daily?.river_discharge ?? [];
-        const parsed = times.map((t, i) => ({
-          label: new Date(t).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
-          shortLabel: new Date(t).toLocaleDateString('en-PH', { weekday: 'short' }),
-          discharge: values[i] !== null ? parseFloat(values[i].toFixed(1)) : null,
-          isToday: new Date().toDateString() === new Date(t).toDateString(),
-        }));
-        setDischargeData(parsed);
-        setError(false);
-      })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  }, []);
+  const bandColor = (band) =>
+    band === 'high' ? '#38bdf8' : band === 'moderate' ? '#a78bfa' : '#64748b';
 
-  const maxDischarge = Math.max(...dischargeData.map(d => d.discharge ?? 0), 1);
-  const todayData = dischargeData.find(d => d.isToday);
+  const riskColor = (pct) =>
+    pct >= 75 ? '#ef4444' : pct >= 50 ? '#f97316' : pct >= 25 ? '#eab308' : '#22c55e';
 
   return (
-    <div className="card" style={{ marginBottom: 18 }}>
-
-      {/* Header */}
+    <div className="card">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <SectionLabel>🌊 Naga River Discharge Forecast</SectionLabel>
+          <SectionLabel>📅 14-Day Flood Forecast</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
-            Open-Meteo Flood API · GloFAS Reanalysis · Naga River (13.617°N, 123.181°E) · 10-Day Outlook
+            {meta14?.engine ?? 'GRU 14-Day Multi-Horizon Model'} · single forward pass
           </div>
         </div>
-
-        {/* Today's value */}
-        {todayData && !loading && (
-          <div style={{
-            background: 'var(--blue-mid)',
-            border: '1px solid var(--blue-border)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '8px 14px',
-            textAlign: 'right',
-          }}>
-            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-              Today's Estimate
-            </div>
-            <div style={{
-              fontFamily: 'var(--font-display)', fontSize: '1.4rem',
-              fontWeight: 800, color: 'var(--accent)', lineHeight: 1,
-            }}>
-              {todayData.discharge ?? '—'}
-              <span style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-muted)', marginLeft: 4 }}>m³/s</span>
-            </div>
-            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2 }}>
-              GloFAS modeled estimate
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Disclaimer banner */}
-      <div style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        background: 'rgba(251,191,36,0.05)',
-        border: '1px solid rgba(251,191,36,0.2)',
-        borderLeft: '3px solid #fbbf24',
-        borderRadius: 'var(--radius-sm)',
-        padding: '10px 14px',
-        marginBottom: 16,
-        fontSize: '0.72rem',
-        color: 'var(--text-secondary)',
-        lineHeight: 1.5,
-      }}>
-        <span style={{ flexShrink: 0, marginTop: 1 }}>⚠️</span>
-        <span>
-          <strong style={{ color: '#fbbf24' }}>Modeled Estimate Only.</strong>{' '}
-          Values are derived from the GloFAS (Global Flood Awareness System) reanalysis model via Open-Meteo.
-          Official Alert, Alarm, and Critical discharge thresholds for the Naga River are defined by{' '}
-          <strong>PAGASA Region V</strong> and the <strong>Naga City LDRRMO</strong> and are not reflected here.
-          This data is intended for situational awareness and research purposes only.
-        </span>
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-          Loading river discharge data...
+      {loading14 ? (
+        <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+          Loading 14-day forecast...
         </div>
-      ) : error ? (
+      ) : error14 || !forecast14.length ? (
         <div style={{
-          padding: 16, background: 'var(--blue-mid)',
-          borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue-border)',
-          color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center',
+          padding: 16, background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--blue-border)', color: 'var(--text-muted)',
+          fontSize: '0.82rem', textAlign: 'center',
         }}>
-          ⚠️ River discharge feed unavailable — Open-Meteo Flood API unreachable
+          ⚠️ 14-day forecast unavailable — model backend offline
         </div>
       ) : (
         <>
-          {/* Bar chart */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${dischargeData.length}, 1fr)`,
-            gap: 6,
-            marginBottom: 12,
-          }}>
-            {dischargeData.map((d, i) => {
-              const heightPct = d.discharge !== null
-                ? Math.max(8, (d.discharge / maxDischarge) * 100)
-                : 8;
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6 }}>
+            {forecast14.map((d) => {
+              const pct = Math.round(d.flood_probability * 100);
+              const dateObj = new Date(d.date);
               return (
-                <div key={i} style={{ textAlign: 'center' }}>
+                <div key={d.date} style={{
+                  minWidth: 62, flexShrink: 0, textAlign: 'center',
+                  background: 'var(--blue-mid)',
+                  border: `1px solid ${bandColor(d.confidence_band)}40`,
+                  borderTop: `2px solid ${bandColor(d.confidence_band)}`,
+                  borderRadius: 'var(--radius-sm)', padding: '8px 6px',
+                  opacity: d.confidence_band === 'outlook-only' ? 0.65 : 1,
+                }}>
+                  <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 4 }}>
+                    {dateObj.toLocaleDateString('en-PH', { weekday: 'short' })}
+                  </div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                    {dateObj.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                  </div>
                   <div style={{
-                    fontSize: '0.58rem',
-                    color: d.isToday ? 'var(--accent)' : 'var(--text-muted)',
-                    fontWeight: 700, marginBottom: 4, letterSpacing: '0.04em',
+                    fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 800,
+                    color: riskColor(pct), lineHeight: 1, marginBottom: 3,
                   }}>
-                    {d.isToday ? 'TODAY' : d.shortLabel}
+                    {pct}%
                   </div>
-
-                  {/* Bar */}
-                  <div style={{ height: 80, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: 4 }}>
-                    <div style={{
-                      width: '70%',
-                      height: `${heightPct}%`,
-                      background: d.isToday ? 'var(--accent)' : 'rgba(56,189,248,0.4)',
-                      borderRadius: '3px 3px 0 0',
-                      boxShadow: d.isToday ? '0 0 8px rgba(56,189,248,0.5)' : 'none',
-                      transition: 'height 0.4s ease',
-                    }} />
-                  </div>
-
                   <div style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '0.7rem', fontWeight: 700,
-                    color: d.isToday ? 'var(--accent)' : 'var(--text-secondary)',
-                    lineHeight: 1,
+                    fontSize: '0.52rem', fontWeight: 700, letterSpacing: '0.03em',
+                    color: bandColor(d.confidence_band), textTransform: 'uppercase',
                   }}>
-                    {d.discharge ?? '—'}
+                    {d.confidence_band === 'high' ? 'High conf.'
+                      : d.confidence_band === 'moderate' ? 'Moderate'
+                      : 'Outlook'}
                   </div>
-                  <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginTop: 1 }}>m³/s</div>
                 </div>
               );
             })}
           </div>
+
+          <div style={{
+            marginTop: 12, paddingTop: 8, borderTop: '1px solid var(--blue-border)',
+            fontSize: '0.62rem', color: 'var(--text-muted)', lineHeight: 1.5,
+          }}>
+            {meta14?.note ?? 'Confidence decreases further into the forecast horizon.'}
+          </div>
         </>
       )}
-
-      {/* Footer */}
-      <div style={{
-        marginTop: 8, paddingTop: 8,
-        borderTop: '1px solid var(--blue-border)',
-        fontSize: '0.62rem', color: 'var(--text-muted)',
-        display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4,
-      }}>
-        <span>Source: Open-Meteo Flood API · GloFAS reanalysis · Naga River basin</span>
-        <span>No physical sensor · For situational awareness only</span>
-      </div>
     </div>
   );
 }
@@ -1097,7 +1019,7 @@ export default function Dashboard() {
             label="Rainfall Intensity"
             value={prediction ? `${rainfallMm.toFixed(1)}` : '—'}
             unit="mm/hr"
-            sub={prediction ? 'OpenMeteo · Live feed' : 'PAGASA Station · Naga City'}
+            sub={prediction ? 'Model input · via backend' : 'PAGASA Station · Naga City'}
             color="var(--accent)"
             badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
           />
@@ -1130,7 +1052,7 @@ export default function Dashboard() {
           label="Rainfall Intensity"
           value={prediction ? `${rainfallMm.toFixed(1)}` : '—'}
           unit="mm/hr"
-          sub={prediction ? 'OpenMeteo · Live feed' : 'PAGASA Station · Naga City'}
+          sub={prediction ? 'Model input · via backend' : 'PAGASA Station · Naga City'}
           color="var(--accent)"
           badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
         />
@@ -1212,36 +1134,18 @@ export default function Dashboard() {
       {/* ── 5. LSTM Flood Probability Chart ───────────────────── */}
       <FloodForecastChart />
 
-      {/* ── 6. Forecast + Radar Row ────────────────────────────── */}
+      {/* ── 6. Forecast + 14-Day Model Forecast Row ───────────── */}
       <div className="grid-2" style={{ marginBottom: 18 }}>
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <SectionLabel>⛅ 72-Hour Rainfall Forecast</SectionLabel>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>OpenMeteo · Naga City</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>via backend · Naga City</div>
           </div>
           <ForecastStrip forecast={forecast} loading={forecastLoading} />
         </div>
 
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--blue-border)' }}>
-            <div className="card-title" style={{ marginBottom: 2 }}>🛰 Live Weather Radar</div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-              Windy.com · ECMWF Model · Surface Rain Overlay
-            </div>
-          </div>
-          <iframe
-            width="100%"
-            height="280"
-            src="https://www.windy.com/embed2.html?lat=13.621&lon=123.194&zoom=8&level=surface&overlay=rain&product=ecmwf&message=true&marker=true&location=coordinates"
-            frameBorder="0"
-            title="Windy Live Forecast"
-            style={{ display: 'block' }}
-          />
-        </div>
+        <FloodForecast14Day />
       </div>
-      
-      {/* ── River Discharge ───────────────────────────────── */}
-      {!userIsResident && <RiverDischargePanel />}
 
       {/* ── 7. LSTM Prediction Input Summary ─────────────────── */}
       {!userIsResident && prediction && (
