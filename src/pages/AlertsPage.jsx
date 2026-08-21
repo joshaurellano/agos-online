@@ -4,7 +4,7 @@ import { NOTIFICATION_LOG } from '../data/mockData';
 import { isAdmin, isResident } from '../lib/roles';
 import { supabase } from '../lib/supabaseClient';
 import Swal from 'sweetalert2';
-import { useModelPrediction, alertLevelToKey } from '../lib/modelApi'; // ← MODEL
+import { useModelPrediction, useFloodForecast14Day  } from '../lib/modelApi'; // ← MODEL
 
 const TYPE_STYLES = {
   CRITICAL: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  icon: '🔴' },

@@ -4,13 +4,11 @@ import { useDataSource } from '../hooks/useDataSource';
 
 const POLL_INTERVAL_MS = 30_000;
 
-export function alertLevelToKey(alert_level) {
-  switch (alert_level) {
-    case 3: return 'CRITICAL';
-    case 2: return 'WARNING';
-    case 1: return 'ADVISORY';
-    default: return 'NORMAL';
-  }
+export function probabilityToAlertKey(probability) {
+  if (probability >= 0.75) return 'CRITICAL';
+  if (probability >= 0.50) return 'WARNING';
+  if (probability >= 0.25) return 'ADVISORY';
+  return 'NORMAL';
 }
 
 export function alertLevelFromKey(key) {
@@ -92,6 +90,7 @@ async function saveSnapshot(data) {
 
 let lastDispatchedAlertKey = null;
 
+// ── Day-1 prediction (KPI cards, alerts, snapshot logging) ──────────────
 export function useModelPrediction() {
   const { apiBaseUrl } = useDataSource();
   const [prediction, setPrediction] = useState(null);
@@ -103,10 +102,18 @@ export function useModelPrediction() {
       const res = await fetch(`${apiBaseUrl}/api/predict-flood`);
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
+      if (data.status !== 'success') throw new Error(data.message || 'Prediction unavailable');
+
+      const probability = data.probability ?? 0;
+      // Alert level is derived from probability, not trusted from a raw
+      // backend string — the model is binary (flood/no-flood), so the
+      // 4-level ADVISORY/WARNING/CRITICAL UI is a threshold bucketing
+      // of the SAME single model output, keeping one source of truth.
+      const alertKey = probabilityToAlertKey(probability);
 
       const normalized = {
-        alert_level:        data.alert_level ?? 'NORMAL',
-        probability:        data.probability ?? 0,
+        alert_level:        alertKey,
+        probability,
         status:             data.status ?? null,
         lead_time_estimate: data.lead_time_estimate ?? null,
         live_metrics: {
@@ -120,17 +127,14 @@ export function useModelPrediction() {
       setPrediction(normalized);
       setError(null);
 
-      // Dispatch alert if level changed
       const currentKey = normalized.alert_level;
       if (lastDispatchedAlertKey !== null && lastDispatchedAlertKey !== currentKey) {
         dispatchAutoAlert(currentKey, normalized.lead_time_estimate).catch(err =>
           console.error('Alert dispatch failed:', err.message)
         );
       }
-      
       lastDispatchedAlertKey = currentKey;
 
-      // Save snapshot for FloodForecastChart (fire and forget)
       saveSnapshot(normalized).catch(err =>
         console.warn('Snapshot save error:', err.message)
       );
@@ -151,4 +155,40 @@ export function useModelPrediction() {
   }, [fetchLatest]);
 
   return { prediction, loading, error, refetch: fetchLatest };
+}
+
+// ── NEW: 14-day forecast (single source of truth = the model) ───────────
+export function useFloodForecast14Day() {
+  const { apiBaseUrl } = useDataSource();
+  const [forecast14, setForecast14] = useState([]);
+  const [meta14, setMeta14]         = useState(null);
+  const [loading14, setLoading14]   = useState(true);
+  const [error14, setError14]       = useState(null);
+
+  const fetchForecast14 = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/forecast-flood`);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      if (data.status !== 'success') throw new Error(data.message || 'Forecast unavailable');
+
+      setForecast14(data.forecast ?? []);
+      setMeta14(data.meta ?? null);
+      setError14(null);
+    } catch (err) {
+      console.error('14-day forecast fetch error:', err.message);
+      setError14(err.message || 'Could not load 14-day forecast');
+    } finally {
+      setLoading14(false);
+    }
+  }, [apiBaseUrl]);
+
+  useEffect(() => {
+    setLoading14(true);
+    fetchForecast14();
+    const id = setInterval(fetchForecast14, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [fetchForecast14]);
+
+  return { forecast14, meta14, loading14, error14, refetch14: fetchForecast14 };
 }
