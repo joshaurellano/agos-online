@@ -286,7 +286,7 @@ function SystemStatusPanel({ modelError, modelLoading, prediction, forecastLoadi
 
   const indicators = [
     {
-      label: 'LSTM Prediction Engine',
+      label: 'GRU Prediction Engine',
       status: modelLoading ? 'checking' : modelOnline ? 'online' : 'offline',
       detail: modelOnline
         ? `Last response: ${new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`
@@ -358,7 +358,7 @@ function PredictionInputTable({ prediction }) {
     { label: 'Rainfall',          value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`, icon: '🌧', note: 'Primary flood driver' },
     { label: 'Humidity',          value: `${m.humidity ?? '—'}%`,                      icon: '💨', note: 'Atmospheric moisture' },
     { label: 'Wind Signal',       value: `Signal #${m.wind_signal ?? '—'}`,     icon: '🌀', note: 'PAGASA classification' },
-    { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '🤖', note: 'LSTM output confidence' },
+    { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '🤖', note: 'GRU output confidence' },
     { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '🚦', note: 'Model classification' },
     { label: 'Lead Time Est.',    value: prediction.lead_time_estimate ?? '1–3 hrs',  icon: '⏱', note: 'Time before flood' },
   ];
@@ -393,7 +393,7 @@ function PredictionInputTable({ prediction }) {
         fontSize: '0.63rem', color: 'var(--text-muted)',
         display: 'flex', justifyContent: 'space-between',
       }}>
-        <span>Model: LSTM · Cloud Run (asia-southeast1)</span>
+        <span>Model: GRU · Cloud Run (asia-southeast1)</span>
         <span>Poll interval: 30s</span>
       </div>
     </div>
@@ -499,9 +499,9 @@ function FloodForecastChart() {
     <div className="card" style={{ marginBottom: 18 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <SectionLabel>🤖 LSTM Flood Probability Trend</SectionLabel>
+          <SectionLabel>🤖 GRU Flood Probability Trend</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
-            Live LSTM predictions · Supabase flood_snapshots
+            Live GRU predictions · Supabase flood_snapshots
             {lastFetched && (
               <span style={{ marginLeft: 8, color: '#4a6080' }}>
                 · synced {lastFetched.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
@@ -539,7 +539,7 @@ function FloodForecastChart() {
         }}>
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: 8, opacity: 0.4 }}>⚠️</div>
-            No LSTM snapshots yet — model must run at least once
+            No snapshots yet — model must run at least once
           </div>
         </div>
       ) : (
@@ -654,7 +654,7 @@ function FloodForecastChart() {
       )}
 
       <div style={{ marginTop: 10, fontSize: '0.62rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-        <span>Source: flood_snapshots · LSTM model output · Poll: 30s · Realtime subscription active</span>
+        <span>Source: flood_snapshots · GRU model output · Poll: 30s · Realtime subscription active</span>
         <span>No physical sensor · For situational awareness only</span>
       </div>
     </div>
@@ -1045,7 +1045,7 @@ export default function Dashboard() {
             : leadTimeColor
           }
           noData={!prediction}
-          badge={prediction ? 'LSTM · 7-hr window' : null}
+          badge={prediction ? 'GRU · 7-hr window' : null}
         />
         <MetricCard
           icon="🌧"
@@ -1061,7 +1061,7 @@ export default function Dashboard() {
           label="Humidity"
           value={humidityVal !== null ? `${humidityVal}` : '—'}
           unit="%"
-          sub={prediction ? 'Atmospheric moisture · LSTM input' : 'LSTM Model · Cloud Run'}
+          sub={prediction ? 'Atmospheric moisture · GRU input' : 'GRU Model · Cloud Run'}
           color={
             !humidityVal ? 'var(--text-muted)'
             : humidityVal >= 90 ? '#ef4444'
@@ -1080,13 +1080,13 @@ export default function Dashboard() {
           icon="🤖"
           label="Flood Probability"
           value={modelLoading ? '...' : probabilityPct}
-          sub={prediction ? `Wind Signal #${prediction.live_metrics.wind_signal} · LSTM v1` : 'LSTM Model · Cloud Run'}
+          sub={prediction ? `Wind Signal #${prediction.live_metrics.wind_signal} · GRU` : 'GRU Model · Cloud Run'}
           color={!prediction ? 'var(--text-muted)'
             : prediction.probability >= 0.75 ? '#ef4444'
             : prediction.probability >= 0.50 ? '#f97316'
             : prediction.probability >= 0.25 ? '#eab308'
             : '#22c55e'}
-          badge={prediction ? 'LSTM Prediction' : null}
+          badge={prediction ? 'GRU Prediction' : null}
         />
       </div>
       )}
@@ -1131,7 +1131,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── 5. LSTM Flood Probability Chart ───────────────────── */}
+      {/* ── 5. GRU Flood Probability Chart ───────────────────── */}
       <FloodForecastChart />
 
       {/* ── 6. Forecast + 14-Day Model Forecast Row ───────────── */}
@@ -1147,7 +1147,7 @@ export default function Dashboard() {
         <FloodForecast14Day />
       </div>
 
-      {/* ── 7. LSTM Prediction Input Summary ─────────────────── */}
+      {/* ── 7. GRU Prediction Input Summary ─────────────────── */}
       {!userIsResident && prediction && (
         <div style={{ marginBottom: 18 }}>
           <PredictionInputTable prediction={prediction} />
