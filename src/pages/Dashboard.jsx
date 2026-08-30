@@ -360,7 +360,6 @@ function PredictionInputTable({ prediction }) {
     { label: 'Wind Signal',       value: `Signal #${m.wind_signal ?? '—'}`,     icon: '🌀', note: 'PAGASA classification' },
     { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '🤖', note: 'GRU output confidence' },
     { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '🚦', note: 'Model classification' },
-    { label: 'Lead Time Est.',    value: prediction.lead_time_estimate ?? '1–3 hrs',  icon: '⏱', note: 'Time before flood' },
   ];
   return (
     <div className="card">
@@ -499,12 +498,11 @@ function FloodForecastChart() {
     <div className="card" style={{ marginBottom: 18 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <SectionLabel>🤖 GRU Flood Probability Trend</SectionLabel>
+          <SectionLabel>🤖Flood Probability Trend</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
-            Live GRU predictions · Supabase flood_snapshots
             {lastFetched && (
               <span style={{ marginLeft: 8, color: '#4a6080' }}>
-                · synced {lastFetched.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+                Synced {lastFetched.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
           </div>
@@ -661,8 +659,104 @@ function FloodForecastChart() {
   );
 }
 
+function DriverModal({ day, onClose }) {
+  if (!day) return null;
+
+  const dateObj = new Date(day.date);
+  const pct = Math.round((day.flood_probability ?? 0) * 100);
+  const riskColor = pct >= 75 ? '#ef4444' : pct >= 50 ? '#f97316' : pct >= 25 ? '#eab308' : '#22c55e';
+
+  const drivers = [
+    { label: 'Rainfall',          value: day.rainfall_mm != null ? `${day.rainfall_mm} mm` : '—',            icon: '🌧' },
+    { label: 'Wind Speed (max)',  value: day.wind_speed_max_kph != null ? `${day.wind_speed_max_kph} kph` : '—', icon: '🌀' },
+    { label: 'Soil Moisture',     value: day.soil_moisture_vwc != null ? `${(day.soil_moisture_vwc * 100).toFixed(1)}% VWC` : '—', icon: '🌱' },
+    { label: 'Sea-Level Pressure',value: day.pressure_msl_hpa != null ? `${day.pressure_msl_hpa} hPa` : '—', icon: '📉' },
+    { label: 'Surface Pressure',  value: day.surface_pressure_hpa != null ? `${day.surface_pressure_hpa} hPa` : '—', icon: '📊' },
+    { label: 'Wind Gusts',        value: day.wind_gusts_kph != null ? `${day.wind_gusts_kph} kph` : '—',      icon: '💨' },
+  ];
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1000, padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="card"
+        style={{ maxWidth: 420, width: '100%', maxHeight: '85vh', overflowY: 'auto' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Forecast Drivers
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
+              {dateObj.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent', border: 'none', color: 'var(--text-muted)',
+              fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer', padding: 0,
+            }}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', marginBottom: 16,
+          background: `${riskColor}12`, border: `1px solid ${riskColor}40`, borderRadius: 'var(--radius-sm)',
+        }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 900, color: riskColor, lineHeight: 1 }}>
+            {pct}%
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>Flood Probability</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2, textTransform: 'capitalize' }}>
+              {day.confidence_band === 'outlook-only' ? 'Outlook only' : `${day.confidence_band} confidence`}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {drivers.map(({ label, value, icon }, i) => (
+            <div key={label} style={{
+              display: 'grid', gridTemplateColumns: '24px 1fr auto',
+              alignItems: 'center', gap: 10, padding: '9px 10px',
+              background: i % 2 === 0 ? 'var(--blue-mid)' : 'transparent',
+              borderRadius: i === 0 ? '6px 6px 0 0' : i === drivers.length - 1 ? '0 0 6px 6px' : 0,
+            }}>
+              <span style={{ fontSize: '0.9rem', textAlign: 'center' }}>{icon}</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>{label}</span>
+              <span style={{
+                fontFamily: 'var(--font-display)', fontSize: '0.8rem', fontWeight: 700,
+                color: 'var(--accent)', textAlign: 'right', whiteSpace: 'nowrap',
+              }}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 12, fontSize: '0.62rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          These are the Open-Meteo-sourced inputs the model used (or had available) for this day's forecast. Reliability decreases further into the horizon.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FloodForecast14Day() {
   const { forecast14, meta14, loading14, error14 } = useFloodForecast14Day();
+  const [rangeDays, setRangeDays] = useState(7);
+  const [selectedDay, setSelectedDay] = useState(null);
 
   const bandColor = (band) =>
     band === 'high' ? '#38bdf8' : band === 'moderate' ? '#a78bfa' : '#64748b';
@@ -670,44 +764,66 @@ function FloodForecast14Day() {
   const riskColor = (pct) =>
     pct >= 75 ? '#ef4444' : pct >= 50 ? '#f97316' : pct >= 25 ? '#eab308' : '#22c55e';
 
+  const visibleForecast = (forecast14 || []).slice(0, rangeDays);
+
   return (
     <div className="card">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <SectionLabel>📅 14-Day Flood Forecast</SectionLabel>
+          <SectionLabel>📅 Flood Forecast</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
-            {meta14?.engine ?? 'GRU 14-Day Multi-Horizon Model'} · single forward pass
+            {meta14?.engine ?? 'GRU 14-Day Multi-Horizon Model'} · single forward pass · tap a day for drivers
           </div>
+        </div>
+        <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+          {[3, 7, 14].map(n => (
+            <button key={n} onClick={() => setRangeDays(n)} style={{
+              padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+              letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+              background: rangeDays === n ? 'var(--accent)' : 'transparent',
+              color: rangeDays === n ? '#fff' : 'var(--text-muted)',
+              transition: 'all 0.2s',
+            }}>
+              {n}-Day
+            </button>
+          ))}
         </div>
       </div>
 
       {loading14 ? (
         <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-          Loading 14-day forecast...
+          Loading forecast...
         </div>
-      ) : error14 || !forecast14.length ? (
+      ) : error14 || !visibleForecast.length ? (
         <div style={{
           padding: 16, background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--blue-border)', color: 'var(--text-muted)',
           fontSize: '0.82rem', textAlign: 'center',
         }}>
-          ⚠️ 14-day forecast unavailable — model backend offline
+          ⚠️ Forecast unavailable — model backend offline
         </div>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6 }}>
-            {forecast14.map((d) => {
+            {visibleForecast.map((d) => {
               const pct = Math.round(d.flood_probability * 100);
               const dateObj = new Date(d.date);
               return (
-                <div key={d.date} style={{
-                  minWidth: 62, flexShrink: 0, textAlign: 'center',
-                  background: 'var(--blue-mid)',
-                  border: `1px solid ${bandColor(d.confidence_band)}40`,
-                  borderTop: `2px solid ${bandColor(d.confidence_band)}`,
-                  borderRadius: 'var(--radius-sm)', padding: '8px 6px',
-                  opacity: d.confidence_band === 'outlook-only' ? 0.65 : 1,
-                }}>
+                <button
+                  key={d.date}
+                  onClick={() => setSelectedDay(d)}
+                  style={{
+                    minWidth: 62, flexShrink: 0, textAlign: 'center',
+                    background: 'var(--blue-mid)',
+                    border: `1px solid ${bandColor(d.confidence_band)}40`,
+                    borderTop: `2px solid ${bandColor(d.confidence_band)}`,
+                    borderRadius: 'var(--radius-sm)', padding: '8px 6px',
+                    opacity: d.confidence_band === 'outlook-only' ? 0.65 : 1,
+                    cursor: 'pointer', font: 'inherit', transition: 'transform 0.15s ease, opacity 0.15s ease',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
                   <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 4 }}>
                     {dateObj.toLocaleDateString('en-PH', { weekday: 'short' })}
                   </div>
@@ -728,7 +844,7 @@ function FloodForecast14Day() {
                       : d.confidence_band === 'moderate' ? 'Moderate'
                       : 'Outlook'}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -741,6 +857,8 @@ function FloodForecast14Day() {
           </div>
         </>
       )}
+
+      <DriverModal day={selectedDay} onClose={() => setSelectedDay(null)} />
     </div>
   );
 }
@@ -964,43 +1082,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div style={{
-          background: 'rgba(0,0,0,0.2)', border: `1px solid ${alertColor}25`,
-          borderRadius: 'var(--radius-sm)', padding: '12px 16px',
-          minWidth: 220, textAlign: 'right',
-        }}>
-          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>
-            Model Output
-          </div>
-          <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.5 }}>
-            {prediction ? prediction.status : '⚠️ Flooding possible in next 6 hrs'}
-          </div>
-          {prediction && (
-            <div style={{ marginTop: 6, fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              Est. lead time:{' '}
-              <strong style={{ color: leadTimeColor }}>{leadTime}</strong>
-              <span style={{ marginLeft: 6, opacity: 0.6 }}>· 7-hr lookback window</span>
-            </div>
-          )}
-          {recentTrend && (
-            <div style={{ marginTop: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-              Trend:{' '}
-              <strong style={{
-                color: recentTrend === 'rising' ? '#ef4444'
-                     : recentTrend === 'falling' ? '#22c55e'
-                     : 'var(--text-secondary)'
-              }}>
-                {recentTrend === 'rising'  ? '⬆ Rising'
-               : recentTrend === 'falling' ? '⬇ Falling'
-               : '➡ Stable'}
-              </strong>
-              <span style={{ marginLeft: 4, opacity: 0.5 }}>· last 6 readings</span>
-            </div>
-          )}
-          <div style={{ marginTop: 4, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-            Updated: {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </div>
       </div>
 
       {/* ── 3. KPI Metrics Row ─────────────────────────────────── */}
@@ -1019,40 +1100,18 @@ export default function Dashboard() {
             label="Rainfall Intensity"
             value={prediction ? `${rainfallMm.toFixed(1)}` : '—'}
             unit="mm/hr"
-            sub={prediction ? 'Model input · via backend' : 'PAGASA Station · Naga City'}
             color="var(--accent)"
             badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
           />
         </div>
       ) : (
-      <div className="grid-4" style={{ marginBottom: 18 }}>
-        <MetricCard
-          icon={recentTrend === 'rising' ? '📈' : recentTrend === 'falling' ? '📉' : '⏱'}
-          label="Lead Time Estimate"
-          value={leadTime ?? '—'}
-          sub={
-            !prediction ? 'Model offline — no data'
-            : recentTrend === 'rising'  ? '⬆ Risk trending upward'
-            : recentTrend === 'falling' ? '⬇ Risk trending downward'
-            : recentTrend === 'stable'  ? '➡ Risk stable'
-            : prediction.probability >= 0.75 ? 'High risk · Immediate monitoring'
-            : prediction.probability >= 0.50 ? 'Elevated risk · Deteriorating'
-            : 'Low risk · Within normal range'
-          }
-          color={
-            recentTrend === 'rising'  ? '#ef4444'
-            : recentTrend === 'falling' ? '#22c55e'
-            : leadTimeColor
-          }
-          noData={!prediction}
-          badge={prediction ? 'GRU · 7-hr window' : null}
-        />
+      <div className="grid-3" style={{ marginBottom: 18 }}>
+       
         <MetricCard
           icon="🌧"
           label="Rainfall Intensity"
           value={prediction ? `${rainfallMm.toFixed(1)}` : '—'}
           unit="mm/hr"
-          sub={prediction ? 'Model input · via backend' : 'PAGASA Station · Naga City'}
           color="var(--accent)"
           badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
         />
@@ -1130,42 +1189,26 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      
+      {/* ── 5. GRU Flood Forecast Chart ───────────────────── */}
+      <div style={{ marginBottom: 18 }}>
+        <FloodForecast14Day />
+      </div>
+      
 
-      {/* ── 5. GRU Flood Probability Chart ───────────────────── */}
+      {/* ── 6. GRU Flood Probability Chart ───────────────────── */}
       <FloodForecastChart />
 
-      {/* ── 6. Forecast + 14-Day Model Forecast Row ───────────── */}
-      <div className="grid-2" style={{ marginBottom: 18 }}>
+      {/* ── 7. Forecast ───────────── */}
+      <div style={{ marginBottom: 18 }}>
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <SectionLabel>⛅ 72-Hour Rainfall Forecast</SectionLabel>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>via backend · Naga City</div>
           </div>
           <ForecastStrip forecast={forecast} loading={forecastLoading} />
         </div>
 
-        <FloodForecast14Day />
       </div>
-
-      {/* ── 7. GRU Prediction Input Summary ─────────────────── */}
-      {!userIsResident && prediction && (
-        <div style={{ marginBottom: 18 }}>
-          <PredictionInputTable prediction={prediction} />
-        </div>
-      )}
-
-      {/* ── 8. System Status ──────────────────────────────────── */}
-      {!userIsResident && (
-      <div style={{ marginBottom: 18 }}>
-        <SystemStatusPanel
-          modelError={modelError}
-          modelLoading={modelLoading}
-          prediction={prediction}
-          forecastLoading={forecastLoading}
-          forecast={forecast}
-        />
-      </div>
-      )}
 
       {/* ── 9. Evacuation CTA ─────────────────────────────────── */}
       {!userIsResident  && (
