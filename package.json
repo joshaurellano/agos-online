@@ -17,6 +17,7 @@
     "date-fns": "^3.3.0",
     "dotenv": "^17.4.2",
     "leaflet": "^1.9.4",
+    "maplibre-gl": "^6.6.0",
     "react": "^19.0.0-rc.1",
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.0.0-rc.1",

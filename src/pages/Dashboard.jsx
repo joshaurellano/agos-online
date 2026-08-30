@@ -1,18 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
-import { MapContainer, TileLayer, Polygon as LeafletPolygon, Tooltip as LeafletTooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';import {
+import 'leaflet/dist/leaflet.css';
+import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
+import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useDataSource } from '../hooks/useDataSource';
 import { useModelPrediction, useFloodForecast14Day } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
+
+import FloodMap3D from '../components/FloodMap3D';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -136,11 +140,21 @@ function MetricCard({ icon, label, value, sub, color, noData, unit, badge }) {
   );
 }
 
+// Road class -> line weight. Trunk/primary roads read as thicker "arteries",
+// service/residential roads as thin capillaries -- same visual language as
+// the water-level analogy without needing a fill.
+const ROAD_WEIGHT = {
+  trunk: 5, trunk_link: 4, primary: 5, secondary: 4,
+  tertiary: 3, tertiary_link: 3, busway: 3,
+  unclassified: 2, residential: 2, service: 1,
+};
+
 function FloodMap({ currentAlert }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
-
-  // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
+  // Fixed, always-blue boundary indicator — kept separate from `color` so
+  // it never blends with (or gets mistaken for) the alert-colored streets.
+  const BOUNDARY_COLOR = '#38bdf8';
 
   return (
     <MapContainer
@@ -150,18 +164,53 @@ function FloodMap({ currentAlert }) {
       style={{ width: '100%', height: 420, borderRadius: 'var(--radius-sm)' }}
     >
       <TileLayer
-        // OpenStreetMap standard tiles — free, no key required
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      />
+
+      {trianguloRoads.map(road => (
+        <LeafletPolyline
+          key={road.id}
+          positions={road.positions}
+          pathOptions={{
+            color: color,
+            weight: ROAD_WEIGHT[road.highway] ?? 2,
+            opacity: 0.85,
+            lineCap: 'round',
+          }}
+        >
+          {road.name && (
+            <LeafletTooltip sticky>
+              {road.name} — {currentAlert}
+            </LeafletTooltip>
+          )}
+        </LeafletPolyline>
+      ))}
+
+      {/* Boundary drawn LAST so it renders on top of every road, even where
+          a road segment runs slightly outside the boundary polygon. A soft
+          wide "halo" underneath + a crisp line on top makes it pop against
+          the colored streets instead of blending in. */}
+      <LeafletPolygon
+        positions={boundaryPositions}
+        pathOptions={{
+          color: BOUNDARY_COLOR,
+          weight: 8,
+          opacity: 0.25,
+          fill: false,
+          lineJoin: 'round',
+        }}
+        interactive={false}
       />
       <LeafletPolygon
         positions={boundaryPositions}
         pathOptions={{
-          color: color,
-          weight: 2,
-          opacity: 0.95,
-          fillColor: color,
-          fillOpacity: 0.28,
+          color: BOUNDARY_COLOR,
+          weight: 3,
+          opacity: 1,
+          fill: false,
+          dashArray: '8 6',
+          lineJoin: 'round',
         }}
       >
         <LeafletTooltip sticky>
@@ -873,7 +922,8 @@ export default function Dashboard() {
   const [forecastLoading, setForecastLoading] = useState(true);
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
-
+  const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
+  
   useEffect(() => {
     setForecastLoading(true);
     fetch(`${apiBaseUrl}/api/forecast`)
@@ -1176,7 +1226,27 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-          <FloodMap currentAlert={currentAlert} />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 18px 0' }}>
+            <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+              {['2d', '3d'].map(v => (
+                <button key={v} onClick={() => setMapView(v)} style={{
+                  padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+                  letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+                  background: mapView === v ? 'var(--accent)' : 'transparent',
+                  color: mapView === v ? '#fff' : 'var(--text-muted)',
+                  transition: 'all 0.2s',
+                }}>
+                  {v === '2d' ? 'Street View' : '3D View'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {mapView === '2d' ? (
+            <FloodMap currentAlert={currentAlert} />
+          ) : (
+            <FloodMap3D currentAlert={currentAlert} boundary={TRIANGULO_BOUNDARY} alertColors={ALERT_COLORS} />
+          )}
+          
           <div style={{ padding: '8px 18px', fontSize: '0.65rem', color: 'var(--text-muted)', borderTop: '1px solid var(--blue-border)' }}>
             Approximate barangay boundary · Source: PAGASA &amp; OCD Region V
           </div>
