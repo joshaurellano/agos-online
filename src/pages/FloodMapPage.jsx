@@ -9,6 +9,7 @@ const EVACUATION_CENTERS = [
     name: 'Jesse M. Robredo Coliseum',
     type: 'Primary Evacuation Center',
     position: { lat: 13.620122, lng: 123.188095 },
+    address:'Ninoy and Cory Ave, Naga City, Camarines Sur',
     color: '#ef4444',
   },
   {
@@ -16,6 +17,7 @@ const EVACUATION_CENTERS = [
     name: 'Triangulo Elementary School',
     type: 'School Evacuation Center',
     position: { lat: 13.6165193, lng: 123.1878926 },
+    address:'CBD II, Diversion Road, Barangay Triangulo, Naga City, 4400 Camarines Sur',
     color: '#3b82f6',
   },
   {
@@ -23,6 +25,7 @@ const EVACUATION_CENTERS = [
     name: 'Jose Rizal Elementary School',
     type: 'School Evacuation Center',
     position: { lat: 13.6194395, lng: 123.1933071 },
+    address: ' J59W+Q9C, Ilang-ilang St, Barangay Triangulo, Naga City, 4400 Camarines Sur',
     color: '#3b82f6',
   },
 ];
@@ -171,16 +174,26 @@ function EvacuationCenterCard({ center }) {
       </div>
 
       <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        display: 'flex', flexDirection: 'column', gap: 8,
         background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
         borderRadius: 6, padding: '8px 12px',
       }}>
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Coordinates
-        </span>
-        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-          {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
-        </span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Coordinates
+          </span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+            {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
+          </span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>
+            Address
+          </span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
+            {center.address}
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -243,7 +256,7 @@ export default function FloodMapPage() {
               icon={createCenterIcon(center)}
             >
               <Popup>
-                <div style={{ minWidth: 180, padding: '4px 2px' }}>
+                <div style={{ minWidth: 200, padding: '4px 2px' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 4 }}>
                     🏫 {center.name}
                   </div>
@@ -251,11 +264,14 @@ export default function FloodMapPage() {
                     display: 'inline-block', fontSize: '0.65rem', fontWeight: 700,
                     color: center.color, background: `${center.color}18`,
                     border: `1px solid ${center.color}40`, borderRadius: 4,
-                    padding: '2px 6px', marginBottom: 4,
+                    padding: '2px 6px', marginBottom: 6,
                   }}>
                     {center.type}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 4 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#333', lineHeight: 1.4, marginTop: 2 }}>
+                    📍 {center.address}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 6 }}>
                     {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
                   </div>
                 </div>
