@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { APIProvider, Map, Polygon, AdvancedMarker, InfoWindow } from '@vis.gl/react-google-maps';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // ─── Evacuation Centers ─────────────────────────────────────────────────────
 const EVACUATION_CENTERS = [
@@ -77,6 +78,34 @@ const TRIANGULO_BOUNDARY = [
   { lat: 13.622423, lng: 123.189744 },
   { lat: 13.622633, lng: 123.189794 },
 ];
+
+// ─── Custom pin icon (label + colored pin), replaces the Google AdvancedMarker's
+//     custom child markup. Anchor sits at the pin's tip so it points exactly at
+//     the marker's coordinates regardless of label width. ─────────────────────
+function createCenterIcon(center) {
+  const html = `
+    <div style="width:140px; display:flex; flex-direction:column; align-items:center;">
+      <div style="
+        background:${center.color}; color:#fff; font-size:10px; font-weight:700;
+        padding:2px 7px; border-radius:4px; white-space:nowrap; margin-bottom:4px;
+        box-shadow:0 1px 4px rgba(0,0,0,0.25);
+      ">
+        ${center.name}
+      </div>
+      <svg width="24" height="32" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 8.25 12 20 12 20s12-11.75 12-20C24 5.37 18.63 0 12 0z" fill="${center.color}" />
+        <circle cx="12" cy="12" r="4" fill="white" />
+      </svg>
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: '', // clears Leaflet's default white-square marker background
+    iconSize: [140, 56],
+    iconAnchor: [70, 56],   // bottom-center of the box = pin's tip
+    popupAnchor: [0, -60],  // pop the popup up above the label
+  });
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -160,7 +189,7 @@ function EvacuationCenterCard({ center }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function FloodMapPage() {
-  const [openInfoWindowId, setOpenInfoWindowId] = useState(null);
+  const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
 
   return (
     <div className="fade-in">
@@ -184,81 +213,56 @@ export default function FloodMapPage() {
           </div>
         </div>
 
-        <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_KEY}>
-          <Map
-            defaultCenter={{ lat: 13.618, lng: 123.1905 }}
-            defaultZoom={15.5}
-            mapId="flood-map-evacuation"
-            style={{ width: '100%', height: 500, display: 'block' }}
-            gestureHandling="cooperative"
-          >
-            <Polygon
-              paths={TRIANGULO_BOUNDARY}
-              strokeColor="#38bdf8"
-              strokeOpacity={0.8}
-              strokeWeight={2}
-              fillColor="#38bdf8"
-              fillOpacity={0.08}
-            />
+        <MapContainer
+          center={[13.618, 123.1905]}
+          zoom={15.5}
+          scrollWheelZoom={true}
+          style={{ width: '100%', height: 500 }}
+        >
+          <TileLayer
+            // OpenStreetMap standard tiles — free, no API key required
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          />
 
-            {EVACUATION_CENTERS.map((center) => (
-              <AdvancedMarker
-                key={center.id}
-                position={center.position}
-                onClick={() => setOpenInfoWindowId(center.id)}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}>
-                  <div style={{
-                    background: center.color,
-                    color: '#fff',
-                    fontSize: '10px',
-                    fontWeight: 700,
-                    padding: '2px 7px',
-                    borderRadius: 4,
-                    whiteSpace: 'nowrap',
-                    marginBottom: 4,
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
-                  }}>
-                    {center.name}
+          <LeafletPolygon
+            positions={boundaryPositions}
+            pathOptions={{
+              color: '#38bdf8',
+              weight: 2,
+              opacity: 0.8,
+              fillColor: '#38bdf8',
+              fillOpacity: 0.08,
+            }}
+          />
+
+          {EVACUATION_CENTERS.map((center) => (
+            <Marker
+              key={center.id}
+              position={[center.position.lat, center.position.lng]}
+              icon={createCenterIcon(center)}
+            >
+              <Popup>
+                <div style={{ minWidth: 180, padding: '4px 2px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 4 }}>
+                    🏫 {center.name}
                   </div>
-                  <svg width="24" height="32" viewBox="0 0 24 32" fill="none">
-                    <path
-                      d="M12 0C5.37 0 0 5.37 0 12c0 8.25 12 20 12 20s12-11.75 12-20C24 5.37 18.63 0 12 0z"
-                      fill={center.color}
-                    />
-                    <circle cx="12" cy="12" r="4" fill="white" />
-                  </svg>
+                  <div style={{
+                    display: 'inline-block', fontSize: '0.65rem', fontWeight: 700,
+                    color: center.color, background: `${center.color}18`,
+                    border: `1px solid ${center.color}40`, borderRadius: 4,
+                    padding: '2px 6px', marginBottom: 4,
+                  }}>
+                    {center.type}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 4 }}>
+                    {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
+                  </div>
                 </div>
-
-                {openInfoWindowId === center.id && (
-                  <InfoWindow
-                    position={center.position}
-                    onCloseClick={() => setOpenInfoWindowId(null)}
-                  >
-                    <div style={{ minWidth: 180, padding: '4px 2px' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 4 }}>
-                        🏫 {center.name}
-                      </div>
-                      <div style={{
-                        display: 'inline-block', fontSize: '0.65rem', fontWeight: 700,
-                        color: center.color, background: `${center.color}18`,
-                        border: `1px solid ${center.color}40`, borderRadius: 4,
-                        padding: '2px 6px', marginBottom: 4,
-                      }}>
-                        {center.type}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 4 }}>
-                        {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
-                      </div>
-                    </div>
-                  </InfoWindow>
-                )}
-              </AdvancedMarker>
-            ))}
-          </Map>
-        </APIProvider>
-
-        
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
       </div>
 
       <SectionLabel>📍 Evacuation Center Details</SectionLabel>

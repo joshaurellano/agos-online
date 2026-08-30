@@ -772,7 +772,7 @@ function FloodForecast14Day() {
         <div>
           <SectionLabel>📅 Flood Forecast</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
-            {meta14?.engine ?? 'GRU 14-Day Multi-Horizon Model'} · single forward pass · tap a day for drivers
+            Tap a day for drivers
           </div>
         </div>
         <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
@@ -1120,7 +1120,7 @@ export default function Dashboard() {
           label="Humidity"
           value={humidityVal !== null ? `${humidityVal}` : '—'}
           unit="%"
-          sub={prediction ? 'Atmospheric moisture · GRU input' : 'GRU Model · Cloud Run'}
+          sub={prediction ? 'Atmospheric moisture' : 'Forecast Model'}
           color={
             !humidityVal ? 'var(--text-muted)'
             : humidityVal >= 90 ? '#ef4444'
@@ -1139,13 +1139,13 @@ export default function Dashboard() {
           icon="🤖"
           label="Flood Probability"
           value={modelLoading ? '...' : probabilityPct}
-          sub={prediction ? `Wind Signal #${prediction.live_metrics.wind_signal} · GRU` : 'GRU Model · Cloud Run'}
+          sub={prediction ? `Wind Signal #${prediction.live_metrics.wind_signal}` : 'Forecast Model'}
           color={!prediction ? 'var(--text-muted)'
             : prediction.probability >= 0.75 ? '#ef4444'
             : prediction.probability >= 0.50 ? '#f97316'
             : prediction.probability >= 0.25 ? '#eab308'
             : '#22c55e'}
-          badge={prediction ? 'GRU Prediction' : null}
+          badge={prediction ? 'Model Prediction' : null}
         />
       </div>
       )}
@@ -1190,7 +1190,7 @@ export default function Dashboard() {
         </div>
       </div>
       
-      {/* ── 5. GRU Flood Forecast Chart ───────────────────── */}
+      {/* ── 5. Flood Forecast Chart ───────────────────── */}
       <div style={{ marginBottom: 18 }}>
         <FloodForecast14Day />
       </div>
