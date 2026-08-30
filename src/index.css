@@ -97,6 +97,7 @@ body {
   margin-left: 240px;
   flex: 1;
   min-height: 100vh;
+  min-width: 0;              
   display: flex;
   flex-direction: column;
 }

@@ -6,7 +6,6 @@ import { DataSourceProvider } from './hooks/useDataSource';
 import LoginPage from './pages/LoginPage';
 import RegistrationPage from './pages/RegistrationPage';
 import Dashboard from './pages/Dashboard';
-import WaterLevelPage from './pages/WaterLevelPage';
 import RainfallPage from './pages/RainfallPage';
 import FloodMapPage from './pages/FloodMapPage';
 import HistoricalPage from './pages/HistoricalPage';
@@ -31,7 +30,6 @@ function App() {
 
               <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
                 <Route path="/dashboard"    element={<Dashboard />} />
-                <Route path="/water-level"  element={<WaterLevelPage />} />
                 <Route path="/rainfall"     element={<RainfallPage />} />
                 <Route path="/evacuation-map"    element={<FloodMapPage />} />
                 <Route path="/reports"   element={
