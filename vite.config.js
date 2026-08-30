@@ -8,4 +8,7 @@ export default defineConfig({
       rollup: '@rollup/wasm-node',
     },
   },
+  optimizeDeps: {
+    exclude: ['maplibre-gl'],
+  },
 })
