@@ -8,9 +8,7 @@ import RegistrationPage from './pages/RegistrationPage';
 import Dashboard from './pages/Dashboard';
 import RainfallPage from './pages/RainfallPage';
 import FloodMapPage from './pages/FloodMapPage';
-import HistoricalPage from './pages/HistoricalPage';
-import AlertsPage from './pages/AlertsPage';
-import DataSourcesPage from './pages/DataSourcesPage';
+import ReportsPage from './pages/ReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 
 import MainLayout from './components/MainLayout';
@@ -34,18 +32,11 @@ function App() {
                 <Route path="/evacuation-map"    element={<FloodMapPage />} />
                 <Route path="/reports"   element={
                   <ResidentRoute>
-                    <HistoricalPage />
+                    <ReportsPage />
                   </ResidentRoute>
                 } />
-                <Route path="/alerts"       element={<AlertsPage />} />
 
                 <Route path="/analytics" element={<AnalyticsPage />} />
-
-                <Route path="/data-sources" element={
-                  <ResidentRoute>
-                    <DataSourcesPage />
-                  </ResidentRoute>
-                } />
 
                 <Route path="/register" element={
                   <AdminRoute>
