@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { MapContainer, TileLayer, Polygon as LeafletPolygon, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import EvacuationMap3D from '../components/EvacuationMap3D';
 
 // ─── Evacuation Centers ─────────────────────────────────────────────────────
 const EVACUATION_CENTERS = [
@@ -202,6 +204,7 @@ function EvacuationCenterCard({ center }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function FloodMapPage() {
+  const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
 
   return (
@@ -219,66 +222,83 @@ export default function FloodMapPage() {
               Tap a marker for details
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
             <LegendItem color="#ef4444" label="Primary Evacuation Center" />
             <LegendItem color="#3b82f6" label="School Evacuation Center" />
             <LegendItem color="#38bdf8" label="Barangay Boundary" shape="line" />
+            <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+              {['2d', '3d'].map(v => (
+                <button key={v} onClick={() => setMapView(v)} style={{
+                  padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+                  letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+                  background: mapView === v ? 'var(--accent)' : 'transparent',
+                  color: mapView === v ? '#fff' : 'var(--text-muted)',
+                  transition: 'all 0.2s',
+                }}>
+                  {v === '2d' ? 'Street View' : '3D View'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        <MapContainer
-          center={[13.618, 123.1905]}
-          zoom={15.5}
-          scrollWheelZoom={true}
-          style={{ width: '100%', height: 500 }}
-        >
-          <TileLayer
-            // OpenStreetMap standard tiles — free, no API key required
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          />
+        {mapView === '2d' ? (
+          <MapContainer
+            center={[13.618, 123.1905]}
+            zoom={15.5}
+            scrollWheelZoom={true}
+            style={{ width: '100%', height: 500 }}
+          >
+            <TileLayer
+              // OpenStreetMap standard tiles — free, no API key required
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            />
 
-          <LeafletPolygon
-            positions={boundaryPositions}
-            pathOptions={{
-              color: '#38bdf8',
-              weight: 2,
-              opacity: 0.8,
-              fillColor: '#38bdf8',
-              fillOpacity: 0.08,
-            }}
-          />
+            <LeafletPolygon
+              positions={boundaryPositions}
+              pathOptions={{
+                color: '#38bdf8',
+                weight: 2,
+                opacity: 0.8,
+                fillColor: '#38bdf8',
+                fillOpacity: 0.08,
+              }}
+            />
 
-          {EVACUATION_CENTERS.map((center) => (
-            <Marker
-              key={center.id}
-              position={[center.position.lat, center.position.lng]}
-              icon={createCenterIcon(center)}
-            >
-              <Popup>
-                <div style={{ minWidth: 200, padding: '4px 2px' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 4 }}>
-                    🏫 {center.name}
+            {EVACUATION_CENTERS.map((center) => (
+              <Marker
+                key={center.id}
+                position={[center.position.lat, center.position.lng]}
+                icon={createCenterIcon(center)}
+              >
+                <Popup>
+                  <div style={{ minWidth: 200, padding: '4px 2px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 4 }}>
+                      🏫 {center.name}
+                    </div>
+                    <div style={{
+                      display: 'inline-block', fontSize: '0.65rem', fontWeight: 700,
+                      color: center.color, background: `${center.color}18`,
+                      border: `1px solid ${center.color}40`, borderRadius: 4,
+                      padding: '2px 6px', marginBottom: 6,
+                    }}>
+                      {center.type}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#333', lineHeight: 1.4, marginTop: 2 }}>
+                      📍 {center.address}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 6 }}>
+                      {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
+                    </div>
                   </div>
-                  <div style={{
-                    display: 'inline-block', fontSize: '0.65rem', fontWeight: 700,
-                    color: center.color, background: `${center.color}18`,
-                    border: `1px solid ${center.color}40`, borderRadius: 4,
-                    padding: '2px 6px', marginBottom: 6,
-                  }}>
-                    {center.type}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#333', lineHeight: 1.4, marginTop: 2 }}>
-                    📍 {center.address}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 6 }}>
-                    {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
+                </Popup>
+              </Marker>
+            ))}
+          </MapContainer>
+        ) : (
+          <EvacuationMap3D boundary={TRIANGULO_BOUNDARY} evacuationCenters={EVACUATION_CENTERS} />
+        )}
       </div>
 
       <SectionLabel>📍 Evacuation Center Details</SectionLabel>
