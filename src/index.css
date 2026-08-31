@@ -25,17 +25,27 @@
 
 /* ── LIGHT MODE ── */
 :root.light {
-  --blue-deep:      #dce6f5;
-  --blue-mid:       #c8d8ee;
-  --blue-panel:     #eaf1fb;
-  --blue-card:      #f4f8ff;
-  --blue-border:    #a8bfd8;
+  --blue-deep:      #c2d5ec;   /* richer blue canvas — no longer washed out */
+  --blue-mid:       #e9f0fa;   /* subtle nested panels inside cards */
+  --blue-panel:     #eef3fb;   /* topbar chrome */
+  --blue-card:      #ffffff;   /* crisp white so cards pop off the blue canvas */
+  --blue-border:    #93b0d6;   /* stronger, more visible border */
   --accent:         #0284c7;
   --accent2:        #0369a1;
   --text-primary:   #0c1e35;
   --text-secondary: #2d4a6a;
   --text-muted:     #5a7a9a;
-  --shadow:         0 4px 24px rgba(10,40,80,0.12);
+  --shadow:         0 14px 32px rgba(15,45,90,0.20), 0 2px 8px rgba(15,45,90,0.10);
+}
+
+/* Sidebar stays a deep navy blue in light mode for contrast against the lighter canvas */
+:root.light .sidebar {
+  --blue-panel:     #123a66;
+  --blue-border:    #2a5680;
+  --text-primary:   #eef5ff;
+  --text-secondary: #b9d1ef;
+  --text-muted:     #82a6cc;
+  --accent:         #5ec8fa;
 }
 
 html { font-size: 16px; }
@@ -114,7 +124,12 @@ body {
   border-radius: var(--radius);
   padding: 20px;
   box-shadow: var(--shadow);
-  transition: background 0.25s ease, border-color 0.25s ease;
+  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+:root.light .card:hover {
+  box-shadow: 0 18px 40px rgba(15,45,90,0.24), 0 4px 10px rgba(15,45,90,0.12);
+  transform: translateY(-2px);
 }
 
 .card-title {
