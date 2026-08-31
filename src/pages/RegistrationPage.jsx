@@ -2,11 +2,40 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Form, Button, Spinner, InputGroup } from 'react-bootstrap';
 
-import { FaEyeSlash } from "react-icons/fa";
-import { FaEye } from "react-icons/fa";
+import { FaEyeSlash, FaEye, FaUser, FaPhone, FaAt, FaLock, FaUserShield, FaHome, FaCheckCircle } from 'react-icons/fa';
 
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
+
+// ─── Shared visual language (matches SectionLabel used across the dashboard) ──
+function SectionLabel({ children }) {
+  return (
+    <div style={{
+      fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
+      textTransform: 'uppercase', color: 'var(--text-muted)',
+      marginBottom: 12, paddingBottom: 6,
+      borderBottom: '1px solid var(--blue-border)',
+      display: 'flex', alignItems: 'center', gap: 8,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// Simple heuristic strength meter -- purely a UX nudge, does not change or
+// loosen the actual validation rule (still 8+ chars, enforced in handleSubmit).
+function getPasswordStrength(pw) {
+  if (!pw) return { label: '', pct: 0, color: 'var(--blue-border)' };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (/[A-Za-z]/.test(pw) && /[0-9]/.test(pw)) score++;
+  if (pw.length >= 12) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { label: 'Weak', pct: 30, color: '#ef4444' };
+  if (score === 2) return { label: 'Fair', pct: 58, color: '#eab308' };
+  if (score === 3) return { label: 'Good', pct: 80, color: '#38bdf8' };
+  return { label: 'Strong', pct: 100, color: '#22c55e' };
+}
 
 export default function RegisterPage() {
   const { createUser, error, clearError, user } = useAuth();
@@ -75,7 +104,7 @@ export default function RegisterPage() {
     const { confirmPassword, ...payload } = form;
 
     const ok = await createUser(payload);
-    
+
     setLoading(false);
 
     if (ok) {
@@ -90,7 +119,7 @@ export default function RegisterPage() {
         role_id: isResidentMode ? 7 : '',
       });
     }
-      };
+  };
 
   const inputStyle = {
     padding: '12px 14px',
@@ -101,10 +130,15 @@ export default function RegisterPage() {
   };
 
   const labelStyle = {
-    display: 'block', fontSize: '0.8rem', fontWeight: 600,
+    display: 'flex', alignItems: 'center', gap: 6,
+    fontSize: '0.8rem', fontWeight: 600,
     color: 'var(--text-secondary)', marginBottom: '6px',
     letterSpacing: '0.05em',
   };
+
+  const phoneValid = /^09\d{9}$/.test(form.phone);
+  const strength = getPasswordStrength(form.password);
+  const passwordsMatch = form.confirmPassword.length > 0 && form.password === form.confirmPassword;
 
   return (
     <div style={{
@@ -119,16 +153,41 @@ export default function RegisterPage() {
         pointerEvents: 'none',
       }} />
 
-      <div className="fade-in" style={{ width: '100%', maxWidth: '420px' }}>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
-          {isResidentMode ? 'Add Resident' : 'Create Account'}
-        </h1>
+      <div className="fade-in" style={{ width: '100%', maxWidth: '440px' }}>
+
+        {/* ── Header with mode icon ─────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '24px' }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+            background: isResidentMode ? 'rgba(56,189,248,0.12)' : 'rgba(14,165,233,0.12)',
+            border: `1px solid ${isResidentMode ? 'rgba(56,189,248,0.3)' : 'rgba(14,165,233,0.3)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1.1rem', color: 'var(--accent)',
+          }}>
+            {isResidentMode ? <FaHome /> : <FaUserShield />}
+          </div>
+          <div>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              {isResidentMode ? 'Add Resident' : 'Create Account'}
+            </h1>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
+              {isResidentMode ? 'Register a resident for Barangay Triangulo': ''}
+            </p>
+          </div>
+        </div>
 
         <div className="card" style={{ padding: '32px' }}>
 
           {success ? (
             <div style={{ textAlign: 'center', padding: '16px 0' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>✅</div>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%', margin: '0 auto 16px',
+                background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.6rem', color: '#22c55e',
+              }}>
+                <FaCheckCircle />
+              </div>
               <p style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '1rem' }}>
                 {isResidentMode ? 'Resident registered!' : 'Account created!'}
               </p>
@@ -147,23 +206,11 @@ export default function RegisterPage() {
           ) : (
             <Form onSubmit={handleSubmit}>
 
-              {isResidentMode && (
-                <div style={{
-                  background: 'rgba(56,189,248,0.08)',
-                  border: '1px solid rgba(56,189,248,0.2)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '10px 14px',
-                  marginBottom: '20px',
-                  fontSize: '0.8rem',
-                  color: 'var(--text-secondary)',
-                }}>
-                  🏘️ Registering as <strong style={{ color: 'var(--accent)' }}>Resident</strong>
-                </div>
-              )}
+              {/* ── Personal Information ─────────────────────────────── */}
+              <SectionLabel>👤 Personal Information</SectionLabel>
 
-              {/* Full Name */}
               <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}>Full Name</Form.Label>
+                <Form.Label style={labelStyle}><FaUser size={11} /> Full Name</Form.Label>
                 <Form.Control
                   name="name" type="text" value={form.name}
                   onChange={handleChange} placeholder="e.g. Maria Santos"
@@ -173,22 +220,38 @@ export default function RegisterPage() {
                 />
               </div>
 
-              {/* Phone */}
-              <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}>Phone Number</Form.Label>
-                <Form.Control
-                  name="phone" type="tel" value={form.phone}
-                  onChange={handleChange} placeholder="e.g. 09123456789"
-                  required pattern="^09\d{9}$" maxLength={11}
-                  style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                />
+              <div style={{ marginBottom: '20px' }}>
+                <Form.Label style={labelStyle}><FaPhone size={11} /> Phone Number</Form.Label>
+                <InputGroup>
+                  <Form.Control
+                    name="phone" type="tel" value={form.phone}
+                    onChange={handleChange} placeholder="e.g. 09123456789"
+                    required pattern="^09\d{9}$" maxLength={11}
+                    style={{
+                      ...inputStyle,
+                      borderColor: form.phone.length > 0
+                        ? (phoneValid ? '#22c55e60' : 'var(--blue-border)')
+                        : 'var(--blue-border)',
+                    }}
+                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.target.style.borderColor = form.phone.length > 0 && phoneValid ? '#22c55e60' : 'var(--blue-border)'}
+                  />
+                </InputGroup>
+                <Form.Text style={{
+                  color: form.phone.length > 0 && !phoneValid ? '#f0ad4e' : 'var(--text-muted)',
+                  fontSize: '0.72rem', display: 'block', marginTop: '5px',
+                }}>
+                  {form.phone.length > 0 && !phoneValid
+                    ? 'Format: 09 followed by 9 digits (11 digits total)'
+                    : '11-digit PH mobile number, starts with 09'}
+                </Form.Text>
               </div>
 
-              {/* Username */}
+              {/* ── Account Security ─────────────────────────────────── */}
+              <SectionLabel>🔒 Account Authentication</SectionLabel>
+
               <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}>Username</Form.Label>
+                <Form.Label style={labelStyle}><FaAt size={11} /> Username</Form.Label>
                 <Form.Control
                   name="username" type="text" value={form.username}
                   onChange={handleChange} placeholder="e.g. maria_santos"
@@ -198,9 +261,8 @@ export default function RegisterPage() {
                 />
               </div>
 
-              {/* Password */}
               <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}>Password</Form.Label>
+                <Form.Label style={labelStyle}><FaLock size={11} /> Password</Form.Label>
                 <InputGroup>
                   <Form.Control
                     name="password" type={showPassword ? "text" : "password"} value={form.password}
@@ -220,14 +282,29 @@ export default function RegisterPage() {
                       : <FaEyeSlash onClick={() => setShowPassword(p => !p)} />}
                   </InputGroup.Text>
                 </InputGroup>
-                <Form.Text style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', display: 'block', marginTop: '6px' }}>
-                  Your password must be at least 8 characters long and contain letters and numbers
-                </Form.Text>
+
+                {form.password.length > 0 && (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ height: 4, background: 'var(--blue-border)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', width: `${strength.pct}%`, background: strength.color,
+                        borderRadius: 2, transition: 'width 0.25s ease, background 0.25s ease',
+                      }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                      <span style={{ fontSize: '0.68rem', color: strength.color, fontWeight: 600 }}>
+                        {strength.label}
+                      </span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                        Min. 8 characters, letters + numbers
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Confirm Password */}
-              <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}>Confirm Password</Form.Label>
+              <div style={{ marginBottom: '24px' }}>
+                <Form.Label style={labelStyle}><FaLock size={11} /> Confirm Password</Form.Label>
                 <InputGroup>
                   <Form.Control
                     name="confirmPassword"
@@ -235,9 +312,15 @@ export default function RegisterPage() {
                     value={form.confirmPassword}
                     onChange={handleChange} placeholder="••••••••"
                     required
-                    style={{ ...inputStyle, borderRight: 'none', borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)' }}
+                    style={{
+                      ...inputStyle, borderRight: 'none', borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)',
+                      borderColor: form.confirmPassword.length > 0
+                        ? (passwordsMatch ? '#22c55e60' : '#ef444460')
+                        : 'var(--blue-border)',
+                    }}
                     onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
+                    onBlur={e => e.target.style.borderColor = form.confirmPassword.length > 0
+                      ? (passwordsMatch ? '#22c55e60' : '#ef444460') : 'var(--blue-border)'}
                   />
                   <InputGroup.Text
                     onClick={() => setShowConfirmPassword(p => !p)}
@@ -250,25 +333,37 @@ export default function RegisterPage() {
                     {showConfirmPassword ? <FaEye /> : <FaEyeSlash />}
                   </InputGroup.Text>
                 </InputGroup>
+                {form.confirmPassword.length > 0 && (
+                  <div style={{
+                    fontSize: '0.72rem', marginTop: '5px',
+                    color: passwordsMatch ? '#22c55e' : '#f87171',
+                    display: 'flex', alignItems: 'center', gap: 5,
+                  }}>
+                    {passwordsMatch ? <><FaCheckCircle size={10} /> Passwords match</> : 'Passwords do not match'}
+                  </div>
+                )}
               </div>
 
               {/* Role — admin-only route only */}
               {!isResidentMode && (
-                <div style={{ marginBottom: '24px' }}>
-                  <Form.Label style={labelStyle}>Role</Form.Label>
-                  <Form.Select
-                    name="role_id" value={form.role_id}
-                    onChange={handleChange} required
-                    style={{ ...inputStyle, cursor: 'pointer' }}
-                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                  >
-                    <option value="">Select a role...</option>
-                    {roles.map(r => (
-                      <option key={r.role_id} value={r.role_id}>{r.role_desc}</option>
-                    ))}
-                  </Form.Select>
-                </div>
+                <>
+                  <SectionLabel>🛡️ Role &amp; Access</SectionLabel>
+                  <div style={{ marginBottom: '24px' }}>
+                    <Form.Label style={labelStyle}><FaUserShield size={11} /> Role</Form.Label>
+                    <Form.Select
+                      name="role_id" value={form.role_id}
+                      onChange={handleChange} required
+                      style={{ ...inputStyle, cursor: 'pointer' }}
+                      onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                      onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
+                    >
+                      <option value="">Select a role...</option>
+                      {roles.map(r => (
+                        <option key={r.role_id} value={r.role_id}>{r.role_desc}</option>
+                      ))}
+                    </Form.Select>
+                  </div>
+                </>
               )}
 
               {(error || localError) && (
@@ -285,13 +380,15 @@ export default function RegisterPage() {
                   : isResidentMode ? '🏘️ Register Resident' : '✅ Register'}
               </Button>
 
+              {!isResidentMode && (
+                <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Already have an account? <Link to="/login" style={{ color: 'var(--accent)' }}>Sign in</Link>
+                </p>
+              )}
+
             </Form>
           )}
         </div>
-
-        <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          AGOS v1.0 — Capstone Prototype · Data from PAGASA / DOST-ASTI
-        </p>
       </div>
     </div>
   );
