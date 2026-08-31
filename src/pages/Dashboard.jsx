@@ -151,10 +151,9 @@ const ROAD_WEIGHT = {
 
 function FloodMap({ currentAlert }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
+
+  // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
-  // Fixed, always-blue boundary indicator — kept separate from `color` so
-  // it never blends with (or gets mistaken for) the alert-colored streets.
-  const BOUNDARY_COLOR = '#38bdf8';
 
   return (
     <MapContainer
@@ -164,53 +163,18 @@ function FloodMap({ currentAlert }) {
       style={{ width: '100%', height: 420, borderRadius: 'var(--radius-sm)' }}
     >
       <TileLayer
+        // OpenStreetMap standard tiles — free, no key required
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
-
-      {trianguloRoads.map(road => (
-        <LeafletPolyline
-          key={road.id}
-          positions={road.positions}
-          pathOptions={{
-            color: color,
-            weight: ROAD_WEIGHT[road.highway] ?? 2,
-            opacity: 0.85,
-            lineCap: 'round',
-          }}
-        >
-          {road.name && (
-            <LeafletTooltip sticky>
-              {road.name} — {currentAlert}
-            </LeafletTooltip>
-          )}
-        </LeafletPolyline>
-      ))}
-
-      {/* Boundary drawn LAST so it renders on top of every road, even where
-          a road segment runs slightly outside the boundary polygon. A soft
-          wide "halo" underneath + a crisp line on top makes it pop against
-          the colored streets instead of blending in. */}
       <LeafletPolygon
         positions={boundaryPositions}
         pathOptions={{
-          color: BOUNDARY_COLOR,
-          weight: 8,
-          opacity: 0.25,
-          fill: false,
-          lineJoin: 'round',
-        }}
-        interactive={false}
-      />
-      <LeafletPolygon
-        positions={boundaryPositions}
-        pathOptions={{
-          color: BOUNDARY_COLOR,
-          weight: 3,
-          opacity: 1,
-          fill: false,
-          dashArray: '8 6',
-          lineJoin: 'round',
+          color: '#1E90FF',
+          weight: 2,
+          opacity: 0.95,
+          fillColor: color,
+          fillOpacity: 0.28,
         }}
       >
         <LeafletTooltip sticky>
@@ -220,6 +184,7 @@ function FloodMap({ currentAlert }) {
     </MapContainer>
   );
 }
+
 
 function AlertLevelTable({ currentAlert }) {
   const levels = [
@@ -1244,11 +1209,17 @@ export default function Dashboard() {
           {mapView === '2d' ? (
             <FloodMap currentAlert={currentAlert} />
           ) : (
-            <FloodMap3D currentAlert={currentAlert} boundary={TRIANGULO_BOUNDARY} alertColors={ALERT_COLORS} />
+              <FloodMap3D
+                currentAlert={currentAlert}
+                boundary={TRIANGULO_BOUNDARY}
+                alertColors={ALERT_COLORS}
+                rainfallMm={rainfallMm}
+                windSignal={prediction?.live_metrics?.wind_signal}
+              />
           )}
           
           <div style={{ padding: '8px 18px', fontSize: '0.65rem', color: 'var(--text-muted)', borderTop: '1px solid var(--blue-border)' }}>
-            Approximate barangay boundary · Source: PAGASA &amp; OCD Region V
+            Approximate barangay boundary
           </div>
         </div>
 
