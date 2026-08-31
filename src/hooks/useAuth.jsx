@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { logger } from '../lib/logger';
 
 const AuthContext = createContext(null);
 
@@ -32,7 +33,7 @@ export function AuthProvider({ children }) {
 
     if (data) setUser(data);
     else {
-      console.error('Profile fetch failed:', error?.message);
+      logger.error('Profile fetch failed:', error?.message);
       setUser(null); // or handle as needed
     }
     setLoading(false);
@@ -65,9 +66,17 @@ export function AuthProvider({ children }) {
 
   if (error) {
     const errorText = await error.context.text();
-    console.log("FUNCTION ERROR BODY:", errorText);
-    const parsed = JSON.parse(errorText);
-    setError(parsed.error || 'Something went wrong');
+    logger.debug('FUNCTION ERROR BODY:', errorText);
+    let message = 'Something went wrong';
+    try {
+      message = JSON.parse(errorText).error || message;
+    } catch {
+      // Edge function returned a non-JSON body (e.g. an HTML error page) --
+      // fall back to the raw text instead of throwing here and leaving
+      // setError() never called.
+      if (errorText) message = errorText;
+    }
+    setError(message);
     return false;
   }
 

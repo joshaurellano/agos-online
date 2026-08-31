@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { SectionLabel, ErrorBanner } from '../components/ui';
 import Swal from 'sweetalert2';
 import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip } from 'react-leaflet';
 import L from 'leaflet';
@@ -12,9 +13,10 @@ import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useDataSource } from '../hooks/useDataSource';
-import { useModelPrediction, useFloodForecast14Day } from '../lib/modelApi';
+import { useFloodForecast14Day } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
+import { logger } from '../lib/logger';
 
 import FloodMap3D from '../components/FloodMap3D';
 
@@ -79,20 +81,6 @@ const TRIANGULO_BOUNDARY = [
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SectionLabel({ children }) {
-  return (
-    <div style={{
-      fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
-      textTransform: 'uppercase', color: 'var(--text-muted)',
-      marginBottom: 10, paddingBottom: 6,
-      borderBottom: '1px solid var(--blue-border)',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      {children}
-    </div>
-  );
-}
 
 function MetricCard({ icon, label, value, sub, color, noData, unit, badge }) {
   return (
@@ -188,10 +176,10 @@ function FloodMap({ currentAlert }) {
 
 function AlertLevelTable({ currentAlert }) {
   const levels = [
-    { key: 'NORMAL',   range: '< 2.5m',     action: 'Continue normal activities. Monitor updates.' },
-    { key: 'ADVISORY', range: '2.5 – 3.4m', action: 'Stay alert. Prepare emergency go-bags.' },
-    { key: 'WARNING',  range: '3.5 – 4.4m', action: 'Move valuables to higher ground. Be ready to evacuate.' },
-    { key: 'CRITICAL', range: '≥ 4.5m',     action: 'Evacuate immediately to designated evacuation centers.' },
+    { key: 'NORMAL',   range: '< 25%',     action: 'Continue normal activities. Monitor updates.' },
+    { key: 'ADVISORY', range: '25 – 49%', action: 'Stay alert. Prepare emergency go-bags.' },
+    { key: 'WARNING',  range: '50 – 74%', action: 'Move valuables to higher ground. Be ready to evacuate.' },
+    { key: 'CRITICAL', range: '≥ 75%',     action: 'Evacuate immediately to designated evacuation centers.' },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -429,7 +417,7 @@ function FloodForecastChart() {
         .order('created_at', { ascending: true })
         .limit(10000);
 
-      if (error) { console.warn('Fetch failed:', error.message); setLoading(false); return; }
+      if (error) { logger.warn('Fetch failed:', error.message); setLoading(false); return; }
 
       setChartData((data ?? []).map(row => ({
         label: new Date(row.created_at).toLocaleTimeString('en-PH', {
@@ -440,7 +428,7 @@ function FloodForecastChart() {
       })));
     } else {
       const { data, error } = await supabase.rpc('get_daily_flood_avg', { days_back: 7 });
-      if (error) { console.warn('Fetch failed:', error.message); setLoading(false); return; }
+      if (error) { logger.warn('Fetch failed:', error.message); setLoading(false); return; }
 
       const days = (data ?? []).map(row => {
         const date = new Date(row.day);
@@ -894,7 +882,7 @@ export default function Dashboard() {
     fetch(`${apiBaseUrl}/api/forecast`)
       .then(res => res.json())
       .then(data => { if (data.hourly) setForecast(data.hourly); })
-      .catch(err => console.warn('Forecast fetch failed:', err))
+      .catch(err => logger.warn('Forecast fetch failed:', err))
       .finally(() => setForecastLoading(false));
   }, [apiBaseUrl]);
 
@@ -904,7 +892,10 @@ export default function Dashboard() {
   }, []);
 
   const userIsResident = isResident(user);
-  const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
+  // Single shared polling instance lives in MainLayout (it also owns the
+  // SMS/push dispatch side effect) — Dashboard just reads from it, so we
+  // don't end up with two independent pollers racing to dispatch alerts.
+  const { prediction, modelLoading, modelError } = useOutletContext();
 
   const prevAlertDisplay = useRef(null);
 
@@ -1032,7 +1023,7 @@ export default function Dashboard() {
           body: message, level: alertType, topic: 'flood_alerts',
         },
       });
-      if (fcmError) console.error('FCM push failed:', fcmError.message);
+      if (fcmError) logger.error('FCM push failed:', fcmError.message);
 
       Swal.fire({
         title: '✅ Alert Dispatched',
@@ -1052,19 +1043,11 @@ export default function Dashboard() {
 
       {/* ── 1. Offline Banner ──────────────────────────────────── */}
       {modelError && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)',
-          borderLeft: '3px solid #ef4444', borderRadius: 'var(--radius-sm)',
-          padding: '9px 14px', marginBottom: 14, fontSize: '0.8rem', color: '#f87171',
-        }}>
-          <span style={{ flexShrink: 0 }}>⚠</span>
-          <span>
-            <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
-            <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
-            to enable live predictions.
-          </span>
-        </div>
+        <ErrorBanner>
+          <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
+          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
+          to enable live predictions.
+        </ErrorBanner>
       )}
 
       {/* ── 2. Alert Status Header ─────────────────────────────── */}

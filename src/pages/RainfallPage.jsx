@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { useModelPrediction } from '../lib/modelApi';
 import { supabase } from '../lib/supabaseClient';
+import { SectionLabel } from '../components/ui';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -110,20 +111,6 @@ function getRainfallEmoji(mm, period = 'hourly') {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function SectionLabel({ children }) {
-  return (
-    <div style={{
-      fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
-      textTransform: 'uppercase', color: 'var(--text-muted)',
-      marginBottom: 10, paddingBottom: 6,
-      borderBottom: '1px solid var(--blue-border)',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      {children}
-    </div>
-  );
-}
-
 function StatusBanner({ total, peak, acc3hr, acc6hr, period }) {
   const ref  = acc3hr ?? total;
   const cat  = getRainfallCategory(ref, 'hourly');
@@ -219,7 +206,7 @@ export default function RainfallPage() {
   const [hourlyLogs, setHourlyLogs]   = useState([]);
   const [lastFetched, setLastFetched] = useState(null);
 
-  const { prediction } = useModelPrediction();
+  const { prediction } = useOutletContext();
   const liveRainfall   = prediction?.live_metrics?.rainfall_mm ?? null;
 
   const fetchRainfall = useCallback(async () => {

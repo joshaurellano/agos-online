@@ -6,21 +6,7 @@ import { FaEyeSlash, FaEye, FaUser, FaPhone, FaAt, FaLock, FaUserShield, FaHome,
 
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
-
-// ─── Shared visual language (matches SectionLabel used across the dashboard) ──
-function SectionLabel({ children }) {
-  return (
-    <div style={{
-      fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
-      textTransform: 'uppercase', color: 'var(--text-muted)',
-      marginBottom: 12, paddingBottom: 6,
-      borderBottom: '1px solid var(--blue-border)',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      {children}
-    </div>
-  );
-}
+import { SectionLabel } from '../components/ui';
 
 // Simple heuristic strength meter -- purely a UX nudge, does not change or
 // loosen the actual validation rule (still 8+ chars, enforced in handleSubmit).
