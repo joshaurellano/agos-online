@@ -4,6 +4,10 @@ import {
   Tooltip as RechartsTooltip, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts';
 import { useDataSource } from '../hooks/useDataSource';
+import { probabilityToAlertKey } from '../lib/modelApi';
+import { ALERT_LEVELS } from '../data/mockData';
+import { ErrorBanner } from '../components/ui';
+import { logger } from '../lib/logger';
 
 const MOCK_14_DAY_FORECAST = [
   { day: 'Day 1', prob: 0.25 }, { day: 'Day 2', prob: 0.28 },
@@ -28,21 +32,15 @@ const MOCK_SHAP_DATA = [
   { feature: '24h Cumul. RF', value: 0.43 }
 ].reverse();
 
+// Uses the same probabilityToAlertKey() thresholds and ALERT_LEVELS copy as
+// the rest of the app (Dashboard, Topbar, modelApi.js). This page used to
+// have its own local, binary-only version of this logic that never got the
+// ADVISORY/CRITICAL tiers when the rest of the app was updated -- routing
+// through the shared source prevents that drift from happening again.
 const getAlertDetails = (probability) => {
-  if (probability >= 0.50) {
-    return {
-      level: 2,
-      name: 'WARNING / STANDBY',
-      color: '#f97316',
-      action: 'Activate BERT; Pre-position rescue equipment; Secure valuables.'
-    };
-  }
-  return {
-    level: 1,
-    name: 'NORMAL',
-    color: '#22c55e',
-    action: 'Routine monitoring of PAGASA updates and live sensor streams.'
-  };
+  const key = probabilityToAlertKey(probability);
+  const info = ALERT_LEVELS[key];
+  return { level: info.level, name: info.label, color: info.color, action: info.action };
 };
 
 export default function AnalyticsPage() {
@@ -81,7 +79,7 @@ export default function AnalyticsPage() {
         }
     })
       .catch(err => {
-        console.warn('Python main.py backend offline:', err);
+        logger.warn('Python main.py backend offline:', err);
         setModelError(true);
       })
       .finally(() => setModelLoading(false));
@@ -136,9 +134,11 @@ export default function AnalyticsPage() {
     <div className="fade-in">
 
       {modelError && (
-        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderLeft: '4px solid #ef4444', borderRadius: 'var(--radius)', padding: '10px 16px', marginBottom: '14px', fontSize: '0.82rem', color: '#ef4444' }}>
-          ⚠️ AI Model Backend Offline — showing simulated historical data. Run <code>python main.py</code> in your root folder to stream live predictions.
-        </div>
+        <ErrorBanner>
+          <strong>AI Model Backend Offline</strong> — showing simulated historical data. Run{' '}
+          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>python main.py</code>{' '}
+          in your root folder to stream live predictions.
+        </ErrorBanner>
       )}
 
       {/* 1. 14-DAY PREDICTIVE ALERT CURVE */}

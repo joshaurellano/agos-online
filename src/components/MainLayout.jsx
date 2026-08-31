@@ -2,21 +2,22 @@ import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import { useModelPrediction } from '../lib/modelApi';
 
 const PAGE_TITLES = {
-  '/dashboard':    'Dashboard Overview',
-  '/water-level':  'Real-Time Water Level',
-  '/rainfall':     'Rainfall Accumulation',
-  '/flood-map':    'Flood Zone Map',
-  '/historical':   'Historical Flood Events',
-  '/alerts':       'Alert Notification Log',
-  '/data-sources': 'Data Sources',
-  '/register':     'Register Page'
+  '/dashboard':       'Dashboard Overview',
+  '/rainfall':        'Rainfall Accumulation',
+  '/evacuation-map':  'Evacuation Map',
+  '/reports':         'Flood Incident Reports',
+  '/analytics':       'ML Analytics',
+  '/register':        'Register Page',
+  '/add-resident':    'Add Resident',
 };
 
 export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [alertLevel] = useState('WARNING');
+  const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
+  const alertLevel = prediction?.alert_level ?? 'NORMAL';
   const location = useLocation();
 
   return (
@@ -32,7 +33,7 @@ export default function MainLayout() {
           alertLevel={alertLevel}
         />
         <div className="page-body">
-          <Outlet />
+          <Outlet context={{ prediction, modelLoading, modelError }} />
         </div>
       </div>
     </div>

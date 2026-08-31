@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Polygon as LeafletPolygon, Marker, Popup } fro
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import EvacuationMap3D from '../components/EvacuationMap3D';
+import { SectionLabel } from '../components/ui';
 
 // ─── Evacuation Centers ─────────────────────────────────────────────────────
 const EVACUATION_CENTERS = [
@@ -113,20 +114,6 @@ function createCenterIcon(center) {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SectionLabel({ children }) {
-  return (
-    <div style={{
-      fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
-      textTransform: 'uppercase', color: 'var(--text-muted)',
-      marginBottom: 10, paddingBottom: 6,
-      borderBottom: '1px solid var(--blue-border)',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      {children}
-    </div>
-  );
-}
 
 function LegendItem({ color, label, shape = 'circle' }) {
   return (

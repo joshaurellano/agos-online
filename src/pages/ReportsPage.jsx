@@ -2,15 +2,21 @@ import { useState, useEffect, useCallback } from 'react';
 import { isAdmin, isResident } from '../lib/roles';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../hooks/useAuth';
+import { SectionLabel } from '../components/ui';
+import { ALERT_LEVELS } from '../data/mockData';
+import { logger } from '../lib/logger';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SEVERITY_COLORS = {
-  CRITICAL: '#ef4444',
-  WARNING:  '#f97316',
-  ADVISORY: '#eab308',
-  NORMAL:   '#22c55e',
-};
+// Report severity uses the same NORMAL/ADVISORY/WARNING/CRITICAL keys and
+// colors as the flood alert level everywhere else in the app. Derived from
+// ALERT_LEVELS instead of a hardcoded copy so the palette can't drift --
+// this used to be its own independent hex-code table that happened to match
+// mockData.js only by coincidence of nobody having edited one without the
+// other yet.
+const SEVERITY_COLORS = Object.fromEntries(
+  Object.entries(ALERT_LEVELS).map(([key, info]) => [key, info.color])
+);
 
 const STATUS_COLORS = {
   OPEN:       '#ef4444',
@@ -123,20 +129,6 @@ function exportJSON(records) {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SectionLabel({ children }) {
-  return (
-    <div style={{
-      fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
-      textTransform: 'uppercase', color: 'var(--text-muted)',
-      marginBottom: 10, paddingBottom: 6,
-      borderBottom: '1px solid var(--blue-border)',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      {children}
-    </div>
-  );
-}
 
 function SeverityBadge({ severity }) {
   const color = SEVERITY_COLORS[severity] || '#8da4be';
@@ -765,7 +757,7 @@ export default function HistoricalPage() {
       .from('flood_reports')
       .select('*')
       .order('date_occurred', { ascending: false });
-    if (error) console.error('flood_reports fetch error:', error.message);
+    if (error) logger.error('flood_reports fetch error:', error.message);
     else setReports(data ?? []);
     setLoading(false);
   }, []);
@@ -814,16 +806,11 @@ export default function HistoricalPage() {
   return (
     <div className="fade-in">
 
-      {/* ── Page Header ──────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 3 }}>
-            📋 Flood Incident Reports
-          </h2>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Barangay Triangulo · Naga City · All records saved to Supabase
-          </div>
-        </div>
+      {/* ── Page Actions ────────────────────────────────────────── */}
+      {/* Title/subtitle intentionally omitted here -- the Topbar already
+          shows "Flood Incident Reports" for this route (see PAGE_TITLES in
+          MainLayout.jsx), so repeating it here just duplicated the header. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Export buttons — always visible */}
           {reports.length > 0 && (

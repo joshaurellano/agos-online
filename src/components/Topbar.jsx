@@ -54,8 +54,9 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <button
           onClick={onMenuClick}
+          className="mobile-menu-btn"
+          aria-label="Open navigation menu"
           style={{ display: 'none', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '1.3rem', cursor: 'pointer', padding: '4px' }}
-          // className="mobile-menu-btn"
         >
           ☰
         </button>
@@ -98,6 +99,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
           className="theme-toggle"
           onClick={toggleTheme}
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>

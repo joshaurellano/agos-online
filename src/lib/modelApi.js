@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 import { useDataSource } from '../hooks/useDataSource';
+import { logger } from './logger';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -38,20 +39,20 @@ async function dispatchAutoAlert(alertKey, leadTime) {
   const message = ALERT_MESSAGES[alertKey]?.(leadTime);
   if (!message) return;
 
-  console.log(`📲 Alert level changed to ${alertKey} — dispatching alert...`);
+  logger.debug(`📲 Alert level changed to ${alertKey} — dispatching alert...`);
 
   const { error: dbError } = await supabase.from('alerts').insert({
     type:    alertKey,
     message,
     sent_by: 'AGOS Auto-Alert',
   });
-  if (dbError) console.warn('Alert log failed:', dbError.message);
+  if (dbError) logger.warn('Alert log failed:', dbError.message);
 
   const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', {
     body: { message, type: alertKey },
   });
-  if (smsError) console.warn('SMS dispatch failed:', smsError.message);
-  else console.log(`✅ SMS dispatched for ${alertKey}`, smsData);
+  if (smsError) logger.warn('SMS dispatch failed:', smsError.message);
+  else logger.debug(`✅ SMS dispatched for ${alertKey}`, smsData);
 
   const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
     body: {
@@ -61,8 +62,8 @@ async function dispatchAutoAlert(alertKey, leadTime) {
       topic: 'flood_alerts',
     },
   });
-  if (fcmError) console.warn('Push notification dispatch failed:', fcmError.message);
-  else console.log(`✅ Push notification dispatched for ${alertKey}`);
+  if (fcmError) logger.warn('Push notification dispatch failed:', fcmError.message);
+  else logger.debug(`✅ Push notification dispatched for ${alertKey}`);
 }
 
 // Saves snapshot to Supabase for the FloodForecastChart
@@ -84,8 +85,8 @@ async function saveSnapshot(data) {
     lead_time_estimate: data.lead_time_estimate ?? null,
   });
 
-  if (error) console.warn('Snapshot save failed:', error.message);
-  else console.log('💾 Snapshot saved to Supabase');
+  if (error) logger.warn('Snapshot save failed:', error.message);
+  else logger.debug('💾 Snapshot saved to Supabase');
 }
 
 let lastDispatchedAlertKey = null;
@@ -105,11 +106,11 @@ export function useModelPrediction() {
       if (data.status !== 'success') throw new Error(data.message || 'Prediction unavailable');
 
       const probability = data.probability ?? 0;
-      // Alert level is derived from probability, not trusted from a raw
-      // backend string — the model is binary (flood/no-flood), so the
-      // 4-level ADVISORY/WARNING/CRITICAL UI is a threshold bucketing
-      // of the SAME single model output, keeping one source of truth.
-      const alertKey = probabilityToAlertKey(probability);
+      // Alert level now comes straight from the backend (/api/predict-flood),
+      // which applies the same 4-tier probability_to_alert_level() bucketing
+      // used across the whole API. Do not recompute it here — that used to
+      // cause the frontend's alert to disagree with the backend's.
+      const alertKey = data.alert_level ?? probabilityToAlertKey(probability);
 
       const normalized = {
         alert_level:        alertKey,
@@ -123,24 +124,24 @@ export function useModelPrediction() {
         },
       };
 
-      console.log('🌐 Live prediction from API:', normalized);
+      logger.debug('🌐 Live prediction from API:', normalized);
       setPrediction(normalized);
       setError(null);
 
       const currentKey = normalized.alert_level;
       if (lastDispatchedAlertKey !== null && lastDispatchedAlertKey !== currentKey) {
         dispatchAutoAlert(currentKey, normalized.lead_time_estimate).catch(err =>
-          console.error('Alert dispatch failed:', err.message)
+          logger.error('Alert dispatch failed:', err.message)
         );
       }
       lastDispatchedAlertKey = currentKey;
 
       saveSnapshot(normalized).catch(err =>
-        console.warn('Snapshot save error:', err.message)
+        logger.warn('Snapshot save error:', err.message)
       );
 
     } catch (err) {
-      console.error('❌ API fetch error:', err.message);
+      logger.error('❌ API fetch error:', err.message);
       setError(err.message || 'Could not load prediction');
     } finally {
       setLoading(false);
@@ -176,7 +177,7 @@ export function useFloodForecast14Day() {
       setMeta14(data.meta ?? null);
       setError14(null);
     } catch (err) {
-      console.error('14-day forecast fetch error:', err.message);
+      logger.error('14-day forecast fetch error:', err.message);
       setError14(err.message || 'Could not load 14-day forecast');
     } finally {
       setLoading14(false);
