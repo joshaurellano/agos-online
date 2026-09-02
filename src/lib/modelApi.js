@@ -15,13 +15,21 @@ async function fetchModelJson(apiBaseUrl, path, allowFallback) {
   try {
     const res = await fetch(`${apiBaseUrl}${path}`);
     if (!res.ok) throw new Error(`API error: ${res.status}`);
-    return await res.json();
+    const data = await res.json();
+    // The backend always returns HTTP 200, even on internal errors (e.g.
+    // Open-Meteo down with no usable cache) — it reports failure via
+    // `status: "error"` in the JSON body instead of an HTTP error code.
+    // Without this check, res.ok is true and we'd never fall back.
+    if (data.status !== 'success') throw new Error(data.message || 'Primary model API returned an error');
+    return data;
   } catch (err) {
     if (!allowFallback) throw err;
-    logger.warn(`⚠️ Primary model API unreachable (${apiBaseUrl}${path}): ${err.message} — trying backup`);
+    logger.warn(`⚠️ Primary model API unreachable/erroring (${apiBaseUrl}${path}): ${err.message} — trying backup`);
     const res = await fetch(`${BACKUP_MODEL_BASE_URL}${path}`);
     if (!res.ok) throw new Error(`Backup API error: ${res.status}`);
-    return await res.json();
+    const data = await res.json();
+    if (data.status !== 'success') throw new Error(data.message || 'Backup model API also returned an error');
+    return data;
   }
 }
 
