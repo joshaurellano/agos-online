@@ -5,6 +5,26 @@ import { logger } from './logger';
 
 const POLL_INTERVAL_MS = 30_000;
 
+// Backup model deployment — exposes the same endpoints/shape as the
+// primary (VITE_LIVE_URL). Only used when the primary host is unreachable
+// or erroring, and only for the 'live' data source (the 'mock' source is
+// for demos and shouldn't silently fall through to production).
+const BACKUP_MODEL_BASE_URL = 'https://agos-flood-predict.onrender.com';
+
+async function fetchModelJson(apiBaseUrl, path, allowFallback) {
+  try {
+    const res = await fetch(`${apiBaseUrl}${path}`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    if (!allowFallback) throw err;
+    logger.warn(`⚠️ Primary model API unreachable (${apiBaseUrl}${path}): ${err.message} — trying backup`);
+    const res = await fetch(`${BACKUP_MODEL_BASE_URL}${path}`);
+    if (!res.ok) throw new Error(`Backup API error: ${res.status}`);
+    return await res.json();
+  }
+}
+
 export function probabilityToAlertKey(probability) {
   if (probability >= 0.75) return 'CRITICAL';
   if (probability >= 0.50) return 'WARNING';
@@ -92,16 +112,14 @@ let lastDispatchedAlertKey = null;
 
 // ── Day-1 prediction (KPI cards, alerts, snapshot logging) ──────────────
 export function useModelPrediction() {
-  const { apiBaseUrl } = useDataSource();
+  const { apiBaseUrl, isMock } = useDataSource();
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
 
   const fetchLatest = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/api/predict-flood`);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
+      const data = await fetchModelJson(apiBaseUrl, '/api/predict-flood', !isMock);
       if (data.status !== 'success') throw new Error(data.message || 'Prediction unavailable');
 
       const probability = data.probability ?? 0;
@@ -144,7 +162,7 @@ export function useModelPrediction() {
     } finally {
       setLoading(false);
     }
-  }, [apiBaseUrl]);
+  }, [apiBaseUrl, isMock]);
 
   useEffect(() => {
     setLoading(true);
@@ -158,7 +176,7 @@ export function useModelPrediction() {
 
 // ── NEW: 14-day forecast (single source of truth = the model) ───────────
 export function useFloodForecast14Day() {
-  const { apiBaseUrl } = useDataSource();
+  const { apiBaseUrl, isMock } = useDataSource();
   const [forecast14, setForecast14] = useState([]);
   const [meta14, setMeta14]         = useState(null);
   const [loading14, setLoading14]   = useState(true);
@@ -166,9 +184,7 @@ export function useFloodForecast14Day() {
 
   const fetchForecast14 = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/api/forecast-flood`);
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      const data = await res.json();
+      const data = await fetchModelJson(apiBaseUrl, '/api/forecast-flood', !isMock);
       if (data.status !== 'success') throw new Error(data.message || 'Forecast unavailable');
 
       setForecast14(data.forecast ?? []);
@@ -180,7 +196,7 @@ export function useFloodForecast14Day() {
     } finally {
       setLoading14(false);
     }
-  }, [apiBaseUrl]);
+  }, [apiBaseUrl, isMock]);
 
   useEffect(() => {
     setLoading14(true);
