@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { path: '/rainfall',      label: 'Rainfall',          icon: <Icon icon="noto:cloud-with-rain" width={20} /> },
   { path: '/evacuation-map',label: 'Evacuation Map',    icon: <Icon icon="fluent-color:location-ripple-16" width={20} /> },
   { path: '/reports',       label: 'Flood Reports',     icon: <Icon icon="flat-color-icons:overtime" width={20} />, hideFromResidents: true },
+  { path: '/community-reports', label: 'Resident Reports', icon: <Icon icon="fluent-color:megaphone-loud-16" width={20} />, hideFromResidents: true },
   //{ path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} />, hideFromResidents: true },
   //{ path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} />, hideFromResidents: true },
   { path: '/register',      label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true },

@@ -9,6 +9,7 @@ const PAGE_TITLES = {
   '/rainfall':        'Rainfall Accumulation',
   '/evacuation-map':  'Evacuation Map',
   '/reports':         'Flood Incident Reports',
+  '/community-reports': 'Resident Reports',
   '/analytics':       'ML Analytics',
   '/register':        'Register Page',
   '/add-resident':    'Add Resident',
