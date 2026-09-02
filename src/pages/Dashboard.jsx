@@ -941,18 +941,11 @@ export default function Dashboard() {
   const rainfallMm     = prediction?.live_metrics?.rainfall_mm ?? 0;
   const humidityVal    = prediction?.live_metrics?.humidity ?? null;
 
-  const leadTime = prediction?.lead_time_estimate ?? null;
-
-  const leadTimeColor = !prediction ? 'var(--text-muted)'
-    : prediction.probability >= 0.75 ? '#ef4444'
-    : prediction.probability >= 0.50 ? '#f97316'
-    : '#22c55e';
-
   const EVACUATION_PRESETS = [
     { label: '🟡 Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated in Barangay Triangulo. Stay alert and prepare your emergency go-bags.' },
     { label: '🟠 Warning',  type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
     { label: '🔴 Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent in Barangay Triangulo. EVACUATE NOW to designated evacuation centers.' },
-    { label: '✍️ Custom',   type: 'CRITICAL', msg: '' },
+    { label: '✍️ Custom',   type: null,       msg: '' },
   ];
 
   const handleEvacuationAlert = () => {
@@ -971,6 +964,7 @@ export default function Dashboard() {
                     document.getElementById('swal-msg').value='${p.msg.replace(/'/g, "\\'")}';
                     document.getElementById('swal-msg').disabled=${p.msg !== ''};
                     document.getElementById('swal-msg').style.opacity=${p.msg !== '' ? '0.6' : '1'};
+                    document.getElementById('swal-type-row').style.display='${p.type === null ? 'block' : 'none'}';
                   ">
                 <div>
                   <div style="font-size:0.82rem;font-weight:700;color:#e2eaf5">${p.label}</div>
@@ -981,6 +975,14 @@ export default function Dashboard() {
           </div>
           <label style="display:block;font-size:0.75rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Message</label>
           <textarea id="swal-msg" rows="3" disabled style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;font-size:0.82rem;resize:none;opacity:0.6;box-sizing:border-box">${EVACUATION_PRESETS[2].msg}</textarea>
+          <div id="swal-type-row" style="display:none;margin-top:12px">
+            <label style="display:block;font-size:0.75rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Severity for this message</label>
+            <select id="swal-type" style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;font-size:0.82rem;box-sizing:border-box">
+              <option value="ADVISORY">🟡 Advisory</option>
+              <option value="WARNING">🟠 Warning</option>
+              <option value="CRITICAL">🔴 Critical</option>
+            </select>
+          </div>
         </div>
       `,
       showCancelButton: true,
@@ -994,7 +996,9 @@ export default function Dashboard() {
         const idx = checkedRadio ? parseInt(checkedRadio.value) : 2;
         const msg = document.getElementById('swal-msg').value.trim();
         if (!msg) { Swal.showValidationMessage('Please enter a message.'); return false; }
-        return { msg, type: EVACUATION_PRESETS[idx].type };
+        const presetType = EVACUATION_PRESETS[idx].type;
+        const type = presetType ?? document.getElementById('swal-type').value;
+        return { msg, type };
       },
     }).then(async (result) => {
       if (!result.isConfirmed) return;
