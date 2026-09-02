@@ -22,10 +22,10 @@ export function alertLevelFromKey(key) {
 }
 
 const ALERT_MESSAGES = {
-  ADVISORY: (leadTime) => `AGOS Alert - Barangay Triangulo: ADVISORY level reached. Elevated flood risk detected. Estimated time: ${leadTime ?? '> 3 hrs'}. Stay alert and prepare your emergency go-bags.`,
-  WARNING:  (leadTime) => `AGOS Alert - Barangay Triangulo: WARNING level reached. Significant flooding expected within ${leadTime ?? '2–3 hrs'}. Move valuables to higher ground and prepare for possible evacuation.`,
-  CRITICAL: (leadTime) => `AGOS Alert - Barangay Triangulo: CRITICAL level reached. Severe flooding imminent within ${leadTime ?? '1–2 hrs'}. EVACUATE IMMEDIATELY to your designated evacuation center.`,
-  NORMAL:   ()         => `AGOS Alert - Barangay Triangulo: Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.`,
+  ADVISORY: () => `AGOS Alert - Barangay Triangulo: ADVISORY level reached. Elevated flood risk detected. Stay alert and prepare your emergency go-bags.`,
+  WARNING:  () => `AGOS Alert - Barangay Triangulo: WARNING level reached. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
+  CRITICAL: () => `AGOS Alert - Barangay Triangulo: CRITICAL level reached. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  NORMAL:   () => `AGOS Alert - Barangay Triangulo: Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.`,
 };
 
 const FCM_TITLES = {
@@ -35,8 +35,8 @@ const FCM_TITLES = {
   NORMAL:   '🟢 ALL CLEAR — Barangay Triangulo',
 };
 
-async function dispatchAutoAlert(alertKey, leadTime) {
-  const message = ALERT_MESSAGES[alertKey]?.(leadTime);
+async function dispatchAutoAlert(alertKey) {
+  const message = ALERT_MESSAGES[alertKey]?.();
   if (!message) return;
 
   logger.debug(`📲 Alert level changed to ${alertKey} — dispatching alert...`);
@@ -82,7 +82,6 @@ async function saveSnapshot(data) {
     wind_signal:        data?.live_metrics?.wind_signal ?? null,
     water_level:        waterLevel,
     status:             data.status ?? null,
-    lead_time_estimate: data.lead_time_estimate ?? null,
   });
 
   if (error) logger.warn('Snapshot save failed:', error.message);
@@ -116,7 +115,6 @@ export function useModelPrediction() {
         alert_level:        alertKey,
         probability,
         status:             data.status ?? null,
-        lead_time_estimate: data.lead_time_estimate ?? null,
         live_metrics: {
           rainfall_mm: data?.live_metrics?.rainfall_mm ?? 0,
           humidity:    data?.live_metrics?.humidity    ?? null,
@@ -130,7 +128,7 @@ export function useModelPrediction() {
 
       const currentKey = normalized.alert_level;
       if (lastDispatchedAlertKey !== null && lastDispatchedAlertKey !== currentKey) {
-        dispatchAutoAlert(currentKey, normalized.lead_time_estimate).catch(err =>
+        dispatchAutoAlert(currentKey).catch(err =>
           logger.error('Alert dispatch failed:', err.message)
         );
       }
