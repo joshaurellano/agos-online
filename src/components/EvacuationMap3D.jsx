@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import '../lib/maplibreSetup';
 
 const BOUNDARY_COLOR = '#38bdf8';
 

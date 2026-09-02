@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
