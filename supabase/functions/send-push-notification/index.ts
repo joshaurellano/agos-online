@@ -79,7 +79,7 @@ serve(async (req) => {
     }
 
     const serviceAccount = JSON.parse(FIREBASE_SERVICE_ACCOUNT_JSON);
-    const { title, body, level, topic } = await req.json();
+    const { title, body, level, topic, type } = await req.json();
 
     const accessToken = await getAccessToken(serviceAccount);
 
@@ -97,6 +97,7 @@ serve(async (req) => {
             notification: { title, body },
             data: {
               level: level ?? 'CRITICAL',
+              type: type ?? 'alert',
               click_action: 'FLUTTER_NOTIFICATION_CLICK',
             },
             android: {

@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import RainfallPage from './pages/RainfallPage';
 import FloodMapPage from './pages/FloodMapPage';
 import ReportsPage from './pages/ReportsPage';
+import CommunityReportsPage from './pages/CommunityReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 
 import MainLayout from './components/MainLayout';
@@ -33,6 +34,12 @@ function App() {
                 <Route path="/reports"   element={
                   <ResidentRoute>
                     <ReportsPage />
+                  </ResidentRoute>
+                } />
+
+                <Route path="/community-reports" element={
+                  <ResidentRoute>
+                    <CommunityReportsPage />
                   </ResidentRoute>
                 } />
 
