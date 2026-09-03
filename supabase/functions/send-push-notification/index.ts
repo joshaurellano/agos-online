@@ -94,8 +94,16 @@ serve(async (req) => {
         body: JSON.stringify({
           message: {
             topic: topic ?? 'flood_alerts',
-            notification: { title, body },
+            // Data-only message on purpose: including a top-level
+            // `notification` block here causes the OS to auto-render a
+            // notification from it, IN ADDITION to whatever the app's
+            // FirebaseMessagingService/onMessageReceived builds from
+            // `data` — resulting in two identical notifications per
+            // message. Keeping title/body in `data` only means the app
+            // is the single place that ever displays the notification.
             data: {
+              title,
+              body,
               level: level ?? 'CRITICAL',
               type: type ?? 'alert',
               click_action: 'FLUTTER_NOTIFICATION_CLICK',

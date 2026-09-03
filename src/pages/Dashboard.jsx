@@ -942,9 +942,9 @@ export default function Dashboard() {
   const humidityVal    = prediction?.live_metrics?.humidity ?? null;
 
   const EVACUATION_PRESETS = [
-    { label: '🟡 Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated in Barangay Triangulo. Stay alert and prepare your emergency go-bags.' },
+    { label: '🟡 Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated. Stay alert and prepare your emergency go-bags.' },
     { label: '🟠 Warning',  type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
-    { label: '🔴 Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent in Barangay Triangulo. EVACUATE NOW to designated evacuation centers.' },
+    { label: '🔴 Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent. EVACUATE NOW to designated evacuation centers.' },
     { label: '✍️ Custom',   type: null,       msg: '' },
   ];
 
@@ -1013,28 +1013,16 @@ export default function Dashboard() {
         return;
       }
 
-      const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', { body: { message, type: alertType } });
-      if (smsError) {
-        Swal.fire({ title: '⚠️ Alert Saved, SMS Failed', text: 'The alert was recorded but SMS could not be sent.', icon: 'warning', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
-        return;
-      }
-
-      const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
-        body: {
-          title: alertType === 'CRITICAL' ? '🔴 EVACUATION ALERT — Barangay Triangulo'
-               : alertType === 'WARNING'  ? '🟠 WARNING — Barangay Triangulo'
-               : '🟡 ADVISORY — Barangay Triangulo',
-          body: message, level: alertType, topic: 'flood_alerts',
-        },
-      });
-      if (fcmError) logger.error('FCM push failed:', fcmError.message);
+      // SMS + push are dispatched automatically by the on-alert-change DB
+      // webhook whenever a row lands in `alerts` — no need to call
+      // send-alert / send-push-notification here too (that was firing
+      // both notifications twice).
 
       Swal.fire({
         title: '✅ Alert Dispatched',
         html: `<p style="color:#8da4be;margin-bottom:12px">Evacuation alert sent successfully.</p>
           <div style="background:#112240;border-radius:8px;padding:12px;text-align:left;font-size:0.85rem">
-            <div style="color:#22c55e;margin-bottom:4px">📱 SMS sent to: <strong>${smsData?.sent ?? 0} residents</strong></div>
-            ${smsData?.failed ? `<div style="color:#f97316">⚠️ Failed: ${smsData.failed}</div>` : ''}
+            <div style="color:#22c55e;margin-bottom:4px">📱 SMS is being sent to all residents</div>
             <div style="color:#22c55e;margin-top:4px">🔔 Push notification sent to all app users</div>
           </div>`,
         icon: 'success', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9',
