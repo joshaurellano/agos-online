@@ -80,10 +80,7 @@ async function dispatchAutoAlert(alertKey) {
 
 // Saves snapshot to Supabase for the FloodForecastChart
 async function saveSnapshot(data) {
-  const BASELINE_LEVEL = 1.4;
-  const RISE_RATE      = 0.045;
-  const rainfall       = data?.live_metrics?.rainfall_mm ?? 0;
-  const waterLevel     = parseFloat((BASELINE_LEVEL + rainfall * RISE_RATE).toFixed(2));
+  const rainfall = data?.live_metrics?.rainfall_mm ?? 0;
 
   const { error } = await supabase.from('flood_snapshots').insert({
     alert_level:        alertLevelFromKey(data.alert_level),
@@ -92,7 +89,6 @@ async function saveSnapshot(data) {
     rainfall_mm:        rainfall,
     humidity:           data?.live_metrics?.humidity  ?? null,
     wind_signal:        data?.live_metrics?.wind_signal ?? null,
-    water_level:        waterLevel,
     status:             data.status ?? null,
   });
 
