@@ -5,10 +5,10 @@ const BASELINE_LEVEL = 1.4
 const RISE_RATE = 0.045
 
 const ALERT_MESSAGES = {
-  ADVISORY: 'AGOS Alert - Barangay Triangulo: ADVISORY level reached...',
-  WARNING:  'AGOS Alert - Barangay Triangulo: WARNING level reached...',
-  CRITICAL: 'AGOS Alert - Barangay Triangulo: CRITICAL level reached. EVACUATE IMMEDIATELY.',
-  NORMAL:   'AGOS Alert - Barangay Triangulo: Situation has returned to NORMAL.',
+  ADVISORY: 'AGOS Alert: ADVISORY level reached...',
+  WARNING:  'AGOS Alert: WARNING level reached...',
+  CRITICAL: 'AGOS Alert: CRITICAL level reached. EVACUATE IMMEDIATELY.',
+  NORMAL:   'AGOS Alert: Situation has returned to NORMAL.',
 }
 
 Deno.serve(async () => {
@@ -38,9 +38,7 @@ Deno.serve(async () => {
     await supabase.from('alerts').insert({
       type: currentAlert, message, sent_by: 'AGOS Auto-Alert'
     })
-    await supabase.functions.invoke('send-alert', {
-      body: { message, type: currentAlert }
-    })
+    // on-alert-change webhook handles SMS + push dispatch on this insert
   }
 
   // 4. Save snapshot

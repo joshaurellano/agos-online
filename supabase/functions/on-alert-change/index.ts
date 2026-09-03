@@ -1,10 +1,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const ALERT_TITLES: Record<string, string> = {
-  ADVISORY: '🟡 Advisory – Barangay Triangulo',
-  WARNING:  '🟠 Warning – Barangay Triangulo',
-  CRITICAL: '🔴 CRITICAL – Barangay Triangulo',
-  NORMAL:   '🟢 All Clear – Barangay Triangulo',
+  ADVISORY: '🟡 ADVISORY',
+  WARNING:  '🟠 WARNING',
+  CRITICAL: '🔴 EVACUATION ALERT',
+  NORMAL:   '🟢 All Clear',
 };
 
 serve(async (req) => {

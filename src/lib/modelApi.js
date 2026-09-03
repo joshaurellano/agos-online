@@ -50,18 +50,15 @@ export function alertLevelFromKey(key) {
 }
 
 const ALERT_MESSAGES = {
-  ADVISORY: () => `AGOS Alert - Barangay Triangulo: ADVISORY level reached. Elevated flood risk detected. Stay alert and prepare your emergency go-bags.`,
-  WARNING:  () => `AGOS Alert - Barangay Triangulo: WARNING level reached. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
-  CRITICAL: () => `AGOS Alert - Barangay Triangulo: CRITICAL level reached. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
-  NORMAL:   () => `AGOS Alert - Barangay Triangulo: Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.`,
+  ADVISORY: () => `Elevated flood risk detected. Stay alert and prepare your emergency go-bags.`,
+  WARNING:  () => `WARNING level reached. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
+  CRITICAL: () => `CRITICAL level reached. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  NORMAL:   () => `Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.`,
 };
 
-const FCM_TITLES = {
-  ADVISORY: '🟡 ADVISORY — Barangay Triangulo',
-  WARNING:  '🟠 WARNING — Barangay Triangulo',
-  CRITICAL: '🔴 EVACUATION ALERT — Barangay Triangulo',
-  NORMAL:   '🟢 ALL CLEAR — Barangay Triangulo',
-};
+// Push notification titles now live solely in on-alert-change/index.ts —
+// that's the only place left that ever calls send-push-notification, so
+// keeping a second copy here would just risk drifting out of sync again.
 
 async function dispatchAutoAlert(alertKey) {
   const message = ALERT_MESSAGES[alertKey]?.();
@@ -69,29 +66,16 @@ async function dispatchAutoAlert(alertKey) {
 
   logger.debug(`📲 Alert level changed to ${alertKey} — dispatching alert...`);
 
+  // SMS + push are dispatched automatically by the on-alert-change DB
+  // webhook whenever a row lands in `alerts` — do not call send-alert /
+  // send-push-notification here too. (This was the second, differently
+  // titled push showing up alongside the one from on-alert-change.)
   const { error: dbError } = await supabase.from('alerts').insert({
     type:    alertKey,
     message,
     sent_by: 'AGOS Auto-Alert',
   });
   if (dbError) logger.warn('Alert log failed:', dbError.message);
-
-  const { data: smsData, error: smsError } = await supabase.functions.invoke('send-alert', {
-    body: { message, type: alertKey },
-  });
-  if (smsError) logger.warn('SMS dispatch failed:', smsError.message);
-  else logger.debug(`✅ SMS dispatched for ${alertKey}`, smsData);
-
-  const { error: fcmError } = await supabase.functions.invoke('send-push-notification', {
-    body: {
-      title: FCM_TITLES[alertKey] ?? `AGOS Alert — ${alertKey}`,
-      body:  message,
-      level: alertKey,
-      topic: 'flood_alerts',
-    },
-  });
-  if (fcmError) logger.warn('Push notification dispatch failed:', fcmError.message);
-  else logger.debug(`✅ Push notification dispatched for ${alertKey}`);
 }
 
 // Saves snapshot to Supabase for the FloodForecastChart
