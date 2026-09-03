@@ -1,8 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const MODEL_URL = 'https://flood-api-553657561163.asia-southeast1.run.app/api/predict-flood'
-const BASELINE_LEVEL = 1.4
-const RISE_RATE = 0.045
 
 const ALERT_MESSAGES = {
   ADVISORY: 'AGOS Alert: ADVISORY level reached...',
@@ -43,7 +41,6 @@ Deno.serve(async () => {
 
   // 4. Save snapshot
   const rainfall = data?.live_metrics?.rainfall_mm ?? 0
-  const waterLevel = parseFloat((BASELINE_LEVEL + rainfall * RISE_RATE).toFixed(2))
 
   await supabase.from('flood_snapshots').insert({
     alert_level: data.alert_level === 'CRITICAL' ? 3 : data.alert_level === 'WARNING' ? 2 : data.alert_level === 'ADVISORY' ? 1 : 0,
@@ -52,7 +49,6 @@ Deno.serve(async () => {
     rainfall_mm: rainfall,
     humidity:    data?.live_metrics?.humidity ?? null,
     wind_signal: data?.live_metrics?.wind_signal ?? null,
-    water_level: waterLevel,
     status:      data.status ?? null,
   })
 
