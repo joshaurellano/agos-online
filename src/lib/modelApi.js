@@ -99,7 +99,10 @@ async function saveSnapshot(data) {
 let lastDispatchedAlertKey = null;
 
 // ── Day-1 prediction (KPI cards, alerts, snapshot logging) ──────────────
-export function useModelPrediction() {
+// modelKey selects which trained algorithm ('gru' | 'lstm' | 'cnn') the
+// backend runs — see MODEL_OPTIONS in ../hooks/useModelSelection. Defaults
+// to 'gru' to match the backend's own DEFAULT_MODEL_KEY.
+export function useModelPrediction(modelKey = 'gru') {
   const { apiBaseUrl, isMock } = useDataSource();
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading]       = useState(true);
@@ -107,7 +110,7 @@ export function useModelPrediction() {
 
   const fetchLatest = useCallback(async () => {
     try {
-      const data = await fetchModelJson(apiBaseUrl, '/api/predict-flood', !isMock);
+      const data = await fetchModelJson(apiBaseUrl, `/api/predict-flood/${modelKey}`, !isMock);
       if (data.status !== 'success') throw new Error(data.message || 'Prediction unavailable');
 
       const probability = data.probability ?? 0;
@@ -121,6 +124,7 @@ export function useModelPrediction() {
         alert_level:        alertKey,
         probability,
         status:             data.status ?? null,
+        model_key:          data.model_key ?? modelKey,
         live_metrics: {
           rainfall_mm: data?.live_metrics?.rainfall_mm ?? 0,
           humidity:    data?.live_metrics?.humidity    ?? null,
@@ -150,7 +154,7 @@ export function useModelPrediction() {
     } finally {
       setLoading(false);
     }
-  }, [apiBaseUrl, isMock]);
+  }, [apiBaseUrl, isMock, modelKey]);
 
   useEffect(() => {
     setLoading(true);
@@ -162,8 +166,10 @@ export function useModelPrediction() {
   return { prediction, loading, error, refetch: fetchLatest };
 }
 
-// ── NEW: 14-day forecast (single source of truth = the model) ───────────
-export function useFloodForecast14Day() {
+// ── 14-day forecast (single source of truth = the selected model) ───────
+// modelKey selects which trained algorithm ('gru' | 'lstm' | 'cnn') the
+// backend runs. Defaults to 'gru' to match the backend's DEFAULT_MODEL_KEY.
+export function useFloodForecast14Day(modelKey = 'gru') {
   const { apiBaseUrl, isMock } = useDataSource();
   const [forecast14, setForecast14] = useState([]);
   const [meta14, setMeta14]         = useState(null);
@@ -172,7 +178,7 @@ export function useFloodForecast14Day() {
 
   const fetchForecast14 = useCallback(async () => {
     try {
-      const data = await fetchModelJson(apiBaseUrl, '/api/forecast-flood', !isMock);
+      const data = await fetchModelJson(apiBaseUrl, `/api/forecast-flood/${modelKey}`, !isMock);
       if (data.status !== 'success') throw new Error(data.message || 'Forecast unavailable');
 
       setForecast14(data.forecast ?? []);
@@ -184,7 +190,7 @@ export function useFloodForecast14Day() {
     } finally {
       setLoading14(false);
     }
-  }, [apiBaseUrl, isMock]);
+  }, [apiBaseUrl, isMock, modelKey]);
 
   useEffect(() => {
     setLoading14(true);
@@ -194,4 +200,50 @@ export function useFloodForecast14Day() {
   }, [fetchForecast14]);
 
   return { forecast14, meta14, loading14, error14, refetch14: fetchForecast14 };
+}
+
+// ── All 3 algorithms side by side (AnalyticsPage benchmark panel) ───────
+// Hits /api/forecast-flood/compare, which runs every available algorithm
+// against the SAME input windows and returns each one's real 14-day
+// forecast + reliability metrics, plus a day-by-day ensemble mean and
+// agreement flag. This is the genuine multi-algorithm data — nothing here
+// is simulated or offset-approximated on the frontend.
+export function useModelComparison() {
+  const { apiBaseUrl, isMock } = useDataSource();
+  const [perModel, setPerModel]             = useState({});
+  const [comparisonDays, setComparisonDays] = useState([]);
+  const [modelsCompared, setModelsCompared] = useState([]);
+  const [defaultModel, setDefaultModel]     = useState('gru');
+  const [loadingCompare, setLoadingCompare] = useState(true);
+  const [errorCompare, setErrorCompare]     = useState(null);
+
+  const fetchComparison = useCallback(async () => {
+    try {
+      const data = await fetchModelJson(apiBaseUrl, '/api/forecast-flood/compare', !isMock);
+      if (data.status !== 'success') throw new Error(data.message || 'Comparison unavailable');
+
+      setPerModel(data.per_model ?? {});
+      setComparisonDays(data.comparison ?? []);
+      setModelsCompared(data.models_compared ?? []);
+      setDefaultModel(data.default_model ?? 'gru');
+      setErrorCompare(null);
+    } catch (err) {
+      logger.error('Model comparison fetch error:', err.message);
+      setErrorCompare(err.message || 'Could not load model comparison');
+    } finally {
+      setLoadingCompare(false);
+    }
+  }, [apiBaseUrl, isMock]);
+
+  useEffect(() => {
+    setLoadingCompare(true);
+    fetchComparison();
+    const id = setInterval(fetchComparison, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [fetchComparison]);
+
+  return {
+    perModel, comparisonDays, modelsCompared, defaultModel,
+    loadingCompare, errorCompare, refetchCompare: fetchComparison,
+  };
 }

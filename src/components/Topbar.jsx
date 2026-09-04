@@ -3,12 +3,14 @@ import Swal from 'sweetalert2';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
 import { useDataSource } from '../hooks/useDataSource';
+import { useModelSelection } from '../hooks/useModelSelection';
 import { isAdmin } from '../lib/roles';
 
 export default function Topbar({ title, onMenuClick, alertLevel }) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { isMock, toggleDataSource } = useDataSource();
+  const { modelKey, setModelKey, options: modelOptions } = useModelSelection();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -71,6 +73,35 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+
+        {/* Algorithm switcher — GRU / LSTM / CNN. All three are trained on
+            the same scaler/feature contract, so switching here just tells
+            the backend which encoder-decoder to run; every page reading
+            from useModelPrediction/useFloodForecast14Day updates to match. */}
+        <div
+          title="Switch which trained algorithm powers predictions and forecasts"
+          style={{
+            display: 'flex', gap: 0, background: 'var(--blue-mid)',
+            border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden',
+          }}
+        >
+          {modelOptions.map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setModelKey(opt.key)}
+              title={opt.fullLabel}
+              style={{
+                padding: '7px 12px', fontSize: '0.72rem', fontWeight: 700,
+                letterSpacing: '0.04em', cursor: 'pointer', border: 'none',
+                background: modelKey === opt.key ? opt.color : 'transparent',
+                color: modelKey === opt.key ? '#0d1f3c' : 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
         {/* Admin-only: Live / Mock data source toggle */}
         {isAdmin(user) && (
