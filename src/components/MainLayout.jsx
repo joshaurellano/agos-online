@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { useModelPrediction } from '../lib/modelApi';
+import { useModelSelection } from '../hooks/useModelSelection';
 
 const PAGE_TITLES = {
   '/dashboard':       'Dashboard Overview',
@@ -17,7 +18,12 @@ const PAGE_TITLES = {
 
 export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { prediction, loading: modelLoading, error: modelError } = useModelPrediction();
+  const { modelKey } = useModelSelection();
+  // Single shared poller for whichever algorithm is currently selected —
+  // switching algorithms here re-fetches day-1 predictions, alerts, and
+  // Supabase snapshot logging for the newly selected model everywhere
+  // downstream (Topbar alert pill, Dashboard, AnalyticsPage).
+  const { prediction, loading: modelLoading, error: modelError } = useModelPrediction(modelKey);
   const alertLevel = prediction?.alert_level ?? 'NORMAL';
   const location = useLocation();
 

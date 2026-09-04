@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
 import { DataSourceProvider } from './hooks/useDataSource';
+import { ModelSelectionProvider } from './hooks/useModelSelection';
 
 import LoginPage from './pages/LoginPage';
 import RegistrationPage from './pages/RegistrationPage';
@@ -22,6 +23,7 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <DataSourceProvider>
+        <ModelSelectionProvider>
           <Router>
             <Routes>
               <Route path="/"      element={<LoginPage />} />
@@ -59,6 +61,7 @@ function App() {
               </Route>
             </Routes>
           </Router>
+        </ModelSelectionProvider>
         </DataSourceProvider>
       </AuthProvider>
     </ThemeProvider>

@@ -14,6 +14,7 @@ import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
 import { useDataSource } from '../hooks/useDataSource';
 import { useFloodForecast14Day } from '../lib/modelApi';
+import { useModelSelection } from '../hooks/useModelSelection';
 import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
 import { logger } from '../lib/logger';
@@ -756,7 +757,8 @@ function DriverModal({ day, onClose }) {
 }
 
 function FloodForecast14Day() {
-  const { forecast14, meta14, loading14, error14 } = useFloodForecast14Day();
+  const { activeModel } = useModelSelection();
+  const { forecast14, meta14, loading14, error14 } = useFloodForecast14Day(activeModel.key);
   const [rangeDays, setRangeDays] = useState(7);
   const [selectedDay, setSelectedDay] = useState(null);
 
@@ -774,7 +776,7 @@ function FloodForecast14Day() {
         <div>
           <SectionLabel>📅 Flood Forecast</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
-            Tap a day for drivers
+            Tap a day for drivers · <span style={{ color: activeModel.color, fontWeight: 700 }}>{activeModel.label}</span> engine
           </div>
         </div>
         <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
