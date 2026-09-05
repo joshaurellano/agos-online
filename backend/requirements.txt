@@ -1,0 +1,14 @@
+fastapi[standard]
+uvicorn[standard]
+python-dotenv
+requests
+numpy
+pandas
+scikit-learn
+joblib
+tensorflow-cpu
+
+# Only needed for training/train_models.py (charts/eval plots), not for
+# serving the API:
+matplotlib
+seaborn
