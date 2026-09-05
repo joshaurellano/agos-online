@@ -1,0 +1,53 @@
+[{
+	"resource": "/C:/Users/janth/Desktop/Playground/Agos-/supabase/functions/create-user/index.ts",
+	"owner": "typescript",
+	"code": "2688",
+	"severity": 8,
+	"message": "Cannot find type definition file for 'https://deno.land/x/deno/tsc/dts/deno.ns.d.ts'.",
+	"source": "ts",
+	"startLineNumber": 1,
+	"startColumn": 23,
+	"endLineNumber": 1,
+	"endColumn": 68,
+	"modelVersionId": 17,
+	"origin": "extHost1"
+},{
+	"resource": "/C:/Users/janth/Desktop/Playground/Agos-/supabase/functions/create-user/index.ts",
+	"owner": "typescript",
+	"code": "2304",
+	"severity": 8,
+	"message": "Cannot find name 'Deno'.",
+	"source": "ts",
+	"startLineNumber": 4,
+	"startColumn": 1,
+	"endLineNumber": 4,
+	"endColumn": 5,
+	"modelVersionId": 17,
+	"origin": "extHost1"
+},{
+	"resource": "/C:/Users/janth/Desktop/Playground/Agos-/supabase/functions/create-user/index.ts",
+	"owner": "typescript",
+	"code": "2304",
+	"severity": 8,
+	"message": "Cannot find name 'Deno'.",
+	"source": "ts",
+	"startLineNumber": 6,
+	"startColumn": 5,
+	"endLineNumber": 6,
+	"endColumn": 9,
+	"modelVersionId": 17,
+	"origin": "extHost1"
+},{
+	"resource": "/C:/Users/janth/Desktop/Playground/Agos-/supabase/functions/create-user/index.ts",
+	"owner": "typescript",
+	"code": "2304",
+	"severity": 8,
+	"message": "Cannot find name 'Deno'.",
+	"source": "ts",
+	"startLineNumber": 7,
+	"startColumn": 5,
+	"endLineNumber": 7,
+	"endColumn": 9,
+	"modelVersionId": 17,
+	"origin": "extHost1"
+}]
