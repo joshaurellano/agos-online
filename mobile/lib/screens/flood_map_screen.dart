@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import '../main.dart';
 import '../theme/panahon_ui.dart';
 import '../services/model_api_client.dart';
+import '../widgets/rain_overlay.dart';
+import '../widgets/wind_direction_arrow.dart';
 
 // ─── URL (no fallback for a missing/misspelled .env key — see
 // dashboard_screen.dart for that rationale. There is no second app host
@@ -23,6 +25,9 @@ String _requireEnv(String key) {
 }
 
 String get _modelUrl => _requireEnv('MODEL_API_URL');
+// Same weather endpoint dashboard_screen.dart's _fetchForecast() reads --
+// only used here for the "now" condition text (see _fetchCondition below).
+String get _forecastUrl => _requireEnv('FORECAST_API_URL');
 
 // ─── Alert colors / labels ──────────────────────────────────────────────────────
 const _alertColors = {
@@ -131,6 +136,16 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   bool _loading = true;
   Timer? _timer;
 
+  // ── Weather overlay inputs, matching Dashboard.jsx's FloodMap props ──────
+  // rainfall/wind come from the same /predict-flood response already
+  // polled below (its `live_metrics` object); `condition` comes from a
+  // separate, one-time weather-endpoint fetch since it changes far more
+  // slowly than the flood prediction itself (see _fetchCondition).
+  double _rainfallMm = 0.0;
+  double _windSignal = 0.0;
+  double? _windDirectionDeg;
+  String? _condition;
+
   bool _liveDataStale = false;
   DateTime? _lastUpdated;
 
@@ -144,6 +159,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   void initState() {
     super.initState();
     _fetchStatus();
+    _fetchCondition();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchStatus());
   }
 
@@ -172,13 +188,28 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         final rawLevel = j['alert_level'] as String?;
         final level = _alertLevelKeys.contains(rawLevel) ? rawLevel! : 'NORMAL';
         final prob  = (j['probability'] as num?)?.toDouble();
+        // Same live_metrics object dashboard_screen.dart's _Prediction
+        // parses -- rainfall/wind_signal/wind_direction_deg feed the rain
+        // overlay + wind arrow below.
+        final metrics = j['live_metrics'] as Map<String, dynamic>? ?? {};
+        num? parseNum(dynamic v) {
+          if (v == null) return null;
+          if (v is num) return v;
+          return num.tryParse(v.toString());
+        }
+        final rainfall  = parseNum(metrics['rainfall_mm'])?.toDouble() ?? 0.0;
+        final windSig   = parseNum(metrics['wind_signal'])?.toDouble() ?? 0.0;
+        final windDeg   = parseNum(metrics['wind_direction_deg'])?.toDouble();
         if (!mounted) return;
         setState(() {
-          _alertKey      = level;
-          _probability   = prob;
-          _loading       = false;
-          _liveDataStale = false;
-          _lastUpdated   = DateTime.now();
+          _alertKey         = level;
+          _probability      = prob;
+          _rainfallMm       = rainfall;
+          _windSignal       = windSig;
+          _windDirectionDeg = windDeg;
+          _loading          = false;
+          _liveDataStale    = false;
+          _lastUpdated      = DateTime.now();
         });
       } else {
         debugPrint('AGOS: _fetchStatus failed ($url): HTTP ${res.statusCode}');
@@ -187,6 +218,30 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     } catch (e) {
       debugPrint('AGOS: _fetchStatus failed ($url): $e');
       if (mounted) setState(() { _loading = false; _liveDataStale = true; });
+    }
+  }
+
+  // "now" weather condition text (e.g. "Heavy Rain", "Thunderstorm",
+  // "Overcast") for the rain overlay -- same endpoint + same "hourly[0] is
+  // now" convention as dashboard_screen.dart's _fetchForecast /
+  // _nowWeather. Fetched once rather than on the 30s timer: condition
+  // changes far more slowly than the flood prediction, and the overlay
+  // still gets fresh strength/wind info every poll via rainfall_mm alone.
+  Future<void> _fetchCondition() async {
+    try {
+      final res = await fetchModelApi(_forecastUrl, timeout: const Duration(seconds: 60));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        final hourly = (body['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
+        if (hourly.isNotEmpty && mounted) {
+          setState(() => _condition = hourly.first['condition']?.toString());
+        }
+      }
+    } catch (e) {
+      debugPrint('AGOS: _fetchCondition failed: $e');
+      // Left as null -- resolveIntensity() falls back to rainfall_mm-only
+      // tiering, so the overlay still works without condition text.
     }
   }
 
@@ -270,8 +325,24 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                   child: Stack(children: [
                     Positioned.fill(child: _build2DMap(color, activeStyle)),
 
+                    // ── Weather overlay ─────────────────────────────────────
+                    // Sits above the tiles/boundary but under the floating
+                    // UI cards below (paint order = Stack child order), and
+                    // never intercepts touches (IgnorePointer inside).
+                    Positioned.fill(
+                      child: RainOverlay(
+                        rainfallMm: _rainfallMm,
+                        condition: _condition,
+                        windSignal: _windSignal,
+                      ),
+                    ),
+
                     // ── Status bar ─────────────────────────────────────────
                     Positioned(top: 10, left: 10, right: 58, child: _statusPill(color)),
+
+                    // ── Wind readout ────────────────────────────────────────
+                    if (_windDirectionDeg != null)
+                      Positioned(top: 62, left: 10, child: _windPill()),
 
                     // ── Legend panel ───────────────────────────────────────
                     if (_showLegend) Positioned(top: 62, right: 56, child: _legendPanel()),
@@ -439,6 +510,27 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           )
         else if (_liveDataStale)
           const Icon(Icons.cloud_off_rounded, color: AppColors.textMuted, size: 14),
+      ]),
+    );
+  }
+
+  Widget _windPill() {
+    final cardinal = degToCardinal(_windDirectionDeg);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.bgDark.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.bgBorder),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 8)],
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        WindDirectionArrow(deg: _windDirectionDeg, size: 15, color: AppColors.textSec),
+        const SizedBox(width: 6),
+        Text(
+          '${cardinal ?? ''} · ${_windDirectionDeg!.round()}°',
+          style: const TextStyle(color: AppColors.textSec, fontSize: 10.5, fontWeight: FontWeight.w600),
+        ),
       ]),
     );
   }
