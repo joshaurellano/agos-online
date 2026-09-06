@@ -3,6 +3,8 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
+import RainOverlay from './RainOverlay';
+import RainDebugControls from './RainDebugControls';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
 // two views read consistently (trunk/primary thicker, service thinner).
@@ -108,10 +110,11 @@ function roadWidthExpression() {
   return expr;
 }
 
-export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal }) {
+export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, condition }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
+  const [rainDebugPreset, setRainDebugPreset] = useState(null); // dev-only override, see RainDebugControls
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
 
@@ -287,9 +290,31 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
 
   const alertColor = alertColors[currentAlert] || alertColors.NORMAL;
 
+  // Dev-only: RainDebugControls can override the live rainfall/condition
+  // props so you can preview every intensity tier on demand. Selecting the
+  // "Live data" preset clears the override (see handleRainDebugSelect).
+  const effectiveRainfallMm = rainDebugPreset ? rainDebugPreset.mm : rainfallMm;
+  const effectiveCondition  = rainDebugPreset ? rainDebugPreset.condition : condition;
+  const handleRainDebugSelect = (preset) => {
+    setRainDebugPreset(preset.mm === null ? null : preset);
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', height: 420, borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* ── Rain overlay ─────────────────────────────────────────────── */}
+      <RainOverlay rainfallMm={effectiveRainfallMm} condition={effectiveCondition} windSignal={windSignal} />
+
+      {/* Dev-only tier preview -- stripped from production builds since
+          import.meta.env.DEV is statically false there and bundlers
+          tree-shake the dead branch. */}
+      {import.meta.env.DEV && (
+        <RainDebugControls
+          activeLabel={rainDebugPreset?.label ?? 'Live data'}
+          onSelect={handleRainDebugSelect}
+        />
+      )}
 
       {/* ── Floating HUD ─────────────────────────────────────────────── */}
       <div style={{
@@ -315,7 +340,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>🌧 Rainfall</span>
             <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600 }}>
-              {rainfallMm != null ? `${rainfallMm.toFixed(1)} mm/hr` : '—'}
+              {effectiveRainfallMm != null ? `${effectiveRainfallMm.toFixed(1)} mm/hr` : '—'}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -324,6 +349,14 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
               {windSignal != null ? `#${windSignal}` : '—'}
             </span>
           </div>
+          {effectiveCondition && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>☁ Condition</span>
+              <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600 }}>
+                {effectiveCondition}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
