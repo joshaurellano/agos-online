@@ -19,6 +19,13 @@ String _requireEnv(String key) {
 }
 
 String get _modelUrl => _requireEnv('MODEL_API_URL');
+
+// GET /api/forecast — same endpoint the web frontend's WeatherForecast.jsx
+// reads its "outlook" (next 6h/12h/24h rain) block from. Previously this
+// screen only ever read live_metrics.rainfall_mm from MODEL_API_URL and
+// never touched /api/forecast's outlook data at all.
+String get _forecastUrl => _requireEnv('FORECAST_API_URL');
+
 // ─── PAGASA Thresholds ──────────────────────────────────────────────────────
 class _Threshold {
   final double min, max;
@@ -74,20 +81,44 @@ class RainfallScreen extends StatefulWidget {
   State<RainfallScreen> createState() => _RainfallScreenState();
 }
 
+class _RainfallOutlook {
+  final double? mm6h, mm12h, mm24h;
+  final int? pct6h, pct12h, pct24h;
+  const _RainfallOutlook({
+    this.mm6h, this.mm12h, this.mm24h, this.pct6h, this.pct12h, this.pct24h,
+  });
+
+  factory _RainfallOutlook.fromJson(Map<String, dynamic> j) {
+    num? n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '');
+    return _RainfallOutlook(
+      mm6h:  n(j['next_6h_rain_mm'])?.toDouble(),
+      mm12h: n(j['next_12h_rain_mm'])?.toDouble(),
+      mm24h: n(j['next_24h_rain_mm'])?.toDouble(),
+      pct6h:  n(j['next_6h_rain_probability_pct'])?.toInt(),
+      pct12h: n(j['next_12h_rain_probability_pct'])?.toInt(),
+      pct24h: n(j['next_24h_rain_probability_pct'])?.toInt(),
+    );
+  }
+}
+
 class _RainfallScreenState extends State<RainfallScreen> {
   double? _liveRainfall;
   bool _loading = true;
   String _period = 'hourly'; // 'hourly' | 'daily'
 
+  _RainfallOutlook? _outlook;
+  bool _outlookLoading = true;
+
   @override
   void initState() {
     super.initState();
     _fetchRainfall();
+    _fetchOutlook();
   }
 
 Future<void> _fetchRainfall() async {
   try {
-    final res = await getWithFallback(_modelUrl);
+    final res = await fetchModelApi(_modelUrl);
     if (!mounted) return;
     debugPrint('RAINFALL STATUS: ${res.statusCode}');
     debugPrint('RAINFALL BODY: ${res.body}');   // <-- add this
@@ -108,6 +139,25 @@ Future<void> _fetchRainfall() async {
   }
 }
 
+  // GET /api/forecast's "outlook" block — next 6h/12h/24h accumulated
+  // rain + rain probability. Same field WeatherForecast.jsx renders on
+  // the web dashboard; wasn't surfaced anywhere on mobile before.
+  Future<void> _fetchOutlook() async {
+    try {
+      final res = await fetchModelApi(_forecastUrl);
+      if (!mounted) return;
+      final j = jsonDecode(res.body) as Map<String, dynamic>;
+      final o = j['outlook'] as Map<String, dynamic>?;
+      setState(() {
+        _outlook = o != null ? _RainfallOutlook.fromJson(o) : null;
+        _outlookLoading = false;
+      });
+    } catch (e) {
+      debugPrint('OUTLOOK FETCH ERROR: $e');
+      if (mounted) setState(() => _outlookLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final table = _period == 'hourly' ? _hourlyThresholds : _dailyThresholds;
@@ -115,7 +165,7 @@ Future<void> _fetchRainfall() async {
     final cat = _categoryFor(mm, _hourlyThresholds);
 
     return RefreshIndicator(
-      onRefresh: _fetchRainfall,
+      onRefresh: () => Future.wait([_fetchRainfall(), _fetchOutlook()]),
       color: AppColors.accent,
       backgroundColor: AppColors.bgDark,
       child: SingleChildScrollView(
@@ -195,6 +245,15 @@ Future<void> _fetchRainfall() async {
             ),
             const SizedBox(height: 16),
 
+            // ── Rainfall outlook (GET /api/forecast → "outlook") ─────
+            // Same next-6h/12h/24h accumulated-rain + rain-probability
+            // block WeatherForecast.jsx renders on the web dashboard.
+            const Text('RAINFALL OUTLOOK', style: TextStyle(
+                color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            const SizedBox(height: 8),
+            _RainfallOutlookRow(outlook: _outlook, loading: _outlookLoading),
+            const SizedBox(height: 16),
+
             // ── Period toggle ───────────────────────────────────────
             Row(children: [
               Expanded(child: _PeriodTab(
@@ -252,6 +311,66 @@ Future<void> _fetchRainfall() async {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Rainfall Outlook Row (next 6h / 12h / 24h) ──────────────────────────────
+class _RainfallOutlookRow extends StatelessWidget {
+  final _RainfallOutlook? outlook;
+  final bool loading;
+  const _RainfallOutlookRow({required this.outlook, required this.loading});
+
+  @override
+  Widget build(BuildContext context) {
+    final cells = [
+      ('Next 6 Hours', outlook?.mm6h, outlook?.pct6h),
+      ('Next 12 Hours', outlook?.mm12h, outlook?.pct12h),
+      ('Next 24 Hours', outlook?.mm24h, outlook?.pct24h),
+    ];
+
+    return Row(
+      children: cells.map((c) {
+        final (label, mm, pct) = c;
+        final isLast = c == cells.last;
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: isLast ? 0 : 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.bgCard,
+                border: Border.all(color: AppColors.bgBorder),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(
+                      color: AppColors.textMuted, fontSize: 8.5, fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4)),
+                  const SizedBox(height: 6),
+                  loading
+                      ? const Text('—', style: TextStyle(
+                          color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w800))
+                      : Row(crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic, children: [
+                          Text(mm != null ? mm.toStringAsFixed(1) : '—', style: const TextStyle(
+                              color: AppColors.accent, fontSize: 17, fontWeight: FontWeight.w800)),
+                          const SizedBox(width: 2),
+                          const Text('mm', style: TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
+                        ]),
+                  if (!loading && pct != null) ...[
+                    const SizedBox(height: 2),
+                    Text('☔ $pct% chance', style: const TextStyle(
+                        color: AppColors.textSec, fontSize: 9)),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

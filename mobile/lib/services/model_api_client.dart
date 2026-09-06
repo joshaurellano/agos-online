@@ -1,71 +1,54 @@
 // model_api_client.dart
 //
-// Shared helper for calling the AGOS flood-prediction model API with an
-// automatic fallback host.
+// Shared helper for calling the AGOS backend API.
 //
-// The primary host is whatever MODEL_API_URL / FORECAST_FLOOD_API_URL
-// point to in .env. If that host can't be reached (deploy is asleep, DNS
-// hiccup, etc.), we retry the exact same path/query against the backup
-// deployment below before giving up — the backup exposes the identical
-// endpoints (/api/predict-flood, /api/forecast-flood), so only the
-// scheme+host need to change.
+// This used to retry against a second, hardcoded "backup" deployment
+// (kBackupModelBaseUrl) whenever the primary host was unreachable. That
+// backup host has been removed: it was a second, independently-deployed
+// copy of the backend that could quietly drift out of sync with the
+// primary (different model weights, different code, no shared state),
+// and it duplicated resilience the backend already provides itself.
+//
+// The backend's own weather layer (see app/weather/persistence.py) keeps
+// a last-known-good Open-Meteo response persisted in Upstash Redis, and
+// serves it automatically whenever Open-Meteo is unreachable — the same
+// safety net the web frontend already relies on (frontend/src/pages/
+// Dashboard.jsx just does a plain `fetch(...)` against /api/forecast,
+// with no second host of its own). Mobile now does the same: one URL,
+// one request, and the backend handles staying up.
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// Backup model server. Same API shape as the primary; only used when the
-/// primary host is unreachable or erroring.
-const String kBackupModelBaseUrl = 'https://agos-flood-predict.onrender.com';
-
-Uri _onBackupHost(Uri original) {
-  final backup = Uri.parse(kBackupModelBaseUrl);
-  return original.replace(
-    scheme: backup.scheme,
-    host: backup.host,
-    port: backup.hasPort ? backup.port : null,
-  );
-}
-
-/// GETs [primaryUrl]. If the request throws (timeout, DNS, connection
-/// refused, etc.) or comes back with a server error (5xx), retries the
-/// same path/query against [kBackupModelBaseUrl] once. Only the second
-/// attempt's exception/response is propagated if both fail.
-Future<http.Response> getWithFallback(
-  String primaryUrl, {
-  Duration timeout = const Duration(seconds: 15),
+/// GETs [url] and returns the response once it looks genuinely successful.
+///
+/// Throws if the request itself fails (timeout, DNS, connection refused,
+/// etc.), if the HTTP status is a server error (5xx), or if the JSON body
+/// reports `status != "success"` — the backend always returns HTTP 200,
+/// even on internal errors (e.g. Open-Meteo down with no usable cache;
+/// see WeatherUnavailableError), and reports failure via the JSON body
+/// instead of an HTTP error code.
+Future<http.Response> fetchModelApi(
+  String url, {
+  // The backend is hosted on Render's free tier, which spins the service
+  // down after ~15 minutes idle. A cold start can take 30-60+ seconds to
+  // respond to the first request. The web frontend's plain `fetch()` has
+  // no timeout of its own, so it just waits the cold start out — mobile
+  // was giving up at 15s and throwing before the backend ever woke up,
+  // which is why mobile looked broken while web looked fine.
+  Duration timeout = const Duration(seconds: 60),
 }) async {
-  final primary = Uri.parse(primaryUrl);
-  try {
-    final res = await http.get(primary).timeout(timeout);
-    if (res.statusCode >= 500) {
-      throw http.ClientException(
-          'Primary model API returned HTTP ${res.statusCode}', primary);
-    }
-    // The backend always returns HTTP 200, even on internal errors (e.g.
-    // Open-Meteo down with no usable cache) — it reports failure via
-    // `status: "error"` in the JSON body instead of an HTTP error code.
-    // Without this check, statusCode < 500 is always true and we'd never
-    // fall back to the backup host.
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (body['status'] != 'success') {
-      throw http.ClientException(
-          'Primary model API returned status: ${body['status']}', primary);
-    }
-    return res;
-  } catch (e) {
-    final backup = _onBackupHost(primary);
-    debugPrint(
-        'AGOS: primary model API failed ($primary): $e — falling back to $backup');
-    final res = await http.get(backup).timeout(timeout);
-    if (res.statusCode >= 500) {
-      throw http.ClientException(
-          'Backup model API returned HTTP ${res.statusCode}', backup);
-    }
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (body['status'] != 'success') {
-      throw http.ClientException(
-          'Backup model API returned status: ${body['status']}', backup);
-    }
-    return res;
+  final uri = Uri.parse(url);
+  final res = await http.get(uri).timeout(timeout);
+
+  if (res.statusCode >= 500) {
+    throw http.ClientException('Model API returned HTTP ${res.statusCode}', uri);
   }
+
+  final body = jsonDecode(res.body) as Map<String, dynamic>;
+  if (body['status'] != 'success') {
+    throw http.ClientException(
+        'Model API returned status: ${body['status']}', uri);
+  }
+
+  return res;
 }
