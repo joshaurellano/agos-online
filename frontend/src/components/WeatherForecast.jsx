@@ -371,7 +371,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
               Source: Open-Meteo · synced {new Date(generatedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}
             </span>
           )}
-          {weatherCache && (
+          {/* {weatherCache && (
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
               padding: '1px 8px', borderRadius: 4,
@@ -382,7 +382,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
             }}>
               {weatherCache.significantly_stale ? '⚠ Stale cache' : '● Live'} · cache {Math.round(weatherCache.age_minutes)}m old
             </span>
-          )}
+          )} */}
         </div>
       )}
     </div>

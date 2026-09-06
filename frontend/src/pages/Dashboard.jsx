@@ -748,18 +748,19 @@ function FloodForecast14Day() {
       ) : (
         <>
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6 }}>
-            {visibleForecast.map((d) => {
+            {visibleForecast.map((d, i) => {
               const pct = Math.round(d.flood_probability * 100);
               const dateObj = new Date(d.date);
+              const isToday = i === 0 && d.day_ahead === 0;
               return (
                 <button
                   key={d.date}
                   onClick={() => setSelectedDay(d)}
                   style={{
                     minWidth: 62, flexShrink: 0, textAlign: 'center',
-                    background: 'var(--blue-mid)',
-                    border: `1px solid ${bandColor(d.confidence_band)}40`,
-                    borderTop: `2px solid ${bandColor(d.confidence_band)}`,
+                    background: isToday ? `${riskColor(pct)}12` : 'var(--blue-mid)',
+                    border: `1px solid ${isToday ? riskColor(pct) + '50' : bandColor(d.confidence_band) + '40'}`,
+                    borderTop: `2px solid ${isToday ? riskColor(pct) : bandColor(d.confidence_band)}`,
                     borderRadius: 'var(--radius-sm)', padding: '8px 6px',
                     opacity: d.confidence_band === 'outlook-only' ? 0.65 : 1,
                     cursor: 'pointer', font: 'inherit', transition: 'transform 0.15s ease, opacity 0.15s ease',
@@ -767,8 +768,8 @@ function FloodForecast14Day() {
                   onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                 >
-                  <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 4 }}>
-                    {dateObj.toLocaleDateString('en-PH', { weekday: 'short' })}
+                  <div style={{ fontSize: '0.58rem', color: isToday ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 700, marginBottom: 4 }}>
+                    {isToday ? 'TODAY' : dateObj.toLocaleDateString('en-PH', { weekday: 'short' })}
                   </div>
                   <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: 6 }}>
                     {dateObj.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
@@ -781,9 +782,9 @@ function FloodForecast14Day() {
                   </div>
                   <div style={{
                     fontSize: '0.52rem', fontWeight: 700, letterSpacing: '0.03em',
-                    color: bandColor(d.confidence_band), textTransform: 'uppercase',
+                    color: isToday ? 'var(--accent)' : bandColor(d.confidence_band), textTransform: 'uppercase',
                   }}>
-                    {d.confidence_band === 'high' ? 'High conf.'
+                    {isToday ? 'Live' : d.confidence_band === 'high' ? 'High conf.'
                       : d.confidence_band === 'moderate' ? 'Moderate'
                       : 'Outlook'}
                   </div>

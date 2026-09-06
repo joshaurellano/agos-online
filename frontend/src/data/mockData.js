@@ -7,7 +7,7 @@ export const ALERT_LEVELS = {
     color: '#22c55e',
     bg: '#dcfce7',
     border: '#16a34a',
-    description: 'No significant flooding risk. Water levels within safe range.',
+    description: 'No significant flooding risk.',
     action: 'No action required. Continue monitoring.',
     level: 0,
   },

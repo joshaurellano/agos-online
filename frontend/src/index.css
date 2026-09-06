@@ -50,13 +50,14 @@
   --accent:         #5ec8fa;
 }
 
-html { font-size: 16px; }
+html { font-size: 16px; overflow-x: hidden; }
 
 body {
   font-family: var(--font-body);
   background: var(--blue-deep);
   color: var(--text-primary);
   min-height: 100vh;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -241,12 +242,12 @@ body {
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 
 /* Weather forecast widget */
-.weather-day-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.weather-hero-grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: stretch; }
+.weather-day-tabs { display: flex; gap: 8px; overflow-x: scroll; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--blue-border) var(--blue-mid); }
+.weather-hero-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .weather-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
-.weather-hourly-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.weather-hourly-row { display: flex; gap: 6px; overflow-x: scroll; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--blue-border) var(--blue-mid); }
 @media (max-width: 900px) {
-  .weather-hero-grid { grid-template-columns: 1fr; }
+  .weather-hero-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Topbar */
