@@ -3,8 +3,17 @@ import { useNavigate, useOutletContext } from 'react-router-dom';
 import { SectionLabel, ErrorBanner } from '../components/ui';
 import Swal from 'sweetalert2';
 import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css';
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.Default.css';
+import {
+  REPORT_CATEGORY_ICON,
+  REPORT_STATUS_COLORS,
+  reportTimeAgo,
+  findNearbyDuplicates,
+} from '../lib/incidentReports';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Area, AreaChart,
@@ -34,35 +43,9 @@ const ALERT_COLORS = {
 };
 
 // ─── Resident incident-report markers ──────────────────────────────────────
-// Mirrors the category/status vocabulary used in CommunityReportsPage.jsx so
-// the map markers stay visually consistent with the moderation list. Only
-// pending + verified reports are ever passed in here (rejected reports are
-// filtered out before they reach the map — see FloodMap's fetch below).
-const REPORT_CATEGORY_ICON = {
-  Flood:               '🌊',
-  Fire:                '🔥',
-  Landslide:           '⛰️',
-  'Road Accident':     '🚗',
-  'Power Outage':      '💡',
-  'Medical Emergency': '🚑',
-  Other:               '📍',
-};
-
-const REPORT_STATUS_COLORS = {
-  pending:  '#eab308',
-  verified: '#22c55e',
-};
-
-function reportTimeAgo(iso) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1)   return 'just now';
-  if (mins < 60)  return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)   return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
+// Category/status vocabulary + duplicate-detection now live in
+// lib/incidentReports.js, shared with CommunityReportsPage.jsx, so the map
+// and the moderation list can't drift out of sync.
 
 // Teardrop pin, colored by moderation status, with the report's category
 // emoji at its center — distinct at a glance from the evacuation-center
@@ -87,6 +70,27 @@ function createReportIcon(report) {
     iconAnchor: [14, 28],
     popupAnchor: [0, -28],
   });
+}
+
+// Cluster bubble shown when pins are too close together to tell apart at
+// the current zoom. Colored yellow (pending) if ANY report inside still
+// needs review, green (verified) only once every report in the cluster has
+// been cleared — an official zoomed out shouldn't be able to miss a
+// pending report just because it's bundled into a "verified-looking" blob.
+function createReportClusterIcon(cluster) {
+  const childMarkers = cluster.getAllChildMarkers();
+  const count = childMarkers.length;
+  const hasPending = childMarkers.some(m => m.options.report?.status === 'pending');
+  const color = hasPending ? REPORT_STATUS_COLORS.pending : REPORT_STATUS_COLORS.verified;
+  const html = `
+    <div style="
+      width: 34px; height: 34px; border-radius: 50%;
+      background: ${color}; color: #fff; font-weight: 800; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      border: 3px solid #fff; box-shadow: 0 1px 6px rgba(0,0,0,0.45);
+    ">${count}</div>
+  `;
+  return L.divIcon({ html, className: '', iconSize: [34, 34] });
 }
 
 const TRIANGULO_AREA = {
@@ -472,64 +476,76 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           </LeafletTooltip>
         </LeafletPolygon>
 
-        {reports.map(report => (
-          <LeafletMarker
-            key={report.id}
-            position={[report.latitude, report.longitude]}
-            icon={createReportIcon(report)}
-          >
-            <LeafletPopup>
-              <div style={{ minWidth: 210, maxWidth: 250, padding: '4px 2px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <span style={{ fontSize: '1rem' }}>{REPORT_CATEGORY_ICON[report.category] ?? '📍'}</span>
-                  <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{report.category}</span>
-                  <span style={{
-                    marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 700,
-                    textTransform: 'uppercase', letterSpacing: '0.04em',
-                    color: REPORT_STATUS_COLORS[report.status] ?? '#8da4be',
-                    background: `${REPORT_STATUS_COLORS[report.status] ?? '#8da4be'}18`,
-                    border: `1px solid ${REPORT_STATUS_COLORS[report.status] ?? '#8da4be'}40`,
-                    borderRadius: 4, padding: '2px 6px',
-                  }}>
-                    {report.status}
-                  </span>
-                </div>
+        <MarkerClusterGroup chunkedLoading maxClusterRadius={55} iconCreateFunction={createReportClusterIcon}>
+          {reports.map(report => {
+            const duplicates = findNearbyDuplicates(report, reports);
+            return (
+              <LeafletMarker
+                key={report.id}
+                position={[report.latitude, report.longitude]}
+                icon={createReportIcon(report)}
+                report={report}
+              >
+                <LeafletPopup>
+                  <div style={{ minWidth: 210, maxWidth: 250, padding: '4px 2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <span style={{ fontSize: '1rem' }}>{REPORT_CATEGORY_ICON[report.category] ?? '📍'}</span>
+                      <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{report.category}</span>
+                      <span style={{
+                        marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 700,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                        color: REPORT_STATUS_COLORS[report.status] ?? '#8da4be',
+                        background: `${REPORT_STATUS_COLORS[report.status] ?? '#8da4be'}18`,
+                        border: `1px solid ${REPORT_STATUS_COLORS[report.status] ?? '#8da4be'}40`,
+                        borderRadius: 4, padding: '2px 6px',
+                      }}>
+                        {report.status}
+                      </span>
+                    </div>
 
-                {report.photo_url && (
-                  <img
-                    src={report.photo_url}
-                    alt="Reported incident"
-                    style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 6, marginBottom: 6 }}
-                  />
-                )}
+                    {report.photo_url && (
+                      <img
+                        src={report.photo_url}
+                        alt="Reported incident"
+                        style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 6, marginBottom: 6 }}
+                      />
+                    )}
 
-                <div style={{ fontSize: '0.78rem', color: '#333', lineHeight: 1.4, marginBottom: 6 }}>
-                  {report.description}
-                </div>
+                    <div style={{ fontSize: '0.78rem', color: '#333', lineHeight: 1.4, marginBottom: 6 }}>
+                      {report.description}
+                    </div>
 
-                {report.location_label && (
-                  <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 2 }}>
-                    📍 {report.location_label}
+                    {report.location_label && (
+                      <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 2 }}>
+                        📍 {report.location_label}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: duplicates.length > 0 ? 4 : 8 }}>
+                      by {report.reporter_name ?? 'Resident'} · {reportTimeAgo(report.created_at)}
+                    </div>
+
+                    {duplicates.length > 0 && (
+                      <div style={{ fontSize: '0.68rem', color: '#f97316', marginBottom: 8 }}>
+                        ⚠️ {duplicates.length} similar report{duplicates.length > 1 ? 's' : ''} nearby
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => navigate('/community-reports')}
+                      style={{
+                        width: '100%', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                        background: 'var(--accent, #0ea5e9)', color: '#fff', border: 'none',
+                        borderRadius: 5, padding: '6px 0',
+                      }}
+                    >
+                      {report.status === 'pending' ? '✅ Review & Moderate →' : 'View in Reports →'}
+                    </button>
                   </div>
-                )}
-                <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 8 }}>
-                  by {report.reporter_name ?? 'Resident'} · {reportTimeAgo(report.created_at)}
-                </div>
-
-                <button
-                  onClick={() => navigate('/community-reports')}
-                  style={{
-                    width: '100%', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                    background: 'var(--accent, #0ea5e9)', color: '#fff', border: 'none',
-                    borderRadius: 5, padding: '6px 0',
-                  }}
-                >
-                  {report.status === 'pending' ? '✅ Review & Moderate →' : 'View in Reports →'}
-                </button>
-              </div>
-            </LeafletPopup>
-          </LeafletMarker>
-        ))}
+                </LeafletPopup>
+              </LeafletMarker>
+            );
+          })}
+        </MarkerClusterGroup>
       </MapContainer>
 
       {/* zIndex above Leaflet's own panes (tilePane 200 / overlayPane 400 /
@@ -1437,7 +1453,7 @@ export default function Dashboard() {
                 color: mapView === v ? '#fff' : 'var(--text-muted)',
                 transition: 'all 0.2s',
               }}>
-                {v === '2d' ? 'Street View' : '3D View'}
+                {v === '2d' ? '2D View' : '3D View'}
               </button>
             ))}
           </div>

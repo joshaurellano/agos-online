@@ -1,26 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
 import { SectionLabel, Badge, ErrorBanner } from '../components/ui';
 import { logger } from '../lib/logger';
+import {
+  REPORT_CATEGORY_ICON as CATEGORY_ICON,
+  REPORT_STATUS_COLORS as STATUS_COLORS,
+  reportTimeAgo as timeAgo,
+  findNearbyDuplicates,
+} from '../lib/incidentReports';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const CATEGORY_ICON = {
-  Flood:               '🌊',
-  Fire:                '🔥',
-  Landslide:           '⛰️',
-  'Road Accident':     '🚗',
-  'Power Outage':      '💡',
-  'Medical Emergency': '🚑',
-  Other:               '📍',
-};
-
-const STATUS_COLORS = {
-  pending:  '#eab308',
-  verified: '#22c55e',
-  rejected: '#ef4444',
-};
 
 const REJECTION_REASONS = [
   'Duplicate of another report',
@@ -30,19 +21,6 @@ const REJECTION_REASONS = [
   'Outside barangay jurisdiction',
   'Other',
 ];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function timeAgo(iso) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1)   return 'just now';
-  if (mins < 60)  return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)   return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -109,11 +87,12 @@ function RejectDialog({ onConfirm, onCancel }) {
   );
 }
 
-function ReportCard({ report, canModerate, onVerify, onReject }) {
+function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPromote }) {
   const [expanded, setExpanded]   = useState(false);
   const [updating, setUpdating]   = useState(false);
   const [showReject, setShowReject] = useState(false);
   const icon = CATEGORY_ICON[report.category] ?? '📍';
+  const duplicates = findNearbyDuplicates(report, allReports);
 
   const handleVerify = async () => {
     setUpdating(true);
@@ -127,6 +106,11 @@ function ReportCard({ report, canModerate, onVerify, onReject }) {
     await onReject(report.id, reason);
     setUpdating(false);
   };
+
+  // Skips the reason dialog since the reason is already known -- one
+  // click instead of four for the common "yep, that's the same flood"
+  // case the duplicate check exists for.
+  const handleRejectAsDuplicate = () => handleReject('Duplicate of another report');
 
   return (
     <div style={{
@@ -155,6 +139,15 @@ function ReportCard({ report, canModerate, onVerify, onReject }) {
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             {timeAgo(report.created_at)}
           </span>
+          {duplicates.length > 0 && (
+            <span style={{
+              fontSize: '0.65rem', fontWeight: 700, color: '#f97316',
+              background: '#f9731618', border: '1px solid #f9731640',
+              borderRadius: 4, padding: '1px 7px',
+            }}>
+              ⚠️ {duplicates.length} similar nearby
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
@@ -198,8 +191,26 @@ function ReportCard({ report, canModerate, onVerify, onReject }) {
             </div>
           </div>
 
+          {duplicates.length > 0 && (
+            <div style={{
+              marginBottom: 12, padding: '8px 12px', borderRadius: 6,
+              background: '#f9731612', border: '1px solid #f9731640',
+              fontSize: '0.76rem', color: 'var(--text-secondary)',
+            }}>
+              <div style={{ fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
+                ⚠️ Possibly the same incident as {duplicates.length} other report{duplicates.length > 1 ? 's' : ''}
+              </div>
+              {duplicates.map(d => (
+                <div key={d.id} style={{ opacity: 0.85 }}>
+                  • {d.category} · <StatusPill status={d.status} /> · {timeAgo(d.created_at)}
+                  {d.location_label ? ` · ${d.location_label}` : ''}
+                </div>
+              ))}
+            </div>
+          )}
+
           {canModerate && report.status === 'pending' && (
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
                 className="btn btn-primary"
                 disabled={updating}
@@ -216,6 +227,34 @@ function ReportCard({ report, canModerate, onVerify, onReject }) {
               >
                 ❌ Reject
               </button>
+              {duplicates.length > 0 && (
+                <button
+                  className="btn btn-ghost"
+                  disabled={updating}
+                  onClick={handleRejectAsDuplicate}
+                  style={{ fontSize: '0.78rem', color: '#f97316', borderColor: '#f9731660' }}
+                >
+                  ⚠️ Reject as Duplicate
+                </button>
+              )}
+            </div>
+          )}
+
+          {canModerate && report.status === 'verified' && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {report.promoted_report_id ? (
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                  📤 Already promoted to an official report
+                </span>
+              ) : (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => onPromote(report)}
+                  style={{ fontSize: '0.78rem', color: 'var(--accent)', borderColor: 'var(--accent)60' }}
+                >
+                  📤 Promote to Official Report
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -232,6 +271,7 @@ function ReportCard({ report, canModerate, onVerify, onReject }) {
 
 export default function CommunityReportsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canModerate = user?.roles?.role_desc && user.roles.role_desc !== 'Resident';
 
   const [reports, setReports] = useState([]);
@@ -289,6 +329,12 @@ export default function CommunityReportsPage() {
 
   const handleVerify = (id) => updateStatus(id, 'verified');
   const handleReject = (id, reason) => updateStatus(id, 'rejected', { rejection_reason: reason });
+
+  // Hands the report off to ReportsPage's "File New Report" form, prefilled,
+  // via router state -- the official still reviews/completes the official-
+  // only fields (water level, casualties, response time...) before it's
+  // actually inserted as a flood_reports record. See ReportsPage.jsx.
+  const handlePromote = (report) => navigate('/reports', { state: { promoteFrom: report } });
 
   const filtered = reports.filter(r => {
     if (filterStatus   !== 'ALL' && r.status   !== filterStatus)   return false;
@@ -352,9 +398,11 @@ export default function CommunityReportsPage() {
             <ReportCard
               key={r.id}
               report={r}
+              allReports={reports}
               canModerate={canModerate}
               onVerify={handleVerify}
               onReject={handleReject}
+              onPromote={handlePromote}
             />
           ))}
         </div>
