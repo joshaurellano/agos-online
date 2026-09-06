@@ -6,6 +6,7 @@ import trianguloRoads from '../data/trianguloRoads.json';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
 import MinuteForecastStrip from './MinuteForecastStrip';
+import WindDirectionArrow, { degToCardinal } from './WindDirectionArrow';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
 // two views read consistently (trunk/primary thicker, service thinner).
@@ -111,7 +112,7 @@ function roadWidthExpression() {
   return expr;
 }
 
-export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, condition, minutely }) {
+export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
@@ -350,6 +351,15 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
               {windSignal != null ? `#${windSignal}` : '—'}
             </span>
           </div>
+          {windDirectionDeg != null && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>🧭 Wind Dir</span>
+              <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <WindDirectionArrow deg={windDirectionDeg} size={13} />
+                {degToCardinal(windDirectionDeg)} · {Math.round(windDirectionDeg)}°
+              </span>
+            </div>
+          )}
           {effectiveCondition && (
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>☁ Condition</span>
