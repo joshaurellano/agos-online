@@ -76,13 +76,13 @@ def _build_forecast_entries(probs, today, future_enriched):
     forecast_out = []
 
     for day_offset in range(len(probs)):
-        forecast_date = today + datetime.timedelta(days=day_offset + 1)
+        forecast_date = today + datetime.timedelta(days=day_offset)
         p = float(probs[day_offset])
         enriched = future_enriched[day_offset] if day_offset < len(future_enriched) else {}
 
         forecast_out.append({
             "date": forecast_date.isoformat(),
-            "day_ahead": day_offset + 1,
+            "day_ahead": day_offset,
             "flood_probability": round(p, 4),
             "alert_level": probability_to_alert_level(p),
             "confidence_band": (
@@ -112,12 +112,12 @@ def _meta_block(model_key, feature_metadata):
             "driven by Open-Meteo's actual 14-day forecast)"
         ),
         "note": (
-            "Days 1-3 = high confidence, Days 4-7 = moderate, "
-            "Days 8-14 = general trend/outlook only. Longer lead times "
-            "inherit both the model's uncertainty and Open-Meteo forecast "
-            "uncertainty. If weather_cache.status is 'stale_fallback', "
-            "this forecast is based on the last successful Open-Meteo "
-            "fetch rather than a fresh one -- check "
+            "Day 0 (today) through Day+2 = high confidence, Day+3 through "
+            "Day+6 = moderate, Day+7 through Day+13 = general trend/outlook "
+            "only. Longer lead times inherit both the model's uncertainty "
+            "and Open-Meteo forecast uncertainty. If weather_cache.status "
+            "is 'stale_fallback', this forecast is based on the last "
+            "successful Open-Meteo fetch rather than a fresh one -- check "
             "weather_cache.age_minutes and significantly_stale."
         ),
         "assumptions": [
@@ -250,7 +250,7 @@ def compare_models(model_keys=None):
     comparison = []
 
     for day_offset in range(horizon):
-        forecast_date = today + datetime.timedelta(days=day_offset + 1)
+        forecast_date = today + datetime.timedelta(days=day_offset)
 
         day_probs = {key: float(probs_by_key[key][day_offset]) for key in keys}
         values = list(day_probs.values())
@@ -259,7 +259,7 @@ def compare_models(model_keys=None):
 
         comparison.append({
             "date": forecast_date.isoformat(),
-            "day_ahead": day_offset + 1,
+            "day_ahead": day_offset,
             "probabilities": {key: round(p, 4) for key, p in day_probs.items()},
             "alert_levels": alert_levels,
             "ensemble_mean_probability": round(mean_p, 4),
