@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { SectionLabel, ErrorBanner } from '../components/ui';
 import Swal from 'sweetalert2';
-import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -32,6 +32,62 @@ const ALERT_COLORS = {
   WARNING:  '#f97316',
   CRITICAL: '#ef4444',
 };
+
+// ─── Resident incident-report markers ──────────────────────────────────────
+// Mirrors the category/status vocabulary used in CommunityReportsPage.jsx so
+// the map markers stay visually consistent with the moderation list. Only
+// pending + verified reports are ever passed in here (rejected reports are
+// filtered out before they reach the map — see FloodMap's fetch below).
+const REPORT_CATEGORY_ICON = {
+  Flood:               '🌊',
+  Fire:                '🔥',
+  Landslide:           '⛰️',
+  'Road Accident':     '🚗',
+  'Power Outage':      '💡',
+  'Medical Emergency': '🚑',
+  Other:               '📍',
+};
+
+const REPORT_STATUS_COLORS = {
+  pending:  '#eab308',
+  verified: '#22c55e',
+};
+
+function reportTimeAgo(iso) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1)   return 'just now';
+  if (mins < 60)  return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)   return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+// Teardrop pin, colored by moderation status, with the report's category
+// emoji at its center — distinct at a glance from the evacuation-center
+// pins on the other map (those are colored by center type, not status).
+function createReportIcon(report) {
+  const color = REPORT_STATUS_COLORS[report.status] ?? '#8da4be';
+  const emoji = REPORT_CATEGORY_ICON[report.category] ?? '📍';
+  const html = `
+    <div style="
+      width: 28px; height: 28px; border-radius: 50% 50% 50% 0;
+      background: ${color}; transform: rotate(-45deg);
+      border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+    ">
+      <span style="transform: rotate(45deg); font-size: 13px; line-height: 1;">${emoji}</span>
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: [28, 28],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -28],
+  });
+}
 
 const TRIANGULO_AREA = {
   name: 'Barangay Triangulo',
@@ -345,9 +401,45 @@ function BasemapSwitcher({ basemap, onChange }) {
 function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
   const [basemap, setBasemap] = useState('street');
+  const [reports, setReports] = useState([]);
+  const navigate = useNavigate();
 
   // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
+
+  // Resident-submitted incident reports, as map pins. Only pending +
+  // verified are shown — rejected reports are moderation history, not
+  // something an official watching the map needs to see. Filtering out
+  // reports with no lat/lng too, since a resident could theoretically
+  // submit one without a pinned location.
+  const fetchReports = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('incident_reports')
+      .select('*')
+      .in('status', ['pending', 'verified'])
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .order('created_at', { ascending: false });
+    if (error) {
+      logger.error('incident_reports fetch error (dashboard map):', error.message);
+      return;
+    }
+    setReports(data ?? []);
+  }, []);
+
+  useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  // Live updates: a new report, or a pending → verified/rejected change,
+  // reflects on the map without a manual refresh.
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard_incident_reports')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incident_reports' }, () => {
+        fetchReports();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchReports]);
 
   return (
     <div style={{ position: 'relative' }}>
@@ -379,6 +471,65 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
             Barangay Triangulo — {currentAlert}
           </LeafletTooltip>
         </LeafletPolygon>
+
+        {reports.map(report => (
+          <LeafletMarker
+            key={report.id}
+            position={[report.latitude, report.longitude]}
+            icon={createReportIcon(report)}
+          >
+            <LeafletPopup>
+              <div style={{ minWidth: 210, maxWidth: 250, padding: '4px 2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: '1rem' }}>{REPORT_CATEGORY_ICON[report.category] ?? '📍'}</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{report.category}</span>
+                  <span style={{
+                    marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: '0.04em',
+                    color: REPORT_STATUS_COLORS[report.status] ?? '#8da4be',
+                    background: `${REPORT_STATUS_COLORS[report.status] ?? '#8da4be'}18`,
+                    border: `1px solid ${REPORT_STATUS_COLORS[report.status] ?? '#8da4be'}40`,
+                    borderRadius: 4, padding: '2px 6px',
+                  }}>
+                    {report.status}
+                  </span>
+                </div>
+
+                {report.photo_url && (
+                  <img
+                    src={report.photo_url}
+                    alt="Reported incident"
+                    style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 6, marginBottom: 6 }}
+                  />
+                )}
+
+                <div style={{ fontSize: '0.78rem', color: '#333', lineHeight: 1.4, marginBottom: 6 }}>
+                  {report.description}
+                </div>
+
+                {report.location_label && (
+                  <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 2 }}>
+                    📍 {report.location_label}
+                  </div>
+                )}
+                <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 8 }}>
+                  by {report.reporter_name ?? 'Resident'} · {reportTimeAgo(report.created_at)}
+                </div>
+
+                <button
+                  onClick={() => navigate('/community-reports')}
+                  style={{
+                    width: '100%', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                    background: 'var(--accent, #0ea5e9)', color: '#fff', border: 'none',
+                    borderRadius: 5, padding: '6px 0',
+                  }}
+                >
+                  {report.status === 'pending' ? '✅ Review & Moderate →' : 'View in Reports →'}
+                </button>
+              </div>
+            </LeafletPopup>
+          </LeafletMarker>
+        ))}
       </MapContainer>
 
       {/* zIndex above Leaflet's own panes (tilePane 200 / overlayPane 400 /
@@ -1262,9 +1413,21 @@ export default function Dashboard() {
               🗺 Flood Status Map — Barangay Triangulo
             </div>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              Boundary overlay, color-coded to current alert classification
+              Boundary overlay, color-coded to current alert classification. Tap a pin to view a resident report.
             </div>
           </div>
+          {mapView === '2d' && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Pending report</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Verified report</span>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
             {['2d', '3d'].map(v => (
               <button key={v} onClick={() => setMapView(v)} style={{
