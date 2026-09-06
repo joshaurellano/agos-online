@@ -110,7 +110,7 @@ class FloodStatusService extends ChangeNotifier {
   /// background timer.
   Future<void> refresh() async {
     try {
-      final res = await getWithFallback(_url);
+      final res = await fetchModelApi(_url);
       if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       final now = DateTime.now();

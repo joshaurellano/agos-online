@@ -10,8 +10,9 @@ import '../theme/panahon_ui.dart';
 import '../services/model_api_client.dart';
 
 // ─── URL (no fallback for a missing/misspelled .env key — see
-// dashboard_screen.dart for that rationale; a network-level fallback to the
-// backup deployment is still applied at the fetch call site below) ─────────
+// dashboard_screen.dart for that rationale. There is no second app host
+// fallback either — see services/model_api_client.dart; the backend's own
+// Upstash-persisted cache is what keeps this endpoint answering) ──────────
 String _requireEnv(String key) {
   final v = dotenv.env[key];
   if (v == null || v.isEmpty) {
@@ -32,15 +33,6 @@ const _alertColors = {
 };
 
 const _alertLevelKeys = ['NORMAL', 'ADVISORY', 'WARNING', 'CRITICAL'];
-
-String _alertKeyFromInt(int level) {
-  switch (level) {
-    case 3:  return 'CRITICAL';
-    case 2:  return 'WARNING';
-    case 1:  return 'ADVISORY';
-    default: return 'NORMAL';
-  }
-}
 
 // ─── Basemap options ──────────────────────────────────────────────────────────
 // Free, no-API-key raster sources. `monochrome` controls whether we apply
@@ -167,15 +159,22 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     var url = '(unresolved)';
     try {
       url = _modelUrl;
-      final res = await getWithFallback(url);
+      final res = await fetchModelApi(url);
       if (!mounted) return;
       if (res.statusCode == 200) {
         final j = jsonDecode(res.body) as Map<String, dynamic>;
-        final level = (j['alert_level'] as num?)?.toInt() ?? 0;
+        // The backend's alert_level is a string ("NORMAL"/"ADVISORY"/
+        // "WARNING"/"CRITICAL" — see app/utils/alerts.py's
+        // probability_to_alert_level()), not a number. The web frontend
+        // already treats it this way (see modelApi.js). Casting it to
+        // `num` here was wrong and crashed with "type 'String' is not a
+        // subtype of type 'num?'" on every real device/response.
+        final rawLevel = j['alert_level'] as String?;
+        final level = _alertLevelKeys.contains(rawLevel) ? rawLevel! : 'NORMAL';
         final prob  = (j['probability'] as num?)?.toDouble();
         if (!mounted) return;
         setState(() {
-          _alertKey      = _alertKeyFromInt(level);
+          _alertKey      = level;
           _probability   = prob;
           _loading       = false;
           _liveDataStale = false;
