@@ -9,7 +9,6 @@ import './firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/flood_status_service.dart';
 import 'services/notification_service.dart';
-import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
 
 Future<void> main() async {
@@ -26,14 +25,39 @@ Future<void> main() async {
     anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
   );
 
+  // AGOS has no login screen — all flood/rainfall/map/evacuation data is
+  // public. The one thing that still needs *some* identity behind it is
+  // incident reporting (RLS on `incident_reports`/`incident-photos` keys
+  // off auth.uid()), so every device silently gets a Supabase anonymous
+  // session instead of a visible sign-in flow. supabase_flutter persists
+  // this session locally, so a given device keeps the same identity (and
+  // can see its own past reports) across restarts without ever seeing a
+  // login form.
+  //
+  // Requires "Allow anonymous sign-ins" to be turned on in the Supabase
+  // project's Auth settings. If it's off (or the call fails for any other
+  // reason), we don't block startup — the resident still gets the full
+  // public dashboard; only submitting a report would fail until this is
+  // enabled server-side.
+  if (Supabase.instance.client.auth.currentUser == null) {
+    try {
+      await Supabase.instance.client.auth.signInAnonymously();
+    } catch (e) {
+      debugPrint('AGOS: anonymous sign-in failed (is it enabled in Supabase Auth settings?): $e');
+    }
+  }
+
   // Initialize FCM — registers token, sets up background handler,
-  // and subscribes to the flood_alerts topic. Works even before login.
+  // and subscribes to the flood_alerts topic.
   await NotificationService.instance.initialize();
   await NotificationService.instance.subscribeToAlerts();
 
   runApp(
     MultiProvider(
       providers: [
+        // Kept around for optional profile display (see dashboard's
+        // greeting), but no longer gates access to the app — see AgosApp
+        // below, whose `home` is MainShell unconditionally.
         ChangeNotifierProvider(create: (_) => AuthService()),
         // Single shared poller for /predict-flood — DashboardScreen and
         // AlertScreen both read from this instead of each running their
@@ -77,21 +101,8 @@ class AgosApp extends StatelessWidget {
         // opens straight into the Reports tab (index 4, see main_shell.dart).
         '/community-reports': (_) => const MainShell(initialTabIndex: 4),
       },
-      home: Consumer<AuthService>(
-        builder: (_, auth, __) {
-          if (auth.isLoading) {
-            return const Scaffold(
-              backgroundColor: AppColors.bgDeep,
-              body: Center(
-                child: CircularProgressIndicator(color: AppColors.accent),
-              ),
-            );
-          }
-          return auth.currentUser != null
-              ? const MainShell()
-              : const LoginScreen();
-        },
-      ),
+      // No login gate — AGOS's data is public. Straight into the app.
+      home: const MainShell(),
     );
   }
 }

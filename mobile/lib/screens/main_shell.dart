@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
-import '../services/auth_service.dart';
 import '../theme/panahon_ui.dart';
 import 'dashboard_screen.dart';
 import 'alert_screen.dart';
@@ -60,8 +59,18 @@ class _MainShellState extends State<MainShell> {
     if (_alertLevel != level) setState(() => _alertLevel = level);
   }
 
+  // Was a profile/sign-out sheet for the old username+password login flow.
+  // AGOS no longer has accounts — this now just shows the anonymous device
+  // identity that incident reports are attributed to (see
+  // report_incident_screen.dart / main.dart's silent anonymous sign-in),
+  // so a resident can see "this is what your reports are tagged with"
+  // without ever having signed in to anything.
   void _showAccountSheet() {
-    final user = context.read<AuthService>().currentUser;
+    final anonId = Supabase.instance.client.auth.currentUser?.id;
+    final shortId = anonId != null && anonId.length >= 8
+        ? anonId.substring(0, 8)
+        : (anonId ?? 'unavailable');
+
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.bgDark,
@@ -88,63 +97,27 @@ class _MainShellState extends State<MainShell> {
                 color: AppColors.accent.withValues(alpha: 0.15),
                 border: Border.all(color: AppColors.accent.withValues(alpha: 0.4), width: 2),
               ),
-              child: const Icon(Icons.person_rounded, color: AppColors.accent, size: 32),
+              child: const Icon(Icons.shield_rounded, color: AppColors.accent, size: 30),
             ),
             const SizedBox(height: 14),
-            Text(
-              user?.name ?? 'Resident',
-              style: const TextStyle(color: AppColors.textPri, fontSize: 18, fontWeight: FontWeight.w800),
+            const Text(
+              'Anonymous Resident',
+              style: TextStyle(color: AppColors.textPri, fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
             Text(
-              '@${user?.username ?? ''}',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+              'Device ID: $shortId',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 13, fontFamily: 'monospace'),
             ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
-              ),
-              child: Text(
-                user?.roleDesc ?? 'Resident',
-                style: const TextStyle(
-                  color: AppColors.accent, fontSize: 12,
-                  fontWeight: FontWeight.w700, letterSpacing: 0.5,
-                ),
-              ),
-            ),
-            if (context.watch<AuthService>().isOffline) ...[
-              const SizedBox(height: 10),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.cloud_off_rounded, color: AppColors.textMuted, size: 13),
-                  SizedBox(width: 5),
-                  Text('Offline — showing your saved profile',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                ],
-              ),
-            ],
-            const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  context.read<AuthService>().logout();
-                },
-                icon: const Icon(Icons.logout_rounded, size: 18),
-                label: const Text('Sign Out', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.red,
-                  side: const BorderSide(color: AppColors.red),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
+            const SizedBox(height: 16),
+            Text(
+              'AGOS is fully public — no account needed to view flood, '
+              'rainfall, or evacuation data. This anonymous device ID is '
+              'only used so reports you submit under Reports can be traced '
+              'back to your device (e.g. to show their status), never to '
+              'your identity.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSec, fontSize: 12.5, height: 1.45),
             ),
           ],
         ),
