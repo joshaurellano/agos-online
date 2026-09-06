@@ -13,14 +13,13 @@ const NAV_ITEMS = [
   //{ path: '/water-level',  label: 'Water Level',       icon: <Icon icon="noto:water-wave" width={20} /> },
   { path: '/rainfall',      label: 'Rainfall',          icon: <Icon icon="noto:cloud-with-rain" width={20} /> },
   { path: '/evacuation-map',label: 'Evacuation Map',    icon: <Icon icon="fluent-color:location-ripple-16" width={20} /> },
-  { path: '/reports',       label: 'Flood Reports',     icon: <Icon icon="flat-color-icons:overtime" width={20} />, hideFromResidents: true },
-  { path: '/community-reports', label: 'Resident Reports', icon: <Icon icon="fluent-color:megaphone-loud-16" width={20} />, hideFromResidents: true },
-  //{ path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} />, hideFromResidents: true },
-  //{ path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} />, hideFromResidents: true },
+  { path: '/analytics',     label: 'ML Analytics',      icon: <Icon icon="noto:bar-chart" width={20} /> },
+  { path: '/reports',       label: 'Flood Reports',     icon: <Icon icon="flat-color-icons:overtime" width={20} />, staffOnly: true },
+  { path: '/community-reports', label: 'Resident Reports', icon: <Icon icon="fluent-color:megaphone-loud-16" width={20} />, staffOnly: true },
+  //{ path: '/alerts',       label: 'Alert Logs',        icon: <Icon icon="fluent-color:alert-48" width={20} />, staffOnly: true },
+  //{ path: '/data-sources', label: 'Data Sources',      icon: <Icon icon="fluent-color:data-line-16" width={20} />, staffOnly: true },
   { path: '/register',      label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true },
-  { path: '/add-resident',  label: 'Add Resident',      icon: <Icon icon="fluent-color:people-community-16" width={20} />, hideFromResidents: true },
-  { path: '/analytics',     label: 'ML Analytics',         icon: <Icon icon="noto:bar-chart" width={20} />, adminOnly: true },
-
+  { path: '/add-resident',  label: 'Add Resident',      icon: <Icon icon="fluent-color:people-community-16" width={20} />, staffOnly: true },
 ];
 
 export default function Sidebar({ mobileOpen, onClose }) {
@@ -54,8 +53,14 @@ export default function Sidebar({ mobileOpen, onClose }) {
 
         <Nav className="flex-column flex-grow-1 py-2 overflow-auto">
           {NAV_ITEMS.filter(item => {
+            // staffOnly/adminOnly items require a signed-in, non-resident
+            // (or admin) account — not just "isResident(user) is false".
+            // With Dashboard/Rainfall/etc. now public, isResident(null) is
+            // false for a logged-out visitor too, so these checks must
+            // require `user` explicitly or staff-only pages would leak
+            // into the anonymous nav.
             if (item.adminOnly && !isAdminUser) return false;
-            if (item.hideFromResidents && isResident(user)) return false;
+            if (item.staffOnly && (!user || isResident(user))) return false;
             return true;
           }).map(item => (
             <Nav.Link
@@ -80,33 +85,54 @@ export default function Sidebar({ mobileOpen, onClose }) {
           ))}
         </Nav>
 
-        {/* User info */}
+        {/* Account panel — signed-in user info + sign out, or a sign-in
+            prompt for anonymous visitors (the primary sign-in control is
+            the button in the Topbar; this is a fallback for the mobile
+            slide-out sidebar where the Topbar button may be less visible). */}
         <div style={{ padding: '16px 20px', borderTop: '1px solid var(--blue-border)' }}>
-          <div className="mb-3">
-            
-            <div className="text-truncate" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display:'flex', height:'100%', width:'100%', justifyContent:'start', alignItem:'center', gap:5 }}>
-              
-              <div style={{width: '25px', height:'25px', borderRadius:'50%', background:'rgba(56,189,248,0.15)', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                <Icon icon="glyphs-poly:user" width="20" height="20" />
+          {user ? (
+            <>
+              <div className="mb-3">
+                <div className="text-truncate" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display:'flex', height:'100%', width:'100%', justifyContent:'start', alignItem:'center', gap:5 }}>
+                  <div style={{width: '25px', height:'25px', borderRadius:'50%', background:'rgba(56,189,248,0.15)', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    <Icon icon="glyphs-poly:user" width="20" height="20" />
+                  </div>
+                  <div>
+                    {user?.name}
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {user?.roles?.role_desc}
+                </div>
               </div>
-              <div>
-                {user?.name}
+              <Button
+                variant="outline-secondary"
+                size="sm"
+                onClick={logout}
+                className="w-100"
+                style={{ fontSize: '0.82rem' }}
+              >
+                <CgLogOut style={{fontSize:20}}/> Sign Out
+              </Button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: 10 }}>
+                Viewing as public — sign in for staff and admin tools.
               </div>
-              
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              {user?.roles?.role_desc}
-            </div>
-          </div>
-          <Button
-            variant="outline-secondary"
-            size="sm"
-            onClick={logout}
-            className="w-100"
-            style={{ fontSize: '0.82rem' }}
-          >
-            <CgLogOut style={{fontSize:20}}/> Sign Out
-          </Button>
+              <Button
+                as={NavLink}
+                to="/login"
+                onClick={onClose}
+                variant="outline-primary"
+                size="sm"
+                className="w-100"
+                style={{ fontSize: '0.82rem' }}
+              >
+                <FaUserCircle style={{ fontSize: 16, marginRight: 6 }} /> Staff / Admin Sign In
+              </Button>
+            </>
+          )}
         </div>
       </aside>
     </>
