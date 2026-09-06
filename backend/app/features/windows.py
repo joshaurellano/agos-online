@@ -273,13 +273,13 @@ def build_prediction_windows(meta, scaler):
     past_positions = [
         i
         for i, d in enumerate(daily_time)
-        if d <= today_str
+        if d < today_str
     ]
 
     future_positions = [
         i
         for i, d in enumerate(daily_time)
-        if d > today_str
+        if d >= today_str
     ]
 
     window = meta[
