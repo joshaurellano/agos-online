@@ -31,6 +31,14 @@ const ALERT_COLORS = {
   CRITICAL: '#ef4444',
 };
 
+// Monitored areas. Only Triangulo has a live sensor/model pipeline today.
+const MONITORED_AREAS = [
+  { id: 'triangulo', name: 'Barangay Triangulo', city: 'Naga City', province: 'Camarines Sur', coords: '13.614°N, 123.192°E', status: 'active' },
+  { id: 'sabang',     name: 'Barangay Sabang',     city: 'Naga City', province: 'Camarines Sur', status: 'planned' },
+  { id: 'panicuason', name: 'Barangay Panicuason', city: 'Naga City', province: 'Camarines Sur', status: 'planned' },
+  { id: 'concepcion-pequena', name: 'Barangay Concepción Pequeña', city: 'Naga City', province: 'Camarines Sur', status: 'planned' },
+];
+
 const TRIANGULO_BOUNDARY = [
   { lat: 13.622162, lng: 123.193368 },
   { lat: 13.621778, lng: 123.195934 },
@@ -84,48 +92,215 @@ const TRIANGULO_BOUNDARY = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function MetricCard({ icon, label, value, sub, color, noData, unit, badge }) {
+// Slim official-bulletin masthead — jurisdiction breadcrumb, coordinates,
+// active model engine and sync status. Modeled after the station header
+// strip on gauge pages like NOAA's National Water Prediction Service and
+// Google Flood Hub, where the "where/when/what engine" context sits above
+// the fold, separate from the alert itself.
+function StationHeader({ area, activeModel, lastUpdated, engineStatus, feedStatus }) {
+  const STATUS_STYLE = {
+    online:   { color: '#22c55e', label: 'ONLINE' },
+    offline:  { color: '#ef4444', label: 'OFFLINE' },
+    checking: { color: '#eab308', label: 'CHECKING' },
+  };
+
+  const StatusPill = ({ label, status }) => {
+    const s = STATUS_STYLE[status] ?? STATUS_STYLE.checking;
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.04em',
+        padding: '5px 10px', borderRadius: 6,
+        background: `${s.color}14`, border: `1px solid ${s.color}40`, color: s.color,
+      }}>
+        <span style={{
+          width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0,
+          boxShadow: status === 'online' ? `0 0 5px ${s.color}90` : 'none',
+          animation: status === 'checking' ? 'pulse-ring 1.4s ease-out infinite' : 'none',
+        }} />
+        {label}: {s.label}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{
+      position: 'relative',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      flexWrap: 'wrap', gap: 10,
+      padding: '10px 2px 14px', marginBottom: 14,
+      borderBottom: '1px solid var(--blue-border)',
+    }}>
+      <div>
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: 0,
+            fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.03em',
+          }}
+        >
+          {area.name}, {area.city}, {area.province}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 3, flexWrap: 'wrap' }}>
+          <h1 style={{
+            fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 800,
+            color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0,
+          }}>
+            Flood Early Warning Dashboard
+          </h1>
+          {area.coords && (
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+              {area.coords}
+            </span>
+          )}
+        </div>
+
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <StatusPill label="Prediction Engine" status={engineStatus} />
+        <StatusPill label="Weather Feed" status={feedStatus} />
+        <div style={{
+          fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-secondary)',
+          padding: '5px 10px', borderRadius: 6, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
+        }}>
+          ENGINE: {activeModel?.label?.toUpperCase() ?? 'GRU'}
+        </div>
+        <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>
+          Updated {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Official advisory bulletin — replaces the old glow-card alert header.
+// Formatted like a PAGASA/PDRRMO bulletin: classification, issuing basis,
+// validity window, and enumerated recommended actions, with the emergency
+// dispatch action attached directly to the bulletin it corresponds to.
+function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, onSendAlert, canSendAlert }) {
+  const TREND_COPY = {
+    rising:  { icon: '↗', label: 'Rising trend', color: '#f97316' },
+    falling: { icon: '↘', label: 'Falling trend', color: '#22c55e' },
+    stable:  { icon: '→', label: 'Stable',        color: 'var(--text-muted)' },
+  };
+  const trend = recentTrend ? TREND_COPY[recentTrend] : null;
+
   return (
     <div className="card" style={{
-      display: 'flex', flexDirection: 'column', gap: 0,
-      opacity: noData ? 0.55 : 1,
-      borderTop: `3px solid ${color || 'var(--blue-border)'}`,
-      transition: 'border-color 0.3s ease',
-      position: 'relative', overflow: 'hidden',
+      padding: 0, overflow: 'hidden', marginBottom: 16,
+      borderLeft: `5px solid ${alertColor}`,
     }}>
       <div style={{
-        position: 'absolute', right: 12, top: 10,
-        fontSize: '2.4rem', opacity: 0.07, pointerEvents: 'none', userSelect: 'none',
-      }}>{icon}</div>
-
-      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
-        {label}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
-        <span style={{
-          fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 800,
-          color: color || 'var(--accent)', lineHeight: 1,
-        }}>
-          {value}
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+        padding: '10px 20px', background: 'var(--blue-mid)', borderBottom: '1px solid var(--blue-border)',
+      }}>
+        <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          Flood Advisory Bulletin
         </span>
-        {unit && <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>{unit}</span>}
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+          Issued {new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} &middot; Next update in ≤30 min
+        </span>
       </div>
 
-      {badge && (
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
-          fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.06em',
-          background: `${color}20`, color: color, border: `1px solid ${color}40`,
-          borderRadius: 4, padding: '2px 7px', marginBottom: 6, width: 'fit-content',
-        }}>
-          {badge}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', padding: '18px 20px' }}>
+        <div style={{ flex: '1 1 320px', minWidth: 260 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.95rem',
+              color: '#fff', background: alertColor,
+              padding: '4px 12px', borderRadius: 5, letterSpacing: '0.04em',
+            }}>
+              {currentAlert}
+            </span>
+            {trend && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 700, color: trend.color }}>
+                {trend.icon} {trend.label}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '0.86rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+            {alertInfo.description}
+          </div>
         </div>
-      )}
 
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 'auto', paddingTop: 4 }}>
-        {sub}
+        <div style={{
+          flex: '1 1 260px', minWidth: 220,
+          borderLeft: '1px solid var(--blue-border)', paddingLeft: 20,
+        }}>
+          <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+            Recommended Action
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            {alertInfo.action}
+          </div>
+        </div>
+
+        {canSendAlert && (
+          <div style={{ flexShrink: 0 }}>
+            <button className="btn btn-danger" onClick={onSendAlert} style={{ whiteSpace: 'nowrap' }}>
+              🚨 Dispatch Alert
+            </button>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// Dense, table-style "current conditions" ribbon — favors a compact,
+// data-table reading pattern (label / value / unit, divided by rules)
+// over large glowing stat cards, closer to a hydrological observation
+// panel than a consumer app widget.
+function ConditionsStrip({ items }) {
+  return (
+    <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${items.length}, 1fr)`,
+      }}>
+        {items.map((it, i) => (
+          <div key={it.label} style={{
+            padding: '14px 18px',
+            borderLeft: i === 0 ? 'none' : '1px solid var(--blue-border)',
+            opacity: it.noData ? 0.55 : 1,
+          }}>
+            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+              {it.label}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 800, color: it.color || 'var(--text-primary)', lineHeight: 1 }}>
+                {it.value}
+              </span>
+              {it.unit && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{it.unit}</span>}
+            </div>
+            <div style={{ fontSize: '0.68rem', color: it.badgeColor || 'var(--text-secondary)', marginTop: 4, fontWeight: it.badge ? 700 : 400 }}>
+              {it.badge || it.sub}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Standing footer disclaimer — the "provisional data, not a substitute for
+// official warnings" language every USGS/NOAA gauge page carries.
+function DisclaimerFooter() {
+  return (
+    <div style={{
+      marginTop: 20, padding: '12px 16px',
+      borderTop: '1px solid var(--blue-border)',
+      fontSize: '0.66rem', color: 'var(--text-muted)', lineHeight: 1.6,
+      display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+    }}>
+      <span>
+        Forecasts are model-generated (GRU/LSTM, no physical water-level sensor) and intended for situational awareness only —
+        always defer to official PAGASA and Naga City DRRMO advisories for evacuation decisions.
+      </span>
+      <span style={{ whiteSpace: 'nowrap' }}>Sources: Open-Meteo · GloFAS · flood_snapshots</span>
     </div>
   );
 }
@@ -150,7 +325,7 @@ function FloodMap({ currentAlert }) {
       center={[13.6140, 123.1915]}
       zoom={15}
       scrollWheelZoom={true}
-      style={{ width: '100%', height: 420, borderRadius: 'var(--radius-sm)' }}
+      style={{ width: '100%', height: 480, borderRadius: 'var(--radius-sm)' }}
     >
       <TileLayer
         // OpenStreetMap standard tiles — free, no key required
@@ -184,112 +359,55 @@ function AlertLevelTable({ currentAlert }) {
     { key: 'CRITICAL', range: '≥ 75%',     action: 'Evacuate immediately to designated evacuation centers.' },
   ];
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {levels.map(({ key, range, action }) => {
-        const info = ALERT_LEVELS[key];
-        const isCurrent = currentAlert === key;
-        return (
-          <div key={key} style={{
-            display: 'grid', gridTemplateColumns: '10px 70px 1fr',
-            alignItems: 'center', gap: 10,
-            padding: '10px 12px',
-            borderRadius: 'var(--radius-sm)',
-            background: isCurrent ? `${info.color}12` : 'var(--blue-mid)',
-            border: `1px solid ${isCurrent ? info.color + '50' : 'var(--blue-border)'}`,
-            transition: 'all 0.2s',
-          }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: info.color, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: info.color, letterSpacing: '0.06em' }}>{info.label}</div>
-              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 1, fontFamily: 'monospace' }}>{range}</div>
-            </div>
-            <div style={{ fontSize: '0.7rem', color: isCurrent ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.4 }}>
-              {action}
-              {isCurrent && (
-                <span style={{
-                  marginLeft: 8, fontSize: '0.6rem', fontWeight: 700,
-                  background: `${info.color}30`, color: info.color,
-                  padding: '1px 6px', borderRadius: 3, border: `1px solid ${info.color}40`,
-                }}>
-                  CURRENT
-                </span>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function SystemStatusPanel({ modelError, modelLoading, prediction, forecastLoading, forecast }) {
-  const modelOnline   = !modelError && !modelLoading && !!prediction;
-  const forecastOnline = !forecastLoading && forecast.length > 0;
-
-  const indicators = [
-    {
-      label: 'GRU Prediction Engine',
-      status: modelLoading ? 'checking' : modelOnline ? 'online' : 'offline',
-      detail: modelOnline
-        ? `Last response: ${new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`
-        : modelError ?? 'Connecting...',
-    },
-    {
-      label: 'WeatherAPI Forecast Feed',
-      status: forecastLoading ? 'checking' : forecastOnline ? 'online' : 'offline',
-      detail: forecastOnline ? `${forecast.length} hourly records loaded` : 'Feed unavailable',
-    },
-  ];
-
-  const statusStyle = {
-    online:   { color: '#22c55e', dot: '#22c55e', label: 'ONLINE' },
-    offline:  { color: '#ef4444', dot: '#ef4444', label: 'OFFLINE' },
-    checking: { color: '#eab308', dot: '#eab308', label: 'CHECKING' },
-  };
-
-  return (
-    <div className="card" style={{ padding: '16px 20px' }}>
-      <SectionLabel>🖥 System Status</SectionLabel>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-        {indicators.map(({ label, status, detail }) => {
-          const s = statusStyle[status];
-          return (
-            <div key={label} style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10,
-              padding: '9px 12px',
-              background: 'var(--blue-mid)',
-              border: '1px solid var(--blue-border)',
-              borderRadius: 'var(--radius-sm)',
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
+      <thead>
+        <tr style={{ borderBottom: '1px solid var(--blue-border)' }}>
+          {['Class', 'Probability', 'Recommended Action'].map((h, i) => (
+            <th key={h} style={{
+              textAlign: 'left', padding: '0 8px 8px', fontSize: '0.6rem',
+              fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+              color: 'var(--text-muted)', width: i === 1 ? 90 : undefined,
             }}>
-              <div style={{
-                width: 7, height: 7, borderRadius: '50%',
-                background: s.dot, flexShrink: 0, marginTop: 4,
-                boxShadow: status === 'online' ? `0 0 6px ${s.dot}80` : 'none',
-                animation: status === 'checking' ? 'pulse-ring 1.4s ease-out infinite' : 'none',
-              }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                    {label}
-                  </span>
-                  <span style={{
-                    fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.08em',
-                    color: s.color, flexShrink: 0,
-                    background: `${s.color}15`, border: `1px solid ${s.color}30`,
-                    borderRadius: 3, padding: '1px 5px',
-                  }}>
-                    {s.label}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
-                  {detail}
-                </div>
-              </div>
-            </div>
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {levels.map(({ key, range, action }) => {
+          const info = ALERT_LEVELS[key];
+          const isCurrent = currentAlert === key;
+          return (
+            <tr key={key} style={{
+              background: isCurrent ? `${info.color}12` : 'transparent',
+              borderBottom: '1px solid var(--blue-border)',
+            }}>
+              <td style={{ padding: '9px 8px', whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 2, background: info.color, flexShrink: 0 }} />
+                  <span style={{ fontWeight: 800, color: info.color, letterSpacing: '0.03em' }}>{info.label}</span>
+                  {isCurrent && (
+                    <span style={{
+                      fontSize: '0.56rem', fontWeight: 700,
+                      background: `${info.color}30`, color: info.color,
+                      padding: '1px 5px', borderRadius: 3, border: `1px solid ${info.color}40`,
+                    }}>
+                      CURRENT
+                    </span>
+                  )}
+                </span>
+              </td>
+              <td style={{ padding: '9px 8px', fontFamily: 'monospace', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                {range}
+              </td>
+              <td style={{ padding: '9px 8px', color: isCurrent ? 'var(--text-primary)' : 'var(--text-muted)', lineHeight: 1.4 }}>
+                {action}
+              </td>
+            </tr>
           );
         })}
-      </div>
-    </div>
+      </tbody>
+    </table>
   );
 }
 
@@ -822,6 +940,7 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
   const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
+  const selectedArea = MONITORED_AREAS[0];
   
   useEffect(() => {
     setForecastLoading(true);
@@ -843,6 +962,7 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, []);
 
+  const { activeModel } = useModelSelection();
   const userIsResident = isResident(user);
   // Single shared polling instance lives in MainLayout (it also owns the
   // SMS/push dispatch side effect) — Dashboard just reads from it, so we
@@ -867,18 +987,27 @@ export default function Dashboard() {
     prevAlertDisplay.current = current;
   }, [prediction]);
 
+  // Trend arrow shown in the advisory bulletin. Widened from the original
+  // "last 3 snapshots vs previous 3" (~3 minutes at a 30s poll — mostly
+  // model jitter) to a ~20-minute window: average of the older half vs the
+  // newer half of the last 40 snapshots. Smooths out noise so the arrow
+  // reflects a genuine short-term trend rather than one twitchy reading.
   useEffect(() => {
+    const POLL_INTERVAL_SEC = 30;
+    const TREND_WINDOW_MINUTES = 20;
+    const rowsNeeded = Math.max(6, Math.round((TREND_WINDOW_MINUTES * 60) / POLL_INTERVAL_SEC));
+
     supabase
       .from('flood_snapshots')
       .select('probability, created_at')
       .order('created_at', { ascending: false })
-      .limit(6)
+      .limit(rowsNeeded)
       .then(({ data }) => {
-        if (!data || data.length < 3) return;
-        const probs = data.map(r => r.probability).reverse();
-        const first = probs.slice(0, 3).reduce((s, v) => s + v, 0) / 3;
-        const last  = probs.slice(-3).reduce((s, v) => s + v, 0) / 3;
-        const delta = last - first;
+        if (!data || data.length < 6) return;
+        const probs = data.map(r => r.probability).reverse(); // oldest → newest
+        const mid = Math.floor(probs.length / 2);
+        const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
+        const delta = avg(probs.slice(mid)) - avg(probs.slice(0, mid));
         setRecentTrend(delta > 0.04 ? 'rising' : delta < -0.04 ? 'falling' : 'stable');
       });
   }, [prediction]);
@@ -892,6 +1021,11 @@ export default function Dashboard() {
   const probabilityPct = prediction ? `${(prediction.probability * 100).toFixed(0)}%` : '—';
   const rainfallMm     = prediction?.live_metrics?.rainfall_mm ?? 0;
   const humidityVal    = prediction?.live_metrics?.humidity ?? null;
+  // Condition string ("Heavy Rain", "Cloudy", etc.) lives on the /api/forecast
+  // hourly[] entries (via wmo_label()), not on the flood-prediction endpoint's
+  // live_metrics -- forecast[0] is "now" (same convention WeatherForecast.jsx
+  // uses for its hero panel).
+  const weatherCondition = forecast?.[0]?.condition ?? null;
 
   const EVACUATION_PRESETS = [
     { label: '🟡 Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated. Stay alert and prepare your emergency go-bags.' },
@@ -985,6 +1119,15 @@ export default function Dashboard() {
   return (
     <div className="fade-in">
 
+      {/* ── 0. Station Masthead ─────────────────────────────────── */}
+      <StationHeader
+        area={selectedArea}
+        activeModel={activeModel}
+        lastUpdated={lastUpdated}
+        engineStatus={modelLoading ? 'checking' : (!modelError && !!prediction) ? 'online' : 'offline'}
+        feedStatus={forecastLoading ? 'checking' : forecast.length > 0 ? 'online' : 'offline'}
+      />
+
       {/* ── 1. Offline Banner ──────────────────────────────────── */}
       {modelError && (
         <ErrorBanner>
@@ -994,180 +1137,153 @@ export default function Dashboard() {
         </ErrorBanner>
       )}
 
-      {/* ── 2. Alert Status Header ─────────────────────────────── */}
-      <div style={{
-        background: `linear-gradient(135deg, ${alertColor}10 0%, transparent 60%)`,
-        border: `1px solid ${alertColor}40`,
-        borderLeft: `4px solid ${alertColor}`,
-        borderRadius: 'var(--radius)',
-        padding: '18px 20px',
-        marginBottom: 18,
-        display: 'grid',
-        gridTemplateColumns: '1fr auto',
-        gap: 16,
-        alignItems: 'center',
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <span style={{
-              fontFamily: 'var(--font-display)', fontWeight: 900,
-              fontSize: '1.15rem', color: alertColor, letterSpacing: '0.04em',
-            }}>
-              {alertInfo.label.toUpperCase()} STATUS
-            </span>
-          </div>
-          <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', marginBottom: 3 }}>
-            {alertInfo.description}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-            🔔 {alertInfo.action}
-          </div>
-        </div>
+      {/* ── 2. Advisory Bulletin ──────────────────────────────── */}
+      <AdvisoryBulletin
+        alertInfo={alertInfo}
+        alertColor={alertColor}
+        currentAlert={currentAlert}
+        recentTrend={recentTrend}
+        onSendAlert={handleEvacuationAlert}
+        canSendAlert={!userIsResident}
+      />
 
-      </div>
+      {/* ── 3. Current Conditions Strip ─────────────────────────── */}
+      <ConditionsStrip
+        items={userIsResident ? [
+          {
+            label: 'Alert Level',
+            value: ALERT_LEVELS[currentAlert]?.label ?? currentAlert,
+            color: ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL,
+            sub: 'Barangay Triangulo',
+          },
+          {
+            label: 'Rainfall Intensity',
+            value: prediction ? rainfallMm.toFixed(1) : '—',
+            unit: 'mm/hr',
+            color: 'var(--accent)',
+            badge: prediction && rainfallMm > 10 ? 'Heavy' : prediction && rainfallMm > 2 ? 'Moderate' : prediction ? 'Light' : null,
+            noData: !prediction,
+          },
+        ] : [
+          {
+            label: 'Rainfall Intensity',
+            value: prediction ? rainfallMm.toFixed(1) : '—',
+            unit: 'mm/hr',
+            color: 'var(--accent)',
+            badge: prediction && rainfallMm > 10 ? 'Heavy' : prediction && rainfallMm > 2 ? 'Moderate' : prediction ? 'Light' : null,
+            noData: !prediction,
+          },
+          {
+            label: 'Humidity',
+            value: humidityVal !== null ? humidityVal : '—',
+            unit: '%',
+            sub: prediction ? 'Atmospheric moisture' : 'Forecast model',
+            color: !humidityVal ? 'var(--text-muted)'
+              : humidityVal >= 90 ? '#ef4444' : humidityVal >= 80 ? '#f97316' : humidityVal >= 70 ? '#eab308' : '#22c55e',
+            badge: !humidityVal ? null : humidityVal >= 90 ? 'Saturated' : humidityVal >= 80 ? 'High' : 'Normal',
+            noData: !humidityVal,
+          },
+          {
+            label: 'Flood Probability',
+            value: modelLoading ? '…' : probabilityPct,
+            sub: prediction ? `Wind signal #${prediction.live_metrics.wind_signal}` : 'Forecast model',
+            color: !prediction ? 'var(--text-muted)'
+              : prediction.probability >= 0.75 ? '#ef4444' : prediction.probability >= 0.50 ? '#f97316' : prediction.probability >= 0.25 ? '#eab308' : '#22c55e',
+            badge: prediction ? 'Model prediction' : null,
+            noData: !prediction,
+          },
+        ]}
+      />
 
-      {/* ── 3. KPI Metrics Row ─────────────────────────────────── */}
-      {userIsResident ? (
-        <div className="grid-2" style={{ marginBottom: 18 }}>
-          <MetricCard
-            icon="🚦"
-            label="Current Alert Level"
-            value={ALERT_LEVELS[currentAlert]?.label ?? currentAlert}
-            sub="Barangay Triangulo · See reference table for recommended actions"
-            color={ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL}
-            badge="Live"
-          />
-          <MetricCard
-            icon="🌧"
-            label="Rainfall Intensity"
-            value={prediction ? `${rainfallMm.toFixed(1)}` : '—'}
-            unit="mm/hr"
-            color="var(--accent)"
-            badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
-          />
-        </div>
-      ) : (
-      <div className="grid-3" style={{ marginBottom: 18 }}>
-       
-        <MetricCard
-          icon="🌧"
-          label="Rainfall Intensity"
-          value={prediction ? `${rainfallMm.toFixed(1)}` : '—'}
-          unit="mm/hr"
-          color="var(--accent)"
-          badge={prediction && rainfallMm > 10 ? '🔴 Heavy' : prediction && rainfallMm > 2 ? '🟡 Moderate' : prediction ? '🟢 Light' : null}
-        />
-        <MetricCard
-          icon="💧"
-          label="Humidity"
-          value={humidityVal !== null ? `${humidityVal}` : '—'}
-          unit="%"
-          sub={prediction ? 'Atmospheric moisture' : 'Forecast Model'}
-          color={
-            !humidityVal ? 'var(--text-muted)'
-            : humidityVal >= 90 ? '#ef4444'
-            : humidityVal >= 80 ? '#f97316'
-            : humidityVal >= 70 ? '#eab308'
-            : '#22c55e'
-          }
-          badge={
-            !humidityVal ? null
-            : humidityVal >= 90 ? '🔴 Saturated'
-            : humidityVal >= 80 ? '🟡 High'
-            : '🟢 Normal'
-          }
-        />
-        <MetricCard
-          icon="🤖"
-          label="Flood Probability"
-          value={modelLoading ? '...' : probabilityPct}
-          sub={prediction ? `Wind Signal #${prediction.live_metrics.wind_signal}` : 'Forecast Model'}
-          color={!prediction ? 'var(--text-muted)'
-            : prediction.probability >= 0.75 ? '#ef4444'
-            : prediction.probability >= 0.50 ? '#f97316'
-            : prediction.probability >= 0.25 ? '#eab308'
-            : '#22c55e'}
-          badge={prediction ? 'Model Prediction' : null}
-        />
-      </div>
-      )}
-
-      {/* ── 4. Map + Alert Level Reference ────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, marginBottom: 18 }}>
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '14px 18px', borderBottom: '1px solid var(--blue-border)',
-          }}>
-            <div>
-              <div className="card-title" style={{ marginBottom: 2 }}>
-                🗺 Flood Status Map — Barangay Triangulo
-              </div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                Boundary overlay · Alert level color-coded
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {Object.entries(ALERT_COLORS).map(([key, color]) => (
-                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 2, background: color, opacity: currentAlert === key ? 1 : 0.3 }} />
-                  <span style={{ fontSize: '0.6rem', color: currentAlert === key ? color : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 400, letterSpacing: '0.06em' }}>
-                    {key}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 18px 0' }}>
-            <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
-              {['2d', '3d'].map(v => (
-                <button key={v} onClick={() => setMapView(v)} style={{
-                  padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
-                  letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
-                  background: mapView === v ? 'var(--accent)' : 'transparent',
-                  color: mapView === v ? '#fff' : 'var(--text-muted)',
-                  transition: 'all 0.2s',
-                }}>
-                  {v === '2d' ? 'Street View' : '3D View'}
-                </button>
-              ))}
-            </div>
-          </div>
-          {mapView === '2d' ? (
-            <FloodMap currentAlert={currentAlert} />
-          ) : (
-              <FloodMap3D
-                currentAlert={currentAlert}
-                boundary={TRIANGULO_BOUNDARY}
-                alertColors={ALERT_COLORS}
-                rainfallMm={rainfallMm}
-                windSignal={prediction?.live_metrics?.wind_signal}
-              />
-          )}
-          
-          <div style={{ padding: '8px 18px', fontSize: '0.65rem', color: 'var(--text-muted)', borderTop: '1px solid var(--blue-border)' }}>
-            Approximate barangay boundary
-          </div>
-        </div>
-
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* ── 4. Flood Status Map ──────────────────────────────────── */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+          padding: '14px 18px', borderBottom: '1px solid var(--blue-border)',
+        }}>
           <div>
-            <SectionLabel>🚦 Alert Level Reference</SectionLabel>
-            <AlertLevelTable currentAlert={currentAlert} />
+            <div className="card-title" style={{ marginBottom: 2 }}>
+              🗺 Flood Status Map — Barangay Triangulo
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+              Boundary overlay, color-coded to current alert classification
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+            {['2d', '3d'].map(v => (
+              <button key={v} onClick={() => setMapView(v)} style={{
+                padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+                letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+                background: mapView === v ? 'var(--accent)' : 'transparent',
+                color: mapView === v ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}>
+                {v === '2d' ? 'Street View' : '3D View'}
+              </button>
+            ))}
           </div>
         </div>
+
+        {mapView === '2d' ? (
+          <FloodMap currentAlert={currentAlert} />
+        ) : (
+          <FloodMap3D
+            currentAlert={currentAlert}
+            boundary={TRIANGULO_BOUNDARY}
+            alertColors={ALERT_COLORS}
+            rainfallMm={rainfallMm}
+            windSignal={prediction?.live_metrics?.wind_signal}
+            condition={weatherCondition}
+          />
+        )}
+
+        {/* Cartographic legend — swatch, classification, threshold — rather
+            than a row of dots, so the map reads like a hazard map rather
+            than a status badge. */}
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px',
+          padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
+        }}>
+          <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+            Legend
+          </span>
+          {[
+            ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
+          ].map(([key, range]) => (
+            <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem' }}>
+              <span style={{
+                width: 10, height: 10, borderRadius: 2,
+                background: ALERT_COLORS[key], opacity: currentAlert === key ? 1 : 0.35,
+                flexShrink: 0,
+              }} />
+              <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
+                {key}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+            Approximate barangay boundary · &copy; OpenStreetMap contributors
+          </span>
+        </div>
       </div>
-      
-      {/* ── 5. Flood Forecast Chart ───────────────────── */}
+
+      {/* ── 5. Alert Classification Reference ───────────────────── */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <SectionLabel>🚦 Alert Classification Reference</SectionLabel>
+        <AlertLevelTable currentAlert={currentAlert} />
+      </div>
+
+      {/* ── 6. Flood Forecast Chart ───────────────────── */}
       <div style={{ marginBottom: 18 }}>
         <FloodForecast14Day />
       </div>
       
 
-      {/* ── 6. GRU Flood Probability Chart ───────────────────── */}
+      {/* ── 7. GRU Flood Probability Chart ───────────────────── */}
       <FloodForecastChart />
 
-      {/* ── 7. Forecast ───────────── */}
+      {/* ── 8. Weather Forecast ───────────── */}
       <div style={{ marginBottom: 18 }}>
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -1185,34 +1301,8 @@ export default function Dashboard() {
 
       </div>
 
-      {/* ── 9. Evacuation CTA ─────────────────────────────────── */}
-      {!userIsResident  && (
-        <div className="card" style={{
-          display: 'grid', gridTemplateColumns: '1fr auto',
-          alignItems: 'center', gap: 20,
-          background: 'rgba(239,68,68,0.04)',
-          border: '1px solid rgba(239,68,68,0.2)',
-          padding: '20px 24px',
-        }}>
-          <div>
-            <div style={{
-              fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.14em',
-              textTransform: 'uppercase', color: '#ef4444', marginBottom: 6,
-            }}>
-              🚨 Emergency Action
-            </div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>
-              Send Flood Alert
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Broadcasts flood alert notice to all registered officials and residents in Barangay Triangulo via httpsms.
-            </div>
-          </div>
-          <button className="btn btn-danger" onClick={handleEvacuationAlert} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
-            🚨 Send Flood Alert
-          </button>
-        </div>
-      )}
+      {/* ── 9. Standing Disclaimer ───────────────────────────────── */}
+      <DisclaimerFooter />
 
     </div>
   );

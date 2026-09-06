@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
+import RainOverlay from './RainOverlay';
 
 const BOUNDARY_COLOR = '#38bdf8';
 
@@ -66,7 +67,7 @@ function buildPopupHTML(center) {
   `;
 }
 
-export default function EvacuationMap3D({ boundary, evacuationCenters }) {
+export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallMm, condition, windSignal }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -122,9 +123,9 @@ export default function EvacuationMap3D({ boundary, evacuationCenters }) {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: 500, overflow: 'hidden' }}
-    />
+    <div style={{ position: 'relative', width: '100%', height: 500, overflow: 'hidden' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <RainOverlay rainfallMm={rainfallMm} condition={condition} windSignal={windSignal} />
+    </div>
   );
 }
