@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
 import { DataSourceProvider } from './hooks/useDataSource';
@@ -14,7 +14,6 @@ import CommunityReportsPage from './pages/CommunityReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 
 import MainLayout from './components/MainLayout';
-import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import ResidentRoute from './components/ResidentRoute';
 
@@ -26,14 +25,22 @@ function App() {
         <ModelSelectionProvider>
           <Router>
             <Routes>
-              <Route path="/"      element={<LoginPage />} />
               <Route path="/login" element={<LoginPage />} />
 
-              <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-                <Route path="/dashboard"    element={<Dashboard />} />
-                <Route path="/rainfall"     element={<RainfallPage />} />
-                <Route path="/evacuation-map"    element={<FloodMapPage />} />
-                <Route path="/reports"   element={
+              {/* Shared shell (Sidebar/Topbar). Public pages live here with
+                  no guard — Sidebar/Topbar render a logged-out state on
+                  their own (login button, nav items filtered) rather than
+                  this route tree needing to know who's signed in. Only the
+                  staff/admin/resident action pages below are individually
+                  wrapped in an auth guard. */}
+              <Route element={<MainLayout />}>
+                <Route path="/"              element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard"     element={<Dashboard />} />
+                <Route path="/rainfall"      element={<RainfallPage />} />
+                <Route path="/evacuation-map" element={<FloodMapPage />} />
+                <Route path="/analytics"     element={<AnalyticsPage />} />
+
+                <Route path="/reports" element={
                   <ResidentRoute>
                     <ReportsPage />
                   </ResidentRoute>
@@ -44,8 +51,6 @@ function App() {
                     <CommunityReportsPage />
                   </ResidentRoute>
                 } />
-
-                <Route path="/analytics" element={<AnalyticsPage />} />
 
                 <Route path="/register" element={
                   <AdminRoute>

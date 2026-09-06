@@ -1361,13 +1361,17 @@ export default function Dashboard() {
       )}
 
       {/* ── 2. Advisory Bulletin ──────────────────────────────── */}
+      {/* canSendAlert requires an authenticated, non-resident user — not
+          just "not a resident". isResident(null) is false, so on its own
+          `!userIsResident` would be true for a logged-out visitor too, now
+          that this page is public. Dispatch must stay gated on `user`. */}
       <AdvisoryBulletin
         alertInfo={alertInfo}
         alertColor={alertColor}
         currentAlert={currentAlert}
         recentTrend={recentTrend}
         onSendAlert={handleEvacuationAlert}
-        canSendAlert={!userIsResident}
+        canSendAlert={!!user && !userIsResident}
       />
 
       {/* ── 3. Current Conditions Strip ─────────────────────────── */}
@@ -1524,7 +1528,11 @@ export default function Dashboard() {
       
 
       {/* ── 7. GRU Flood Probability Chart ───────────────────── */}
-      <FloodForecastChart />
+      {/* Trend chart is staff/admin/resident-only — kept out of the public
+          view. Current status (bulletin, conditions strip, map, alert
+          reference) stays public; the historical/predicted probability
+          trend is reserved for signed-in accounts. */}
+      {user && <FloodForecastChart />}
 
       {/* ── 8. Weather Forecast ───────────── */}
       <div style={{ marginBottom: 18 }}>

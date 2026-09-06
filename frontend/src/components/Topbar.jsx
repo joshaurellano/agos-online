@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
@@ -8,6 +9,7 @@ import { isAdmin } from '../lib/roles';
 
 export default function Topbar({ title, onMenuClick, alertLevel }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { isMock, toggleDataSource } = useDataSource();
   const { modelKey, setModelKey, options: modelOptions } = useModelSelection();
@@ -144,6 +146,28 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
             {time.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
           </div>
         </div>
+
+        {/* Sign-in — the app is fully browsable without an account (this
+            is a public early-warning tool); logging in only unlocks
+            staff/admin actions (dispatching alerts, moderating reports,
+            registering accounts). Shown in place of nothing when signed
+            out; once signed in, the account panel lives in the Sidebar
+            instead of duplicating it up here. */}
+        {!user && (
+          <button
+            className="btn"
+            onClick={() => navigate('/login')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'var(--accent)', color: '#fff',
+              fontSize: '0.78rem', fontWeight: 700,
+              padding: '8px 16px', border: 'none', borderRadius: 6,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            👤 Staff / Admin Sign In
+          </button>
+        )}
       </div>
 
       <style>{`
