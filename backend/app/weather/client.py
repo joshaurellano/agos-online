@@ -82,6 +82,7 @@ def build_weather_url():
         "precipitation,"
         "relative_humidity_2m,"
         "wind_speed_10m,"
+        "wind_direction_10m,"
         "pressure_msl,"
         "surface_pressure,"
         "wind_gusts_10m,"
