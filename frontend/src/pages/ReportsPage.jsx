@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { isAdmin, isResident } from '../lib/roles';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../hooks/useAuth';
@@ -68,9 +69,32 @@ const EMPTY_FORM = {
   model_alert_level:      'N/A',
   description:            '',
   status:                 'OPEN',
+  // Set only when this form was opened via "Promote to Official Report"
+  // from CommunityReportsPage -- links the new record back to the
+  // resident report it came from. Never user-editable.
+  source_incident_report_id: null,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Turns a verified community report (incident_reports row) into a starting
+// point for this form. Deliberately conservative: only fills fields the
+// resident's report can actually speak to (when/where/what happened).
+// Severity, water level, casualties, response time etc. are left at
+// defaults for the official to fill in themselves -- guessing those from a
+// one-line resident description would be worse than an empty field.
+function mapIncidentReportToFloodReport(report) {
+  const occurred = new Date(report.created_at);
+  const attribution = `[Promoted from a resident report by ${report.reporter_name ?? 'a resident'}] `;
+  return {
+    date_occurred: occurred.toISOString().slice(0, 10),
+    time_occurred: occurred.toTimeString().slice(0, 5),
+    location: report.location_label
+      || (report.latitude && report.longitude ? `${report.latitude.toFixed(5)}, ${report.longitude.toFixed(5)}` : ''),
+    description: attribution + (report.description ?? ''),
+    source_incident_report_id: report.id,
+  };
+}
 
 function exportCSV(records) {
   const headers = [
@@ -352,8 +376,8 @@ function ReportCard({ report, onStatusChange, canEdit }) {
   );
 }
 
-function ReportForm({ user, onSubmitted, onCancel }) {
-  const [form, setForm]     = useState(EMPTY_FORM);
+function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
+  const [form, setForm]     = useState({ ...EMPTY_FORM, ...(initialValues || {}) });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -397,11 +421,30 @@ function ReportForm({ user, onSubmitted, onCancel }) {
       model_alert_level:      form.model_alert_level,
       description:            form.description.trim(),
       status:                 form.status,
+      source_incident_report_id: form.source_incident_report_id || null,
     };
-    const { error } = await supabase.from('flood_reports').insert(payload);
+    const { data, error } = await supabase.from('flood_reports').insert(payload).select().single();
+    if (error) {
+      setSaving(false);
+      setErrors({ _global: error.message });
+      return;
+    }
+
+    // Mark the source community report as promoted so it doesn't get
+    // offered up for promotion again. Best-effort: the official report
+    // above is already saved either way, so a failure here just means
+    // the "already promoted" badge won't show -- not worth blocking on.
+    if (form.source_incident_report_id) {
+      const { error: linkError } = await supabase
+        .from('incident_reports')
+        .update({ promoted_report_id: data.id })
+        .eq('id', form.source_incident_report_id);
+      if (linkError) logger.error('Failed to link promoted report:', linkError.message);
+    }
+
     setSaving(false);
-    if (error) setErrors({ _global: error.message });
-    else { setForm(EMPTY_FORM); onSubmitted(); }
+    setForm(EMPTY_FORM);
+    onSubmitted();
   };
 
   const inputStyle = (key) => ({
@@ -432,6 +475,12 @@ function ReportForm({ user, onSubmitted, onCancel }) {
   return (
     <div className="card" style={{ marginBottom: 18 }}>
       <SectionLabel>📝 File Flood Incident Report</SectionLabel>
+
+      {form.source_incident_report_id && (
+        <div style={{ padding: '9px 12px', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.25)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 14 }}>
+          📥 Prefilled from a verified resident report — review and complete the fields below before submitting.
+        </div>
+      )}
 
       {errors._global && (
         <div style={{ padding: '9px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: '0.8rem', color: '#f87171', marginBottom: 14 }}>
@@ -741,15 +790,35 @@ function ModelAccuracyPanel({ reports }) {
 export default function HistoricalPage() {
   const { user } = useAuth();
   const userIsResident = isResident(user);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [reports,        setReports]        = useState([]);
   const [loading,        setLoading]        = useState(true);
   const [showForm,       setShowForm]       = useState(false);
+  const [promoteInitialValues, setPromoteInitialValues] = useState(null);
   const [filterSeverity, setFilterSeverity] = useState('ALL');
   const [filterStatus,   setFilterStatus]   = useState('ALL');
   const [filterSource,   setFilterSource]   = useState('ALL');
   const [searchText,     setSearchText]     = useState('');
   const [successMsg,     setSuccessMsg]     = useState('');
   const [exporting,      setExporting]      = useState(false);
+
+  // Arriving here via CommunityReportsPage's "Promote to Official Report"
+  // button: open the form pre-filled, then immediately clear the router
+  // state so a page refresh or back-navigation doesn't reopen it.
+  useEffect(() => {
+    if (location.state?.promoteFrom) {
+      setPromoteInitialValues(mapIncidentReportToFloodReport(location.state.promoteFrom));
+      setShowForm(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const closeForm = () => {
+    setShowForm(false);
+    setPromoteInitialValues(null);
+  };
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -765,7 +834,7 @@ export default function HistoricalPage() {
   useEffect(() => { fetchReports(); }, [fetchReports]);
 
   const handleSubmitted = () => {
-    setShowForm(false);
+    closeForm();
     setSuccessMsg('Report submitted successfully.');
     fetchReports();
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -869,7 +938,8 @@ export default function HistoricalPage() {
         <ReportForm
           user={user}
           onSubmitted={handleSubmitted}
-          onCancel={() => setShowForm(false)}
+          onCancel={closeForm}
+          initialValues={promoteInitialValues}
         />
       )}
 
