@@ -13,7 +13,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
@@ -345,7 +344,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _fetchHourly() async {
     try {
-      final res = await http.get(Uri.parse(_forecastUrl)).timeout(const Duration(seconds: 15));
+      // Same primary→backup fallback as _fetchDailyFlood/FloodStatusService
+      // (see services/model_api_client.dart). Previously this used a plain
+      // http.get with no fallback, so whenever the primary backend host
+      // was asleep/unreachable, the Hourly Forecast card alone would show
+      // "unavailable" even though every other card had already recovered
+      // via the backup host.
+      final res = await getWithFallback(_forecastUrl,
+          timeout: const Duration(seconds: 15));
       if (!mounted) return;
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;

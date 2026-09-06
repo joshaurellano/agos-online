@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import '../models/incident_report.dart';
 import '../services/auth_service.dart';
@@ -119,25 +120,37 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
     setState(() { _submitting = true; _errorMsg = null; });
 
-    final user = context.read<AuthService>().currentUser;
-    if (user == null) {
+    // No login screen anymore — every device has a silent Supabase
+    // anonymous session (see main.dart), whose auth.uid() is what RLS on
+    // incident_reports/incident-photos checks. If that bootstrap sign-in
+    // failed (e.g. anonymous auth isn't enabled on the project yet),
+    // there's nothing to attribute the report to, so surface that plainly
+    // instead of a confusing storage/DB error.
+    final anonId = Supabase.instance.client.auth.currentUser?.id;
+    if (anonId == null) {
       setState(() {
-        _errorMsg = 'You need to be signed in to submit a report.';
+        _errorMsg = "Couldn't verify this device — please check your connection and reopen the app.";
         _submitting = false;
       });
       return;
     }
 
+    // Optional display name/role from a profile, if this device ever had
+    // one (legacy accounts) — otherwise reports are attributed as an
+    // anonymous resident. Either way `reported_by` is the stable anon
+    // device ID above, so "My Reports" keeps working.
+    final profile = context.read<AuthService>().currentUser;
+
     try {
       String? photoUrl;
       if (_photo != null) {
-        photoUrl = await IncidentService.uploadPhoto(user.id, _photo!);
+        photoUrl = await IncidentService.uploadPhoto(anonId, _photo!);
       }
 
       await IncidentService.submitReport(
-        reportedBy:    user.id,
-        reporterName:  user.name,
-        reporterRole:  user.roleDesc,
+        reportedBy:    anonId,
+        reporterName:  profile?.name ?? 'Anonymous Resident',
+        reporterRole:  profile?.roleDesc ?? 'Resident',
         category:      _category,
         description:   _descriptionCtrl.text.trim(),
         photoUrl:      photoUrl,
