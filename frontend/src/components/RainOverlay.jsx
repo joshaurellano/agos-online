@@ -31,23 +31,34 @@ function resolveIntensity(rainfallMm, condition) {
   const mmStrength = Math.min(mm / 30, 1);
   const strength = tier === 'none' ? 0 : Math.max(TIER_FLOOR[tier], mmStrength);
 
-  return { tier, strength: Math.min(strength, 1), isStorm: tier === 'storm' };
+  // "Overcast" is its own signal, separate from the rain tier above -- it's
+  // not precipitation, so it never adds raindrops, but a flat gray sky
+  // still deserves *some* visual read on the map instead of looking
+  // identical to "Clear". Only fires when there's no active rain tier, so a
+  // thunderstorm (which is also technically overcast) keeps showing rain
+  // streaks + lightning instead of stacking a second effect on top.
+  const isOvercast = tier === 'none' && /overcast/.test(c);
+
+  return { tier, strength: Math.min(strength, 1), isStorm: tier === 'storm', isOvercast };
 }
 
 const MAX_DROPS = 260;
+const MAX_CLOUDS = 6;
 
 /**
- * Animated rain layer that sits on top of a maplibre 3D map. Purely a visual
- * overlay -- pointer-events are disabled so map panning/zooming/rotating
- * still works underneath it. Renders nothing (an empty canvas) when there's
- * no rain, so it's safe to always mount alongside the map.
+ * Animated weather layer that sits on top of a maplibre 3D map. Purely a
+ * visual overlay -- pointer-events are disabled so map panning/zooming/
+ * rotating still works underneath it. Draws rain streaks (+ lightning for
+ * storms) when there's active precipitation, slow drifting cloud-shadow
+ * patches for a plain "Overcast" sky, and renders nothing otherwise, so
+ * it's safe to always mount alongside the map.
  */
 export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
   const canvasRef = useRef(null);
-  const liveRef = useRef({ tier: 'none', strength: 0, isStorm: false, windSignal: 0 });
+  const liveRef = useRef({ tier: 'none', strength: 0, isStorm: false, isOvercast: false, windSignal: 0 });
 
-  const { tier, strength, isStorm } = resolveIntensity(rainfallMm, condition);
-  liveRef.current = { tier, strength, isStorm, windSignal: windSignal || 0 };
+  const { tier, strength, isStorm, isOvercast } = resolveIntensity(rainfallMm, condition);
+  liveRef.current = { tier, strength, isStorm, isOvercast, windSignal: windSignal || 0 };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -59,6 +70,7 @@ export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
     let height = 0;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let drops = [];
+    let clouds = [];
     let lightningAlpha = 0;
     let lightningCooldown = 0;
     let raf;
@@ -85,13 +97,51 @@ export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
       };
     }
 
+    // Soft, slow-drifting gray patches -- read as cloud-shadows passing
+    // over the map rather than rain. Spawned across the full height (not
+    // just up top) and recycled once they drift past the right edge.
+    function spawnCloud(startX) {
+      return {
+        x: startX ?? Math.random() * (width + 500) - 250,
+        y: Math.random() * height,
+        rx: 160 + Math.random() * 200,
+        ry: 60 + Math.random() * 70,
+        speed: 0.15 + Math.random() * 0.25,
+        opacity: 0.16 + Math.random() * 0.14,
+      };
+    }
+
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(parent);
 
     function frame() {
-      const { strength: s, isStorm: storm } = liveRef.current;
+      const { strength: s, isStorm: storm, isOvercast: overcast } = liveRef.current;
       ctx.clearRect(0, 0, width, height);
+
+      if (overcast) {
+        // Flat wash first, so the map reads as "dimmed under cloud cover"
+        // immediately -- the drifting blobs on top are the moving detail,
+        // not the only signal that overcast mode is active.
+        ctx.fillStyle = 'rgba(85, 95, 110, 0.14)';
+        ctx.fillRect(0, 0, width, height);
+
+        while (clouds.length < MAX_CLOUDS) clouds.push(spawnCloud());
+        for (const cl of clouds) {
+          const grad = ctx.createRadialGradient(cl.x, cl.y, 0, cl.x, cl.y, Math.max(cl.rx, cl.ry));
+          grad.addColorStop(0, `rgba(70, 80, 95, ${cl.opacity})`);
+          grad.addColorStop(0.6, `rgba(70, 80, 95, ${cl.opacity * 0.5})`);
+          grad.addColorStop(1, 'rgba(70, 80, 95, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.ellipse(cl.x, cl.y, cl.rx, cl.ry, 0, 0, Math.PI * 2);
+          ctx.fill();
+          cl.x += cl.speed;
+          if (cl.x - cl.rx > width) Object.assign(cl, spawnCloud(-cl.rx - 100));
+        }
+      } else if (clouds.length) {
+        clouds.length = 0;
+      }
 
       const targetCount = Math.round(MAX_DROPS * s);
       while (drops.length < targetCount) drops.push(spawnDrop());
