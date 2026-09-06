@@ -25,6 +25,7 @@ import os
 import requests
 
 from app.weather.cache import weather_cache, cache_age_minutes
+from app.config.settings import DISABLE_DISK_CACHE
 
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
@@ -39,6 +40,11 @@ def persist_cache_to_disk():
     forecast keep working immediately after a Render restart/spin-down,
     instead of only after the next successful Open-Meteo call.
     """
+
+    if DISABLE_DISK_CACHE:
+        # Local dev with WEATHER_DISABLE_DISK_CACHE=true: don't write local
+        # test fetches into what may be production's shared fallback data.
+        return
 
     if not (UPSTASH_URL and UPSTASH_TOKEN):
         print("⚠️ Upstash env vars not set — skipping persisted cache write.")
@@ -102,12 +108,17 @@ def load_cache_from_disk():
         weather_cache["using_stale_data"] = True
         weather_cache["loaded_from_disk"] = True
         weather_cache["fallback_source"] = "upstash"
+        # Loaded, but not yet confirmed against live Open-Meteo this
+        # process lifetime -- fetch_weather() will force one real attempt
+        # before ever serving this snapshot on its own, regardless of how
+        # young payload["fetched_at"] looks.
+        weather_cache["force_live_retry"] = True
 
         age_min = cache_age_minutes()
         print(
             f"🟡 Loaded persisted weather cache from Upstash "
             f"(age: {age_min} min). This will back /api/forecast-flood "
-            f"as a fallback until a fresh Open-Meteo fetch succeeds."
+            f"as a fallback only if the next live Open-Meteo attempt fails."
         )
 
     except Exception as err:

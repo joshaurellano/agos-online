@@ -89,6 +89,19 @@ def build_weather_url():
         "apparent_temperature"
 
         # ---------------------------------------------------------------
+        # MINUTELY (15-MIN STEPS)
+        # ---------------------------------------------------------------
+        # Powers the short-range "minute forecast" precipitation strip on
+        # the flood map (see routes_weather.get_forecast -> "minutely").
+        # Open-Meteo's finest native resolution is 15 minutes (there is no
+        # true per-minute precipitation field), so this is a coarser
+        # cousin of OpenWeatherMap's 60x 1-min series rather than an exact
+        # match -- 8 steps covers the next 2 hours, plenty for a
+        # Now/15/30/45/60-min strip with headroom.
+        "&minutely_15=precipitation"
+        "&forecast_minutely_15=8"
+
+        # ---------------------------------------------------------------
         # HOURLY
         # ---------------------------------------------------------------
         "&hourly="
@@ -188,8 +201,14 @@ def fetch_weather():
     # ----------------------------------------------------------------------
     # FAST CACHE CHECK
     # ----------------------------------------------------------------------
+    # force_live_retry (set by load_cache_from_disk()) overrides this --
+    # a disk-loaded snapshot doesn't get to answer requests on its own
+    # freshness window until a live Open-Meteo attempt has actually been
+    # made this process lifetime. That attempt happens below regardless
+    # of outcome, so this only ever gates the very first call after a
+    # snapshot load.
 
-    if cache_is_fresh():
+    if not weather_cache["force_live_retry"] and cache_is_fresh():
         weather_cache["using_stale_data"] = False
         return weather_cache["data"]
 
@@ -219,9 +238,15 @@ def fetch_weather():
 
         # Another request may have refreshed the cache while we were waiting
         # for the lock.
-        if cache_is_fresh():
+        if not weather_cache["force_live_retry"] and cache_is_fresh():
             weather_cache["using_stale_data"] = False
             return weather_cache["data"]
+
+        # This attempt (below) is what verifies Open-Meteo reachability --
+        # from here on, the loaded snapshot must stand on its own normal
+        # TTL like any other cache entry, not on the strength of never
+        # having been checked yet.
+        weather_cache["force_live_retry"] = False
 
         # --------------------------------------------------------------
         # FAILURE COOLDOWN (CIRCUIT BREAKER)

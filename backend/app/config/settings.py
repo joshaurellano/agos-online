@@ -93,6 +93,27 @@ FAILURE_COOLDOWN_SECONDS = int(
 # frontend can show a "may be outdated" warning.
 SIGNIFICANT_STALENESS_MINUTES = 180  # 3 hours
 
+# ---------------------------------------------------------------------------
+# LOCAL-DEV OVERRIDE
+# ---------------------------------------------------------------------------
+#
+# The Upstash disk-cache above exists to solve ONE specific problem: Render
+# free-tier spin-downs wipe local disk, so without it a restart would have
+# zero fallback data until the next successful Open-Meteo call. That
+# problem doesn't exist on a local machine -- there's no spin-down, and if
+# you can reach Open-Meteo directly there's no reason to ever prefer a
+# snapshot that (right after a code change to the request URL, e.g. adding
+# a new field) may be structurally out of date, not just old.
+#
+# If your local .env happens to point at the same Upstash instance as
+# production (e.g. copied wholesale), set WEATHER_DISABLE_DISK_CACHE=true
+# there to skip loading/writing it entirely and always start from a live
+# Open-Meteo fetch. Leave it unset (default: false) everywhere this
+# restart-survival behavior is actually wanted, i.e. Render.
+DISABLE_DISK_CACHE = os.environ.get(
+    "WEATHER_DISABLE_DISK_CACHE", "false"
+).strip().lower() in ("1", "true", "yes")
+
 
 # ===========================================================================
 # MODEL REGISTRY (multi-algorithm forecasting)

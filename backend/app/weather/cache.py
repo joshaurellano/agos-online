@@ -43,6 +43,15 @@ weather_cache = {
     # Used by the cooldown/circuit-breaker so repeated incoming requests
     # don't each re-trigger a full retry storm against Open-Meteo.
     "last_failure_at": None,
+
+    # True right after a disk-persisted (Upstash) snapshot has been loaded
+    # at startup, and this process hasn't yet found out whether Open-Meteo
+    # is actually reachable. Cleared the moment a live fetch is attempted
+    # (success or failure) -- see fetch_weather(). This is what makes the
+    # disk snapshot a true last-resort fallback rather than something
+    # that can answer requests on its own merit just because it's still
+    # within the normal TTL window.
+    "force_live_retry": False,
 }
 
 weather_cache_lock = threading.Lock()
