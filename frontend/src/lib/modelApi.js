@@ -129,6 +129,7 @@ export function useModelPrediction(modelKey = 'gru') {
           rainfall_mm: data?.live_metrics?.rainfall_mm ?? 0,
           humidity:    data?.live_metrics?.humidity    ?? null,
           wind_signal: data?.live_metrics?.wind_signal ?? 0,
+          wind_direction_deg: data?.live_metrics?.wind_direction_deg ?? null,
           // NOTE: /api/predict-flood's live_metrics (app/features/aggregation.py
           // get_live_metrics()) does NOT include a condition string -- that
           // only exists per-entry in /api/forecast's hourly[]/daily[] (via

@@ -20,6 +20,8 @@ import { isAdmin, isResident } from '../lib/roles';
 import { logger } from '../lib/logger';
 
 import FloodMap3D from '../components/FloodMap3D';
+import RainOverlay from '../components/RainOverlay';
+import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
 import WeatherForecast from '../components/WeatherForecast';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -157,19 +159,6 @@ function StationHeader({ area, activeModel, lastUpdated, engineStatus, feedStatu
 
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <StatusPill label="Prediction Engine" status={engineStatus} />
-        <StatusPill label="Weather Feed" status={feedStatus} />
-        <div style={{
-          fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.05em', color: 'var(--text-secondary)',
-          padding: '5px 10px', borderRadius: 6, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-        }}>
-          ENGINE: {activeModel?.label?.toUpperCase() ?? 'GRU'}
-        </div>
-        <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>
-          Updated {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      </div>
     </div>
   );
 }
@@ -296,8 +285,7 @@ function DisclaimerFooter() {
       display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
     }}>
       <span>
-        Forecasts are model-generated (GRU/LSTM, no physical water-level sensor) and intended for situational awareness only —
-        always defer to official PAGASA and Naga City DRRMO advisories for evacuation decisions.
+        Forecasts are model-generated (no physical water-level sensor) and intended for situational awareness only
       </span>
       <span style={{ whiteSpace: 'nowrap' }}>Sources: Open-Meteo · GloFAS · flood_snapshots</span>
     </div>
@@ -313,39 +301,107 @@ const ROAD_WEIGHT = {
   unclassified: 2, residential: 2, service: 1,
 };
 
-function FloodMap({ currentAlert }) {
+// Free, no-key basemap tile sources for the 2D map. Esri's World Imagery is
+// the standard free satellite source (same one Leaflet's own docs point to);
+// the Reference/World_Boundaries_and_Places overlay adds place labels + road
+// lines on top of it so satellite mode isn't just an unlabeled photo.
+const BASEMAP_TILES = {
+  street: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  },
+};
+const BASEMAP_LABELS_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+
+// Small overlay control, positioned to match the 3D map's bottom-left
+// basemap switcher so the two views feel like the same product.
+function BasemapSwitcher({ basemap, onChange }) {
+  return (
+    <div style={{
+      position: 'absolute', bottom: 12, left: 12, zIndex: 500,
+      display: 'flex', gap: 0, background: 'rgba(13, 31, 60, 0.82)',
+      backdropFilter: 'blur(6px)', border: '1px solid rgba(56,189,248,0.3)',
+      borderRadius: 6, overflow: 'hidden',
+    }}>
+      {['street', 'satellite'].map(key => (
+        <button key={key} onClick={() => onChange(key)} style={{
+          padding: '5px 12px', fontSize: '0.65rem', fontWeight: 700,
+          letterSpacing: '0.04em', cursor: 'pointer', border: 'none',
+          background: basemap === key ? 'var(--accent, #0ea5e9)' : 'transparent',
+          color: basemap === key ? '#fff' : '#8da4be',
+          transition: 'all 0.2s',
+        }}>
+          {key === 'street' ? 'Street' : 'Satellite'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
+  const [basemap, setBasemap] = useState('street');
 
   // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
 
   return (
-    <MapContainer
-      center={[13.6140, 123.1915]}
-      zoom={15}
-      scrollWheelZoom={true}
-      style={{ width: '100%', height: 480, borderRadius: 'var(--radius-sm)' }}
-    >
-      <TileLayer
-        // OpenStreetMap standard tiles — free, no key required
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      />
-      <LeafletPolygon
-        positions={boundaryPositions}
-        pathOptions={{
-          color: '#1E90FF',
-          weight: 2,
-          opacity: 0.95,
-          fillColor: color,
-          fillOpacity: 0.28,
-        }}
+    <div style={{ position: 'relative' }}>
+      <MapContainer
+        center={[13.6140, 123.1915]}
+        zoom={15}
+        scrollWheelZoom={true}
+        style={{ width: '100%', height: 480, borderRadius: 'var(--radius-sm)' }}
       >
-        <LeafletTooltip sticky>
-          Barangay Triangulo — {currentAlert}
-        </LeafletTooltip>
-      </LeafletPolygon>
-    </MapContainer>
+        <TileLayer
+          key={basemap}
+          url={BASEMAP_TILES[basemap].url}
+          attribution={BASEMAP_TILES[basemap].attribution}
+        />
+        {basemap === 'satellite' && (
+          <TileLayer url={BASEMAP_LABELS_URL} attribution="" />
+        )}
+        <LeafletPolygon
+          positions={boundaryPositions}
+          pathOptions={{
+            color: '#1E90FF',
+            weight: 2,
+            opacity: 0.95,
+            fillColor: color,
+            fillOpacity: 0.28,
+          }}
+        >
+          <LeafletTooltip sticky>
+            Barangay Triangulo — {currentAlert}
+          </LeafletTooltip>
+        </LeafletPolygon>
+      </MapContainer>
+
+      {/* zIndex above Leaflet's own panes (tilePane 200 / overlayPane 400 /
+          shadowPane 500) but below markerPane (600), so weather sits over
+          the basemap and boundary without dimming markers/popups. */}
+      <RainOverlay rainfallMm={rainfallMm} condition={condition} windSignal={windSignal} zIndex={550} />
+
+      {windDirectionDeg != null && (
+        <div style={{
+          position: 'absolute', top: 12, left: 12, zIndex: 550,
+          background: 'rgba(13, 31, 60, 0.82)', backdropFilter: 'blur(6px)',
+          border: '1px solid rgba(56,189,248,0.3)', borderRadius: 8,
+          padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <WindDirectionArrow deg={windDirectionDeg} size={15} />
+          <span style={{ fontSize: '0.68rem', color: '#e2eaf5', fontWeight: 600 }}>
+            {degToCardinal(windDirectionDeg)} · {Math.round(windDirectionDeg)}°
+          </span>
+        </div>
+      )}
+
+      <BasemapSwitcher basemap={basemap} onChange={setBasemap} />
+    </div>
   );
 }
 
@@ -1225,7 +1281,13 @@ export default function Dashboard() {
         </div>
 
         {mapView === '2d' ? (
-          <FloodMap currentAlert={currentAlert} />
+          <FloodMap
+            currentAlert={currentAlert}
+            rainfallMm={rainfallMm}
+            windSignal={prediction?.live_metrics?.wind_signal}
+            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
+            condition={weatherCondition}
+          />
         ) : (
           <FloodMap3D
             currentAlert={currentAlert}
@@ -1233,6 +1295,7 @@ export default function Dashboard() {
             alertColors={ALERT_COLORS}
             rainfallMm={rainfallMm}
             windSignal={prediction?.live_metrics?.wind_signal}
+            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
             condition={weatherCondition}
             minutely={minutelyForecast}
           />

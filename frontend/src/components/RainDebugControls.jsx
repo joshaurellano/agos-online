@@ -6,6 +6,7 @@ const PRESETS = [
   { label: 'Live data', mm: null, condition: null },
   { label: 'Clear',        mm: 0,    condition: 'Clear sky' },
   { label: 'Overcast',     mm: 0,    condition: 'Overcast' },
+  { label: 'Fog',          mm: 0,    condition: 'Fog' },
   { label: 'Light rain',   mm: 1.5,  condition: 'Slight rain' },
   { label: 'Moderate rain',mm: 6,    condition: 'Moderate rain' },
   { label: 'Heavy rain',   mm: 14,   condition: 'Heavy rain' },

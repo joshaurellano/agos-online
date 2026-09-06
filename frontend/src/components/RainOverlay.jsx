@@ -39,26 +39,89 @@ function resolveIntensity(rainfallMm, condition) {
   // streaks + lightning instead of stacking a second effect on top.
   const isOvercast = tier === 'none' && /overcast/.test(c);
 
-  return { tier, strength: Math.min(strength, 1), isStorm: tier === 'storm', isOvercast };
+  // "Fog"/"Icy fog"/haze -- a visibility condition, not a cloud-cover one,
+  // so it gets its own thinner, faster-moving veil instead of reusing the
+  // cumulus clouds. Same no-precipitation, no-double-stacking rule as
+  // isOvercast above.
+  const isFog = tier === 'none' && /(fog|haze)/.test(c);
+
+  return { tier, strength: Math.min(strength, 1), isStorm: tier === 'storm', isOvercast, isFog };
 }
 
 const MAX_DROPS = 260;
-const MAX_CLOUDS = 6;
+const MAX_CLOUDS = 5;
+const MAX_FOG_BANDS = 4;
+
+// ─── Cloud sprite ───────────────────────────────────────────────────────────
+// A real cumulus silhouette (overlapping puffs, not a soft gradient blob),
+// pre-rendered once to an offscreen canvas and reused for every cloud
+// instance -- shape is drawn a single time; per-frame work is just a cheap
+// drawImage() at each cloud's current x/y.
+const CLOUD_PUFFS = [
+  { dx: -0.62, dy: 0.16, r: 0.30 },
+  { dx: -0.34, dy: -0.06, r: 0.40 },
+  { dx: -0.02, dy: -0.18, r: 0.46 },
+  { dx: 0.30, dy: -0.08, r: 0.42 },
+  { dx: 0.58, dy: 0.10, r: 0.32 },
+  { dx: 0.82, dy: 0.22, r: 0.22 },
+  { dx: -0.86, dy: 0.24, r: 0.20 },
+];
+
+function buildCloudSprite() {
+  const W = 480, H = 300;
+  const off = document.createElement('canvas');
+  off.width = W;
+  off.height = H;
+  const octx = off.getContext('2d');
+  const cx = W / 2;
+  const cy = H * 0.6;
+  const scale = W * 0.42;
+
+  // Silhouette: flat white first (the shading pass below only reads alpha,
+  // so the base tone doesn't matter beyond giving every puff full opacity).
+  octx.fillStyle = '#ffffff';
+  CLOUD_PUFFS.forEach(p => {
+    octx.beginPath();
+    octx.arc(cx + p.dx * scale, cy + p.dy * scale, p.r * scale, 0, Math.PI * 2);
+    octx.fill();
+  });
+  // Rounded base so the puffs read as one cloud rather than a row of circles.
+  octx.beginPath();
+  octx.ellipse(cx, cy + scale * 0.2, scale * 1.05, scale * 0.34, 0, 0, Math.PI * 2);
+  octx.fill();
+
+  // Volume shading, masked to the silhouette via 'source-atop' so it never
+  // spills past the cloud's own edge: pale/bright top, gray-blue underside
+  // -- the classic top-lit cumulus read, and also doubles as the "shadow"
+  // half so the sprite works whether it's meant as sky-cloud or cast-shadow.
+  octx.globalCompositeOperation = 'source-atop';
+  const shade = octx.createLinearGradient(0, cy - scale * 0.6, 0, cy + scale * 0.55);
+  shade.addColorStop(0, 'rgba(255,255,255,0.98)');
+  shade.addColorStop(0.45, 'rgba(226,232,240,0.95)');
+  shade.addColorStop(1, 'rgba(96,107,125,0.92)');
+  octx.fillStyle = shade;
+  octx.fillRect(0, 0, W, H);
+  octx.globalCompositeOperation = 'source-over';
+
+  return off;
+}
 
 /**
- * Animated weather layer that sits on top of a maplibre 3D map. Purely a
- * visual overlay -- pointer-events are disabled so map panning/zooming/
- * rotating still works underneath it. Draws rain streaks (+ lightning for
- * storms) when there's active precipitation, slow drifting cloud-shadow
- * patches for a plain "Overcast" sky, and renders nothing otherwise, so
- * it's safe to always mount alongside the map.
+ * Animated weather layer that sits on top of a maplibre 3D map or a Leaflet
+ * 2D map. Purely a visual overlay -- pointer-events are disabled so map
+ * panning/zooming/rotating still works underneath it. Draws rain streaks
+ * (+ lightning for storms) when there's active precipitation, drifting
+ * cumulus-shaped clouds for a plain "Overcast" sky, and renders nothing
+ * otherwise, so it's safe to always mount alongside the map. `zIndex` lets
+ * callers lift it above a Leaflet map's own internal panes (200-700), which
+ * sit in the same stacking context; the maplibre 3D map doesn't need this.
  */
-export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
+export default function RainOverlay({ rainfallMm, condition, windSignal = 0, zIndex = 2 }) {
   const canvasRef = useRef(null);
-  const liveRef = useRef({ tier: 'none', strength: 0, isStorm: false, isOvercast: false, windSignal: 0 });
+  const liveRef = useRef({ tier: 'none', strength: 0, isStorm: false, isOvercast: false, isFog: false, windSignal: 0 });
 
-  const { tier, strength, isStorm, isOvercast } = resolveIntensity(rainfallMm, condition);
-  liveRef.current = { tier, strength, isStorm, isOvercast, windSignal: windSignal || 0 };
+  const { tier, strength, isStorm, isOvercast, isFog } = resolveIntensity(rainfallMm, condition);
+  liveRef.current = { tier, strength, isStorm, isOvercast, isFog, windSignal: windSignal || 0 };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -71,6 +134,9 @@ export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let drops = [];
     let clouds = [];
+    let fogBands = [];
+    const cloudSprite = buildCloudSprite();
+    const spriteAspect = cloudSprite.height / cloudSprite.width;
     let lightningAlpha = 0;
     let lightningCooldown = 0;
     let raf;
@@ -97,17 +163,31 @@ export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
       };
     }
 
-    // Soft, slow-drifting gray patches -- read as cloud-shadows passing
-    // over the map rather than rain. Spawned across the full height (not
-    // just up top) and recycled once they drift past the right edge.
+    // Slow-drifting cloud instances -- each just references the shared
+    // sprite at its own position/scale/opacity/speed. Spawned across the
+    // full height and recycled once they drift past the right edge.
     function spawnCloud(startX) {
       return {
-        x: startX ?? Math.random() * (width + 500) - 250,
+        x: startX ?? Math.random() * (width + 600) - 300,
+        y: Math.random() * height * 0.85,
+        w: 220 + Math.random() * 220,
+        speed: 0.14 + Math.random() * 0.22,
+        opacity: 0.45 + Math.random() * 0.3,
+      };
+    }
+
+    // Thin, faster-moving fog bands -- a horizontal soft-edged smear rather
+    // than a cloud silhouette, since fog reads as reduced visibility, not
+    // cloud cover. Lower opacity and quicker drift than the cumulus clouds
+    // above so the two conditions don't look like the same effect.
+    function spawnFogBand(startX) {
+      return {
+        x: startX ?? Math.random() * (width + 400) - 200,
         y: Math.random() * height,
-        rx: 160 + Math.random() * 200,
-        ry: 60 + Math.random() * 70,
-        speed: 0.15 + Math.random() * 0.25,
-        opacity: 0.16 + Math.random() * 0.14,
+        w: 260 + Math.random() * 220,
+        h: 36 + Math.random() * 46,
+        speed: 0.22 + Math.random() * 0.28,
+        opacity: 0.07 + Math.random() * 0.06,
       };
     }
 
@@ -116,31 +196,50 @@ export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
     ro.observe(parent);
 
     function frame() {
-      const { strength: s, isStorm: storm, isOvercast: overcast } = liveRef.current;
+      const { strength: s, isStorm: storm, isOvercast: overcast, isFog: fog } = liveRef.current;
       ctx.clearRect(0, 0, width, height);
 
       if (overcast) {
-        // Flat wash first, so the map reads as "dimmed under cloud cover"
-        // immediately -- the drifting blobs on top are the moving detail,
-        // not the only signal that overcast mode is active.
-        ctx.fillStyle = 'rgba(85, 95, 110, 0.14)';
+        // Faint flat wash first, so the map reads as "under cloud cover"
+        // even in the gaps between individual clouds.
+        ctx.fillStyle = 'rgba(85, 95, 110, 0.08)';
         ctx.fillRect(0, 0, width, height);
 
         while (clouds.length < MAX_CLOUDS) clouds.push(spawnCloud());
         for (const cl of clouds) {
-          const grad = ctx.createRadialGradient(cl.x, cl.y, 0, cl.x, cl.y, Math.max(cl.rx, cl.ry));
-          grad.addColorStop(0, `rgba(70, 80, 95, ${cl.opacity})`);
-          grad.addColorStop(0.6, `rgba(70, 80, 95, ${cl.opacity * 0.5})`);
-          grad.addColorStop(1, 'rgba(70, 80, 95, 0)');
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.ellipse(cl.x, cl.y, cl.rx, cl.ry, 0, 0, Math.PI * 2);
-          ctx.fill();
+          const w = cl.w;
+          const h = w * spriteAspect;
+          ctx.globalAlpha = cl.opacity;
+          ctx.drawImage(cloudSprite, cl.x - w / 2, cl.y - h / 2, w, h);
+          ctx.globalAlpha = 1;
           cl.x += cl.speed;
-          if (cl.x - cl.rx > width) Object.assign(cl, spawnCloud(-cl.rx - 100));
+          if (cl.x - cl.w / 2 > width) Object.assign(cl, spawnCloud(-cl.w));
         }
       } else if (clouds.length) {
         clouds.length = 0;
+      }
+
+      if (fog) {
+        // Gently pulsing pale wash -- reads as "reduced visibility" rather
+        // than "cloud cover", so it stays thinner than the overcast wash
+        // and never spawns anything shaped like a cloud.
+        const pulse = 0.09 + Math.sin(performance.now() / 1600) * 0.025;
+        ctx.fillStyle = `rgba(210, 214, 218, ${pulse.toFixed(3)})`;
+        ctx.fillRect(0, 0, width, height);
+
+        while (fogBands.length < MAX_FOG_BANDS) fogBands.push(spawnFogBand());
+        for (const band of fogBands) {
+          const grad = ctx.createLinearGradient(band.x - band.w / 2, 0, band.x + band.w / 2, 0);
+          grad.addColorStop(0, 'rgba(225, 228, 232, 0)');
+          grad.addColorStop(0.5, `rgba(225, 228, 232, ${band.opacity})`);
+          grad.addColorStop(1, 'rgba(225, 228, 232, 0)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(band.x - band.w / 2, band.y, band.w, band.h);
+          band.x += band.speed;
+          if (band.x - band.w / 2 > width) Object.assign(band, spawnFogBand(-band.w));
+        }
+      } else if (fogBands.length) {
+        fogBands.length = 0;
       }
 
       const targetCount = Math.round(MAX_DROPS * s);
@@ -219,7 +318,7 @@ export default function RainOverlay({ rainfallMm, condition, windSignal = 0 }) {
       ref={canvasRef}
       style={{
         position: 'absolute', inset: 0, width: '100%', height: '100%',
-        pointerEvents: 'none', zIndex: 2,
+        pointerEvents: 'none', zIndex,
       }}
     />
   );
