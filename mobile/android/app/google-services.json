@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "431037447423",
+    "project_id": "flood-forecasting-c68d6",
+    "storage_bucket": "flood-forecasting-c68d6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:431037447423:android:ae3aa511c3cfd0a3d5e0ca",
+        "android_client_info": {
+          "package_name": "com.example.agos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBAc6Qt5tzMuxn14InRYRWOErTakYiW3_c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:431037447423:android:5b53c05cecb343f9d5e0ca",
+        "android_client_info": {
+          "package_name": "com.example.agos_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBAc6Qt5tzMuxn14InRYRWOErTakYiW3_c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
