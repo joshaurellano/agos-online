@@ -31,13 +31,12 @@ const ALERT_COLORS = {
   CRITICAL: '#ef4444',
 };
 
-// Monitored areas. Only Triangulo has a live sensor/model pipeline today.
-const MONITORED_AREAS = [
-  { id: 'triangulo', name: 'Barangay Triangulo', city: 'Naga City', province: 'Camarines Sur', coords: '13.614°N, 123.192°E', status: 'active' },
-  { id: 'sabang',     name: 'Barangay Sabang',     city: 'Naga City', province: 'Camarines Sur', status: 'planned' },
-  { id: 'panicuason', name: 'Barangay Panicuason', city: 'Naga City', province: 'Camarines Sur', status: 'planned' },
-  { id: 'concepcion-pequena', name: 'Barangay Concepción Pequeña', city: 'Naga City', province: 'Camarines Sur', status: 'planned' },
-];
+const TRIANGULO_AREA = {
+  name: 'Barangay Triangulo',
+  city: 'Naga City',
+  province: 'Camarines Sur',
+  coords: '13.614°N, 123.192°E',
+};
 
 const TRIANGULO_BOUNDARY = [
   { lat: 13.622162, lng: 123.193368 },
@@ -98,6 +97,7 @@ const TRIANGULO_BOUNDARY = [
 // Google Flood Hub, where the "where/when/what engine" context sits above
 // the fold, separate from the alert itself.
 function StationHeader({ area, activeModel, lastUpdated, engineStatus, feedStatus }) {
+
   const STATUS_STYLE = {
     online:   { color: '#22c55e', label: 'ONLINE' },
     offline:  { color: '#ef4444', label: 'OFFLINE' },
@@ -135,7 +135,6 @@ function StationHeader({ area, activeModel, lastUpdated, engineStatus, feedStatu
         <div
           style={{
             display: 'flex', alignItems: 'center', gap: 5,
-            padding: 0,
             fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.03em',
           }}
         >
@@ -933,6 +932,7 @@ export default function Dashboard() {
   const navigate    = useNavigate();
   const [forecast, setForecast]               = useState([]);
   const [dailyForecast, setDailyForecast]     = useState([]);
+  const [minutelyForecast, setMinutelyForecast] = useState([]);
   const [forecastGeneratedAt, setForecastGeneratedAt] = useState(null);
   const [forecastOutlook, setForecastOutlook] = useState(null);
   const [forecastCache, setForecastCache]     = useState(null);
@@ -940,7 +940,6 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
   const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
-  const selectedArea = MONITORED_AREAS[0];
   
   useEffect(() => {
     setForecastLoading(true);
@@ -949,6 +948,7 @@ export default function Dashboard() {
       .then(data => {
         if (data.hourly) setForecast(data.hourly);
         if (data.daily) setDailyForecast(data.daily);
+        if (data.minutely) setMinutelyForecast(data.minutely);
         if (data.generated_at) setForecastGeneratedAt(data.generated_at);
         if (data.outlook) setForecastOutlook(data.outlook);
         if (data.weather_cache) setForecastCache(data.weather_cache);
@@ -1121,7 +1121,7 @@ export default function Dashboard() {
 
       {/* ── 0. Station Masthead ─────────────────────────────────── */}
       <StationHeader
-        area={selectedArea}
+        area={TRIANGULO_AREA}
         activeModel={activeModel}
         lastUpdated={lastUpdated}
         engineStatus={modelLoading ? 'checking' : (!modelError && !!prediction) ? 'online' : 'offline'}
@@ -1234,6 +1234,7 @@ export default function Dashboard() {
             rainfallMm={rainfallMm}
             windSignal={prediction?.live_metrics?.wind_signal}
             condition={weatherCondition}
+            minutely={minutelyForecast}
           />
         )}
 

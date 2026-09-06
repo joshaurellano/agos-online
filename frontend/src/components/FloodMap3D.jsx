@@ -5,6 +5,7 @@ import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
+import MinuteForecastStrip from './MinuteForecastStrip';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
 // two views read consistently (trunk/primary thicker, service thinner).
@@ -110,7 +111,7 @@ function roadWidthExpression() {
   return expr;
 }
 
-export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, condition }) {
+export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, condition, minutely }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
@@ -359,6 +360,9 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
           )}
         </div>
       </div>
+
+      {/* ── Minute forecast (precipitation) ─────────────────────────────── */}
+      <MinuteForecastStrip minutely={minutely} />
 
       {/* ── Basemap style switcher ──────────────────────────────────────── */}
       <div style={{
