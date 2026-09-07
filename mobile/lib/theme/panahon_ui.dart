@@ -303,6 +303,267 @@ class PanahonNavItem {
   const PanahonNavItem({required this.icon, required this.label});
 }
 
+/// A single stat shown in [FloodHeroBanner]'s bottom row (rain now,
+/// humidity, etc.) — icon + value + short label, all in one line.
+typedef HeroStatEntry = ({IconData icon, String label, String value});
+
+/// Full-bleed curved gradient hero for AGOS's home screen — the flood
+/// equivalent of a weather app's big "condition + temperature" banner.
+/// The gradient and icon track the current flood alert level rather than
+/// weather condition, and the big number is a flood-risk reading (e.g.
+/// probability %) instead of a temperature. Deliberately semi-transparent
+/// at the edges so the animated rain/cloud backdrop underneath can bleed
+/// through, the same way the reference app's storm gradient lets
+/// lightning show through behind it.
+class FloodHeroBanner extends StatelessWidget {
+  final List<Color> gradientColors;
+  final String location;
+  final String statusLine;
+  final List<Widget> actions;
+  final String bigValue;
+  final String bigUnit;
+  final IconData icon;
+  final String headline;
+  final String tagline;
+  final String? bannerText;
+  final VoidCallback? onBannerTap;
+  final List<HeroStatEntry> stats;
+  final double height;
+
+  const FloodHeroBanner({
+    super.key,
+    required this.gradientColors,
+    required this.location,
+    required this.statusLine,
+    this.actions = const [],
+    required this.bigValue,
+    required this.bigUnit,
+    required this.icon,
+    required this.headline,
+    required this.tagline,
+    this.bannerText,
+    this.onBannerTap,
+    this.stats = const [],
+    this.height = 300,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipPath(
+      clipper: _HeroBottomClipper(),
+      child: Container(
+        width: double.infinity,
+        height: height,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradientColors,
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            location,
+                            style: const TextStyle(
+                                color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14.5),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            statusLine,
+                            style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 10.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ...actions,
+                  ],
+                ),
+                if (bannerText != null) ...[
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: onBannerTap,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_rounded, color: Colors.white, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(bannerText!,
+                                style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700),
+                                maxLines: 2, overflow: TextOverflow.ellipsis),
+                          ),
+                          const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: Colors.white, size: 34),
+                    const SizedBox(width: 10),
+                    Text(
+                      bigValue,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 62, fontWeight: FontWeight.w900,
+                          height: 1.0, letterSpacing: -2),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12, left: 2),
+                      child: Text(bigUnit,
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 22, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(headline,
+                    style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+                const SizedBox(height: 3),
+                Text(tagline,
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12.5, height: 1.35)),
+                if (stats.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      for (final s in stats) ...[
+                        Icon(s.icon, color: Colors.white.withValues(alpha: 0.85), size: 14),
+                        const SizedBox(width: 5),
+                        Text(s.value, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 4),
+                        Text(s.label, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10.5)),
+                        const SizedBox(width: 16),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroBottomClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height - 34);
+    path.quadraticBezierTo(size.width / 2, size.height + 26, size.width, size.height - 34);
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+/// Round glass-style icon button for use on top of [FloodHeroBanner]
+/// (white-on-translucent, since it sits on a colored gradient rather than
+/// AGOS's usual dark card background).
+class HeroIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool showDot;
+  final Color dotColor;
+
+  const HeroIconButton({
+    super.key,
+    required this.icon,
+    this.onTap,
+    this.showDot = false,
+    this.dotColor = Colors.white,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 34, height: 34,
+          margin: const EdgeInsets.only(left: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Center(child: Icon(icon, size: 17, color: Colors.white)),
+              if (showDot)
+                Positioned(
+                  top: -2, right: -2,
+                  child: Container(
+                    width: 8, height: 8,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+}
+
+/// Small rounded pill used next to a section header (e.g. "48 hours",
+/// "14 days") — mirrors the reference weather app's "168 hours >" /
+/// "45 days >" buttons beside "Weather forecast" / "Daily forecast".
+class SectionPill extends StatelessWidget {
+  final String text;
+  final VoidCallback? onTap;
+  const SectionPill({super.key, required this.text, this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(text, style: const TextStyle(
+                  color: AppColors.accent, fontSize: 10.5, fontWeight: FontWeight.w800)),
+              const SizedBox(width: 2),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.accent, size: 14),
+            ],
+          ),
+        ),
+      );
+}
+
 /// Floating pill search bar used on map-style screens (Evacuation), styled
 /// after PANaHON's "Search station" bar on the Radar/Satellite screens.
 class PanahonSearchBar extends StatelessWidget {

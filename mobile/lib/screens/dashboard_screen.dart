@@ -16,7 +16,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
-import '../services/auth_service.dart';
 import '../services/flood_status_service.dart';
 import '../services/model_api_client.dart';
 import '../theme/panahon_ui.dart';
@@ -57,6 +56,23 @@ const _alertColors = {
   'WARNING':  Color(0xFFf97316),
   'CRITICAL': Color(0xFFef4444),
 };
+
+// ─── Hero gradient per alert level ────────────────────────────────────────────
+// Styled after the reference weather app's mood gradients (a calm blue for
+// clear skies, deep purple for a thunderstorm) — here the "mood" is flood
+// risk instead of weather condition. Kept fairly dark/saturated so white
+// hero text stays readable, and left slightly translucent-friendly (no
+// pure white anywhere) so WeatherBackdrop/RainOverlay can still show
+// through faintly, same as lightning bleeding through the reference app's
+// purple storm header.
+const _heroGradients = {
+  'NORMAL':   [Color(0xFF1c6e6e), Color(0xFF0d3b52), Color(0xFF0a2540)],
+  'ADVISORY': [Color(0xFF7a5a12), Color(0xFF4a3a1e), Color(0xFF0a2540)],
+  'WARNING':  [Color(0xFF8a4310), Color(0xFF5c2a1c), Color(0xFF0a1830)],
+  'CRITICAL': [Color(0xFF7a1620), Color(0xFF4a1030), Color(0xFF0a0f28)],
+};
+
+List<Color> _severityGradient(String key) => _heroGradients[key] ?? _heroGradients['NORMAL']!;
 
 // ─── Threshold data (used by the reference table further down) ──────────────
 // Keyed off flood probability (%) rather than water level, since there's no
@@ -290,7 +306,14 @@ class DashboardScreen extends StatefulWidget {
   final ValueChanged<int>? onNavigate;
   // Opens the Alerts screen (now a pushed page rather than a bottom-nav tab).
   final VoidCallback? onOpenAlerts;
-  const DashboardScreen({super.key, this.onAlertChanged, this.onNavigate, this.onOpenAlerts});
+  // Opens the device/settings bottom sheet — the Dashboard now renders its
+  // own full-bleed hero (see FloodHeroBanner in _buildContent) instead of
+  // sharing MainShell's compact PanahonHeader, so the gear icon that used
+  // to live in that shared header is surfaced here instead.
+  final VoidCallback? onOpenSettings;
+  const DashboardScreen({
+    super.key, this.onAlertChanged, this.onNavigate, this.onOpenAlerts, this.onOpenSettings,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -435,11 +458,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<AuthService>().currentUser;
-    final firstName = (user?.name.trim().isNotEmpty ?? false)
-        ? user!.name.trim().split(' ').first
-        : '';
-
     // Current condition string (e.g. "Light Rain", "Overcast", "Clear
     // sky") — same field RainOverlay.resolveIntensity() already knows how
     // to parse, from the freshest hourly entry ("Now"). Backend source:
@@ -454,7 +472,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // Background layers, in order: gradient/ambient mood first, then
         // the particle animation (rain/fog/clouds/lightning) on top of
         // it. Both are IgnorePointer'd internally, so scrolling/tapping
-        // the real content below is unaffected.
+        // the real content below is unaffected. They sit behind the
+        // colored hero banner and the floating panel below it — visible
+        // as a faint bleed through the hero's gradient (the same trick
+        // the reference app uses to show lightning through its purple
+        // storm header), but otherwise covered by opaque content.
         Positioned.fill(
           child: WeatherBackdrop(condition: currentCondition, isNight: isNight),
         ),
@@ -465,102 +487,196 @@ class _DashboardScreenState extends State<DashboardScreen> {
             windSignal: (_pred?.windSignal ?? 0).toDouble(),
           ),
         ),
-        _buildContent(context, firstName),
+        _buildContent(context),
       ],
     );
   }
 
-  Widget _buildContent(BuildContext context, String firstName) {
-    return RefreshIndicator(
-      onRefresh: _refreshAll,
-      color: const Color(0xFF38bdf8),
-      backgroundColor: const Color(0xFF0d1f3c),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_error) ...[_OfflineBanner(lastUpdated: _lastUpdated), const SizedBox(height: 12)],
+  Widget _buildContent(BuildContext context) {
+    final copy = _heroCopy[_currentAlertKey] ?? _heroCopy['NORMAL']!;
+    final alertType = _alertFromInt(_alertKeyToInt(_currentAlertKey));
+    final severe = _currentAlertKey == 'WARNING' || _currentAlertKey == 'CRITICAL';
+    final hasRain = (_pred?.rainfallMm ?? 0) > 0;
 
-            _TopBar(firstName: firstName, onOpenAlerts: widget.onOpenAlerts),
-            const SizedBox(height: 10),
-
-            // 1 — Hero: today's outlook, in plain language, with the
-            // rainfall/humidity quick-stat bar baked in underneath it.
-            _SafetyHeroCard(
-              alertKey: _currentAlertKey,
-              alertColor: _alertColor,
-              pred: _pred,
-              lastUpdated: _lastUpdated,
-              onEvacuate: () => widget.onNavigate?.call(3),
+    return Column(
+      children: [
+        // 1 — Hero: fixed (non-scrolling) full-bleed gradient banner, the
+        // AGOS equivalent of a weather app's big "condition + temperature"
+        // header — except the number is flood probability and the
+        // gradient/icon track alert severity instead of weather condition.
+        FloodHeroBanner(
+          gradientColors: _severityGradient(_currentAlertKey),
+          location: 'Brgy. Triangulo, Naga City',
+          statusLine: _error
+              ? "Can't reach live data · showing ${_relativeTime(_lastUpdated)}"
+              : 'Live · updated ${_relativeTime(_lastUpdated)}',
+          actions: [
+            HeroIconButton(
+              icon: Icons.notifications_rounded,
+              showDot: _currentAlertKey != 'NORMAL',
+              dotColor: _alertColor,
+              onTap: widget.onOpenAlerts,
             ),
-            const SizedBox(height: 14),
-
-            _RightNowCard(alertKey: _currentAlertKey, alertColor: _alertColor),
-            const SizedBox(height: 14),
-
-            if (_minutely.length >= 2) ...[
-              MinuteForecastCard(minutely: _minutely),
-              const SizedBox(height: 22),
-            ] else
-              const SizedBox(height: 22),
-
-            // 2 — Current weather hero (big temp + Feels like/Humidity/Wind
-            // row), then Hourly Forecast (next 48h)
-            _CurrentWeatherHero(current: _hourly.isNotEmpty ? _hourly.first : null),
-            const SizedBox(height: 14),
-            const _SectionLabel(icon: '🕐', text: 'Hourly Forecast'),
-            const SizedBox(height: 2),
-            const Text('OpenMeteo · Brgy. Triangulo, Naga City',
-                style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
-            const SizedBox(height: 10),
-            _HourlyForecastStrip(hourly: _hourly, loading: _hourlyLoading),
-            const SizedBox(height: 16),
-
-            // Full current-conditions parameter grid — wind, gusts,
-            // humidity, visibility, pressure, UV index, dew point, soil
-            // moisture. Same 8 stats the web dashboard's WeatherForecast
-            // panel already shows; ported here so mobile has the same
-            // level of detail instead of just temp + rain.
-            _WeatherDetailsGrid(current: _hourly.isNotEmpty ? _hourly.first : null),
-            const SizedBox(height: 16),
-
-            // Rainfall outlook — next 6h/12h/24h accumulated totals and
-            // peak rain-probability, from the same /api/forecast payload.
-            if (_outlook != null) ...[
-              _RainfallOutlookRow(outlook: _outlook!),
-              const SizedBox(height: 24),
-            ] else
-              const SizedBox(height: 8),
-
-            // 3 — Daily Flood Forecast (the model's own 14-day outlook)
-            const _SectionLabel(icon: '📅', text: '14-Day Flood Forecast'),
-            const SizedBox(height: 2),
-            const Text('AI model outlook · updated with each Open-Meteo sync',
-                style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
-            const SizedBox(height: 10),
-            _DailyFloodForecastList(
-              days: _dailyFlood,
-              loading: _dailyLoading,
-              error: _dailyError,
+            HeroIconButton(
+              icon: Icons.settings_rounded,
+              onTap: widget.onOpenSettings,
             ),
-            const SizedBox(height: 26),
-
-            // 4 — Quick actions, reference table, and the map link, for
-            // anyone who wants to dig in further.
-            _QuickActionsRow(onNavigate: widget.onNavigate),
-            const SizedBox(height: 22),
-
-            const _SectionLabel(icon: '📋', text: 'Alert Levels Explained'),
-            const SizedBox(height: 8),
-            _AlertLevelTable(currentAlertKey: _currentAlertKey),
-            const SizedBox(height: 18),
-
-            _MapTeaserCard(onTap: () => widget.onNavigate?.call(1)),
           ],
+          bigValue: _pred != null ? (_pred!.probability * 100).toStringAsFixed(0) : '—',
+          bigUnit: '%',
+          icon: alertType.icon,
+          headline: copy.headline,
+          tagline: copy.tagline,
+          bannerText: severe
+              ? '${_thresholds[_currentAlertKey]!.label} — ${_thresholds[_currentAlertKey]!.action}'
+              : null,
+          onBannerTap: widget.onOpenAlerts,
+          stats: [
+            (
+              icon: Icons.water_drop_rounded,
+              label: hasRain ? 'raining now' : 'rain now',
+              value: _pred != null ? '${_pred!.rainfallMm.toStringAsFixed(1)}mm/hr' : '—',
+            ),
+            (
+              icon: Icons.water_rounded,
+              label: 'humidity',
+              value: _pred != null ? '${_pred!.humidity}%' : '—',
+            ),
+          ],
+          height: severe ? 328 : 296,
         ),
-      ),
+
+        // 2 — Floating rounded-top panel holding everything else — the
+        // AGOS equivalent of the reference app's dark "Weather forecast"
+        // sheet that overlaps the bottom of the colored hero.
+        Expanded(
+          child: Transform.translate(
+            offset: const Offset(0, -22),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+              child: Container(
+                color: AppColors.bgDeep,
+                child: RefreshIndicator(
+                  onRefresh: _refreshAll,
+                  color: const Color(0xFF38bdf8),
+                  backgroundColor: const Color(0xFF0d1f3c),
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(14, 18, 14, 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Grab handle, echoing the sheet's floating/draggable feel.
+                        Center(
+                          child: Container(
+                            width: 36, height: 4, margin: const EdgeInsets.only(bottom: 14),
+                            decoration: BoxDecoration(
+                              color: AppColors.bgBorder,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+
+                        if (_error) ...[_OfflineBanner(lastUpdated: _lastUpdated), const SizedBox(height: 14)],
+
+                        if (severe) ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => widget.onNavigate?.call(3),
+                              icon: const Icon(Icons.map_rounded, size: 18),
+                              label: const Text('View Evacuation Routes',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _alertColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+
+                        _RightNowCard(alertKey: _currentAlertKey, alertColor: _alertColor),
+                        const SizedBox(height: 14),
+
+                        if (_minutely.length >= 2) ...[
+                          MinuteForecastCard(minutely: _minutely),
+                          const SizedBox(height: 22),
+                        ] else
+                          const SizedBox(height: 8),
+
+                        // Current weather (big temp + Feels like/Humidity/Wind
+                        // row), then Hourly Forecast (next 48h), each with a
+                        // "see more" pill mirroring the reference app's
+                        // "168 hours >" / "45 days >" buttons.
+                        _CurrentWeatherHero(current: _hourly.isNotEmpty ? _hourly.first : null),
+                        const SizedBox(height: 14),
+                        _SectionLabel(
+                          icon: '🕐', text: 'Hourly Forecast',
+                          trailing: const SectionPill(text: '48 hours'),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text('OpenMeteo · Brgy. Triangulo, Naga City',
+                            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+                        const SizedBox(height: 10),
+                        _HourlyForecastStrip(hourly: _hourly, loading: _hourlyLoading),
+                        const SizedBox(height: 16),
+
+                        // Full current-conditions parameter grid — wind, gusts,
+                        // humidity, visibility, pressure, UV index, dew point, soil
+                        // moisture. Same 8 stats the web dashboard's WeatherForecast
+                        // panel already shows; ported here so mobile has the same
+                        // level of detail instead of just temp + rain.
+                        _WeatherDetailsGrid(current: _hourly.isNotEmpty ? _hourly.first : null),
+                        const SizedBox(height: 16),
+
+                        // Rainfall outlook — next 6h/12h/24h accumulated totals and
+                        // peak rain-probability, from the same /api/forecast payload.
+                        if (_outlook != null) ...[
+                          _RainfallOutlookRow(outlook: _outlook!),
+                          const SizedBox(height: 24),
+                        ] else
+                          const SizedBox(height: 8),
+
+                        // 3 — Daily Flood Forecast (the model's own 14-day outlook)
+                        _SectionLabel(
+                          icon: '📅', text: '14-Day Flood Forecast',
+                          trailing: const SectionPill(text: '14 days'),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text('AI model outlook · updated with each Open-Meteo sync',
+                            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+                        const SizedBox(height: 10),
+                        _DailyFloodForecastList(
+                          days: _dailyFlood,
+                          loading: _dailyLoading,
+                          error: _dailyError,
+                        ),
+                        const SizedBox(height: 26),
+
+                        // 4 — Quick actions, reference table, and the map link, for
+                        // anyone who wants to dig in further.
+                        _QuickActionsRow(onNavigate: widget.onNavigate),
+                        const SizedBox(height: 22),
+
+                        const _SectionLabel(icon: '📋', text: 'Alert Levels Explained'),
+                        const SizedBox(height: 8),
+                        _AlertLevelTable(currentAlertKey: _currentAlertKey),
+                        const SizedBox(height: 18),
+
+                        _MapTeaserCard(onTap: () => widget.onNavigate?.call(1)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -666,16 +782,20 @@ class _CurrentWeatherHero extends StatelessWidget {
 
 class _SectionLabel extends StatelessWidget {
   final String icon, text;
-  const _SectionLabel({required this.icon, required this.text});
+  final Widget? trailing;
+  const _SectionLabel({required this.icon, required this.text, this.trailing});
 
   @override
   Widget build(BuildContext context) => Row(children: [
     Text(icon, style: const TextStyle(fontSize: 13)),
     const SizedBox(width: 6),
-    Text(text, style: const TextStyle(
-      color: AppColors.textPri, fontSize: 15,
-      fontWeight: FontWeight.w800, letterSpacing: -0.2,
-    )),
+    Expanded(
+      child: Text(text, style: const TextStyle(
+        color: AppColors.textPri, fontSize: 15,
+        fontWeight: FontWeight.w800, letterSpacing: -0.2,
+      )),
+    ),
+    if (trailing != null) trailing!,
   ]);
 }
 
@@ -709,207 +829,6 @@ class _OfflineBanner extends StatelessWidget {
           ]),
         ),
       ),
-    ]),
-  );
-}
-
-// ── Top bar: greeting + notification bell ────────────────────────────────────
-// Mirrors a typical weather app's header — app identity/location on the
-// left, the alerts bell on the right — instead of burying alerts inside the
-// quick-actions grid.
-class _TopBar extends StatelessWidget {
-  final String firstName;
-  final VoidCallback? onOpenAlerts;
-  const _TopBar({required this.firstName, this.onOpenAlerts});
-
-  @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${_greetingWord()} $firstName 👋', style: const TextStyle(
-              color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.2,
-            )),
-            const SizedBox(height: 2),
-            const Text("Here's today's flood outlook for Brgy. Triangulo.",
-                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-          ],
-        ),
-      ),
-      GestureDetector(
-        onTap: onOpenAlerts,
-        child: Container(
-          width: 38, height: 38,
-          decoration: BoxDecoration(
-            color: AppColors.bgCard,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.bgBorder),
-          ),
-          child: const Icon(Icons.notifications_rounded, color: AppColors.accent, size: 19),
-        ),
-      ),
-    ],
-  );
-}
-
-// ── Safety Hero Card ─────────────────────────────────────────────────────────
-class _SafetyHeroCard extends StatelessWidget {
-  final String alertKey;
-  final Color alertColor;
-  final _Prediction? pred;
-  final DateTime lastUpdated;
-  final VoidCallback onEvacuate;
-
-  const _SafetyHeroCard({
-    required this.alertKey, required this.alertColor, required this.pred,
-    required this.lastUpdated, required this.onEvacuate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final copy = _heroCopy[alertKey] ?? _heroCopy['NORMAL']!;
-    final alertType = _alertFromInt(_alertKeyToInt(alertKey));
-    final severe = alertKey == 'WARNING' || alertKey == 'CRITICAL';
-    final hasRain = (pred?.rainfallMm ?? 0) > 0;
-
-    return PanahonHeroCard(
-      accentColor: alertColor,
-      child: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Icon(Icons.location_on_rounded, color: AppColors.textMuted, size: 13),
-              const SizedBox(width: 3),
-              const Expanded(
-                child: Text('Brgy. Triangulo, Naga City',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
-              ),
-              _PulsingDot(color: alertColor),
-              const SizedBox(width: 5),
-              Text('Updated ${_relativeTime(lastUpdated)}',
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
-            ]),
-            const SizedBox(height: 14),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text(
-                      pred != null ? (pred!.probability * 100).toStringAsFixed(0) : '—',
-                      style: TextStyle(color: alertColor, fontSize: 52,
-                          fontWeight: FontWeight.w900, height: 1, letterSpacing: -1.6),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 9, left: 3),
-                      child: Text('%', style: TextStyle(
-                          color: alertColor, fontSize: 20, fontWeight: FontWeight.w800)),
-                    ),
-                  ]),
-                  const SizedBox(height: 2),
-                  const Text('FLOOD PROBABILITY TODAY', style: TextStyle(
-                      color: AppColors.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
-                  const SizedBox(height: 10),
-                  Text(copy.headline, style: const TextStyle(
-                      color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w800,
-                      height: 1.15, letterSpacing: -0.2)),
-                  const SizedBox(height: 3),
-                  Text(copy.tagline, style: const TextStyle(
-                      color: AppColors.textSec, fontSize: 12.5, height: 1.35)),
-                ]),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                width: 60, height: 60,
-                decoration: BoxDecoration(
-                  color: alertColor.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: alertColor.withValues(alpha: 0.4), width: 1.5),
-                ),
-                child: Icon(alertType.icon, color: alertColor, size: 28),
-              ),
-            ]),
-          ]),
-        ),
-
-        // Quick-stat bar — rainfall now / humidity, laid out
-        // like a weather app's "RAIN | HEAT INDEX" strip under the headline.
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.bgDeep.withValues(alpha: 0.45),
-            border: Border(top: BorderSide(color: alertColor.withValues(alpha: 0.15))),
-          ),
-          child: IntrinsicHeight(
-            child: Row(children: [
-              Expanded(
-                child: _HeroStat(
-                  icon: Icons.water_drop_rounded,
-                  label: 'RAINFALL NOW',
-                  value: pred != null ? '${pred!.rainfallMm.toStringAsFixed(1)} mm/hr' : '—',
-                  note: hasRain ? 'Actively raining' : 'No rain right now',
-                ),
-              ),
-              Container(width: 1, color: alertColor.withValues(alpha: 0.15)),
-              Expanded(
-                child: _HeroStat(
-                  icon: Icons.water_rounded,
-                  label: 'HUMIDITY',
-                  value: pred != null ? '${pred!.humidity}%' : '—',
-                  note: 'Synced ${_relativeTime(lastUpdated)}',
-                ),
-              ),
-            ]),
-          ),
-        ),
-
-        if (severe) Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: onEvacuate,
-              icon: const Icon(Icons.map_rounded, size: 18),
-              label: const Text('View Evacuation Routes',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: alertColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
-              ),
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
-}
-
-class _HeroStat extends StatelessWidget {
-  final IconData icon;
-  final String label, value, note;
-  const _HeroStat({required this.icon, required this.label, required this.value, required this.note});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 14),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-      Row(children: [
-        Icon(icon, size: 13, color: AppColors.textMuted),
-        const SizedBox(width: 5),
-        Expanded(child: Text(label, style: const TextStyle(
-            color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.6))),
-      ]),
-      const SizedBox(height: 4),
-      Text(value, style: const TextStyle(
-          color: AppColors.textPri, fontSize: 15, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 1),
-      Text(note, style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
     ]),
   );
 }
@@ -1127,35 +1046,50 @@ class _WeatherDetailsGrid extends StatelessWidget {
         const Text('Current conditions · Open-Meteo',
             style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
         const SizedBox(height: 10),
+        // Rounded-square icon chip per stat — mirrors the reference app's
+        // "Detail" grid (purple icon square + big value + small label
+        // stacked below it) rather than a plain icon/label/value row.
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 2.6,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 2.35,
           children: stats.map((s) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: const Color(0xFF0d1f3c),
               border: Border.all(color: const Color(0xFF1e3a5f)),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
               children: [
-                Row(children: [
-                  Text(s.icon, style: const TextStyle(fontSize: 11)),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(s.label, style: const TextStyle(
-                        color: Color(0xFF4a6080), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+                Container(
+                  width: 38, height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(11),
                   ),
-                ]),
-                const SizedBox(height: 3),
-                Text(s.value, style: const TextStyle(
-                    color: Color(0xFFe2eaf5), fontSize: 13.5, fontWeight: FontWeight.w800)),
+                  child: Text(s.icon, style: const TextStyle(fontSize: 16)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(s.value, style: const TextStyle(
+                          color: Color(0xFFe2eaf5), fontSize: 14.5, fontWeight: FontWeight.w800),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 1),
+                      Text(s.label, style: const TextStyle(
+                          color: Color(0xFF4a6080), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
               ],
             ),
           )).toList(),

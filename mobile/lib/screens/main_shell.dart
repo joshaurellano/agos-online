@@ -153,6 +153,7 @@ class _MainShellState extends State<MainShell> {
         onAlertChanged: _onAlertChanged,
         onNavigate: (i) => setState(() => _currentIndex = i),
         onOpenAlerts: _openAlerts,
+        onOpenSettings: _showAccountSheet,
       ),
       const FloodMapScreen(),
       const RainfallScreen(),
@@ -160,64 +161,71 @@ class _MainShellState extends State<MainShell> {
       const CommunityReportsScreen(),
     ];
 
+    // Dashboard (tab 0) renders its own full-bleed FloodHeroBanner — with
+    // its own location/status line and bell/settings icons baked in — so
+    // showing MainShell's compact PanahonHeader on top of it would just
+    // duplicate that chrome. Every other tab keeps the shared header.
+    final showSharedHeader = _currentIndex != 0;
+
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
       body: Column(
         children: [
-          PanahonHeader(
-            appName: meta.title,
-            tagline: meta.tagline,
-            height: 96,
-            leading: Container(
-              width: 34, height: 34,
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+          if (showSharedHeader)
+            PanahonHeader(
+              appName: meta.title,
+              tagline: meta.tagline,
+              height: 96,
+              leading: Container(
+                width: 34, height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                ),
+                child: const Center(child: Text('🌊', style: TextStyle(fontSize: 16))),
               ),
-              child: const Center(child: Text('🌊', style: TextStyle(fontSize: 16))),
-            ),
-            trailing: Row(
-              children: [
-                // Alert level pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: alertInfo.color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: alertInfo.color.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7, height: 7,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: alertInfo.color),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        alertInfo.label.toUpperCase(),
-                        style: TextStyle(
-                          color: alertInfo.color, fontSize: 10,
-                          fontWeight: FontWeight.w700, letterSpacing: 0.5,
+              trailing: Row(
+                children: [
+                  // Alert level pill
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: alertInfo.color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: alertInfo.color.withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7, height: 7,
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: alertInfo.color),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 5),
+                        Text(
+                          alertInfo.label.toUpperCase(),
+                          style: TextStyle(
+                            color: alertInfo.color, fontSize: 10,
+                            fontWeight: FontWeight.w700, letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                PanahonHeaderIcon(
-                  icon: Icons.notifications_rounded,
-                  showDot: _alertLevel != AlertLevelType.normal,
-                  dotColor: alertInfo.color,
-                  onTap: _openAlerts,
-                ),
-                PanahonHeaderIcon(
-                  icon: Icons.settings_rounded,
-                  onTap: _showAccountSheet,
-                ),
-              ],
+                  PanahonHeaderIcon(
+                    icon: Icons.notifications_rounded,
+                    showDot: _alertLevel != AlertLevelType.normal,
+                    dotColor: alertInfo.color,
+                    onTap: _openAlerts,
+                  ),
+                  PanahonHeaderIcon(
+                    icon: Icons.settings_rounded,
+                    onTap: _showAccountSheet,
+                  ),
+                ],
+              ),
             ),
-          ),
           Expanded(
             child: IndexedStack(index: _currentIndex, children: screens),
           ),
