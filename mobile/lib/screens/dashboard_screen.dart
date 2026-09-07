@@ -20,6 +20,9 @@ import '../services/auth_service.dart';
 import '../services/flood_status_service.dart';
 import '../services/model_api_client.dart';
 import '../theme/panahon_ui.dart';
+import '../widgets/rain_overlay.dart';
+import '../widgets/weather_backdrop.dart';
+import '../widgets/minute_forecast_card.dart';
 
 // ─── URLs ─────────────────────────────────────────────────────────────────────
 // Read from .env (see README) so the backend can be swapped between
@@ -317,6 +320,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // strip only ever read `hourly[].temperature_c`/`precipitation`.
   Map<String, dynamic>? _outlook;
 
+  // Short-range (next ~2h, 15-min steps) precipitation — same
+  // /api/forecast "minutely" field the web dashboard's MinuteForecastStrip
+  // already consumes (see backend/app/api/routes_weather.py). Previously
+  // fetched but unused here.
+  List<Map<String, dynamic>> _minutely = [];
+
   // Daily flood outlook (next 14 days) — GET /api/forecast-flood
   List<_DailyFloodForecast> _dailyFlood = [];
   bool _dailyLoading = true;
@@ -376,6 +385,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (mounted) setState(() {
             _hourly = (body['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
             _outlook = body['outlook'] as Map<String, dynamic>?;
+            _minutely = (body['minutely'] as List? ?? []).cast<Map<String, dynamic>>();
             _hourlyLoading = false;
           });
         });
@@ -430,6 +440,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? user!.name.trim().split(' ').first
         : '';
 
+    // Current condition string (e.g. "Light Rain", "Overcast", "Clear
+    // sky") — same field RainOverlay.resolveIntensity() already knows how
+    // to parse, from the freshest hourly entry ("Now"). Backend source:
+    // wmo_label() in backend/app/utils/alerts.py, via GET /api/forecast.
+    final currentCondition =
+        _hourly.isNotEmpty ? _hourly.first['condition'] as String? : null;
+    final hour = DateTime.now().hour;
+    final isNight = hour >= 18 || hour < 6;
+
+    return Stack(
+      children: [
+        // Background layers, in order: gradient/ambient mood first, then
+        // the particle animation (rain/fog/clouds/lightning) on top of
+        // it. Both are IgnorePointer'd internally, so scrolling/tapping
+        // the real content below is unaffected.
+        Positioned.fill(
+          child: WeatherBackdrop(condition: currentCondition, isNight: isNight),
+        ),
+        Positioned.fill(
+          child: RainOverlay(
+            rainfallMm: _pred?.rainfallMm,
+            condition: currentCondition,
+            windSignal: (_pred?.windSignal ?? 0).toDouble(),
+          ),
+        ),
+        _buildContent(context, firstName),
+      ],
+    );
+  }
+
+  Widget _buildContent(BuildContext context, String firstName) {
     return RefreshIndicator(
       onRefresh: _refreshAll,
       color: const Color(0xFF38bdf8),
@@ -457,9 +498,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 14),
 
             _RightNowCard(alertKey: _currentAlertKey, alertColor: _alertColor),
-            const SizedBox(height: 22),
+            const SizedBox(height: 14),
 
-            // 2 — Hourly Forecast (next 48h)
+            if (_minutely.length >= 2) ...[
+              MinuteForecastCard(minutely: _minutely),
+              const SizedBox(height: 22),
+            ] else
+              const SizedBox(height: 22),
+
+            // 2 — Current weather hero (big temp + Feels like/Humidity/Wind
+            // row), then Hourly Forecast (next 48h)
+            _CurrentWeatherHero(current: _hourly.isNotEmpty ? _hourly.first : null),
+            const SizedBox(height: 14),
             const _SectionLabel(icon: '🕐', text: 'Hourly Forecast'),
             const SizedBox(height: 2),
             const Text('OpenMeteo · Brgy. Triangulo, Naga City',
@@ -513,6 +563,103 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+}
+
+// ── Current Weather Hero (big temp + stat row) ────────────────────────────────
+// Styled after the reference weather app's hero: a large temperature
+// reading with condition, then a horizontal Feels-like/Humidity/Wind row
+// underneath. Sits below the flood-safety hero/guidance (never above it —
+// this is a flood-warning app first), right before the Hourly Forecast
+// strip it's summarizing the first entry of.
+class _CurrentWeatherHero extends StatelessWidget {
+  final Map<String, dynamic>? current;
+  const _CurrentWeatherHero({required this.current});
+
+  String? _roundedTemp(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.round().toString();
+    final parsed = num.tryParse(v.toString());
+    return parsed != null ? parsed.round().toString() : null;
+  }
+
+  String _emoji(num precip) {
+    if (precip > 10) return '⛈';
+    if (precip > 2) return '🌧';
+    if (precip > 0) return '🌦';
+    return '☀️';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = current;
+    if (c == null) return const SizedBox.shrink();
+
+    final temp = _roundedTemp(c['temperature_c']);
+    final feelsLike = _roundedTemp(c['feels_like_c']);
+    final humidity = c['humidity'];
+    final wind = c['wind_speed_kph'];
+    final condition = c['condition']?.toString();
+    final precip = (c['precipitation'] as num? ?? 0).toDouble();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [Color(0xFF12305e), Color(0xFF0a1b3d)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF1e3a5f)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(_emoji(precip), style: const TextStyle(fontSize: 34)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(temp != null ? '$temp°' : '—', style: const TextStyle(
+                        color: Colors.white, fontSize: 42, fontWeight: FontWeight.w900, height: 1.0)),
+                    if (condition != null) ...[
+                      const SizedBox(height: 2),
+                      Text(condition, style: const TextStyle(
+                          color: Color(0xFFbcd3ea), fontSize: 13, fontWeight: FontWeight.w600)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(color: Color(0xFF2a4a70), height: 1),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _stat('Feels like', feelsLike != null ? '$feelsLike°' : '—')),
+              Container(width: 1, height: 26, color: const Color(0xFF2a4a70)),
+              Expanded(child: _stat('Humidity', humidity != null ? '$humidity%' : '—')),
+              Container(width: 1, height: 26, color: const Color(0xFF2a4a70)),
+              Expanded(child: _stat('Wind', wind != null ? '$wind km/h' : '—')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stat(String label, String value) => Column(
+    children: [
+      Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 2),
+      Text(label, style: const TextStyle(color: Color(0xFF8da4be), fontSize: 9.5, fontWeight: FontWeight.w600)),
+    ],
+  );
 }
 
 // ─── Sub-widgets ──────────────────────────────────────────────────────────────
@@ -962,6 +1109,7 @@ class _WeatherDetailsGrid extends StatelessWidget {
       (icon: '🧭', label: 'PRESSURE', value: fmt('pressure_msl_hpa', suffix: ' hPa')),
       (icon: '☀️', label: 'UV INDEX', value: fmt('uv_index')),
       (icon: '🌡', label: 'DEW POINT', value: fmt('dew_point_c', suffix: '°C')),
+      (icon: '🥵', label: 'FEELS LIKE', value: fmt('feels_like_c', suffix: '°C')),
       (
         icon: '🌱',
         label: 'SOIL MOISTURE',
