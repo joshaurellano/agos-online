@@ -238,6 +238,14 @@ class _DailyFloodForecast {
   final String confidenceBand; // high / moderate / outlook-only
   final double? rainfallMm;
   final double? windSpeedMaxKph;
+  // The full per-day JSON object, kept as-is alongside the parsed fields
+  // above. The backend may return extra per-day fields beyond rainfall/wind
+  // (humidity, soil moisture, temperature, etc.) depending on what the
+  // model actually keys its prediction on — rather than silently dropping
+  // whatever isn't explicitly modeled here, the "What drove this forecast"
+  // sheet below reads straight from this map, so any additional driver the
+  // backend adds later shows up automatically without an app update.
+  final Map<String, dynamic> raw;
 
   const _DailyFloodForecast({
     required this.date,
@@ -247,6 +255,7 @@ class _DailyFloodForecast {
     required this.confidenceBand,
     this.rainfallMm,
     this.windSpeedMaxKph,
+    this.raw = const {},
   });
 
   factory _DailyFloodForecast.fromJson(Map<String, dynamic> j) {
@@ -259,6 +268,7 @@ class _DailyFloodForecast {
       confidenceBand: j['confidence_band']?.toString() ?? 'outlook-only',
       rainfallMm: n(j['rainfall_mm'])?.toDouble(),
       windSpeedMaxKph: n(j['wind_speed_max_kph'])?.toDouble(),
+      raw: j,
     );
   }
 
@@ -304,6 +314,58 @@ const _confidenceLabels = {
   'moderate': 'Moderate confidence',
   'outlook-only': 'Outlook only',
 };
+
+const _confidenceExplainers = {
+  'high': "This is within Open-Meteo's near-term forecast window, so it's "
+      'the most reliable reading in the 14-day outlook.',
+  'moderate': 'A few days out, so both the weather forecast and the flood '
+      'model carry more uncertainty than the next couple of days.',
+  'outlook-only': "This far ahead, treat this as a general trend rather "
+      'than a precise number — both the weather forecast and the flood '
+      'model are least certain this many days out.',
+};
+
+// Fields already parsed onto dedicated properties (date/probability/etc.),
+// or plain metadata rather than a driver — never shown a second time in the
+// generic "other factors" list on the drivers sheet.
+const _driverExcludedKeys = {
+  'date', 'day_ahead', 'flood_probability', 'alert_level', 'confidence_band',
+  'rainfall_mm', 'wind_speed_max_kph', 'status', 'message', 'model_key',
+  'meta', 'note',
+};
+
+// Friendly label/icon/unit for the per-day fields we know the backend might
+// send, beyond the two primary drivers (rainfall, wind) that already have
+// dedicated properties. Anything the backend returns that ISN'T in this map
+// still shows up on the drivers sheet — just with a generically
+// title-cased label — so a new field the model adds later is never
+// silently hidden, it just isn't as prettily labeled until this map is
+// updated.
+class _DriverMeta {
+  final String label, icon, suffix;
+  final int round;
+  const _DriverMeta(this.label, this.icon, {this.suffix = '', this.round = 1});
+}
+
+const _driverMeta = <String, _DriverMeta>{
+  'humidity':              _DriverMeta('Humidity', '💧', suffix: '%', round: 0),
+  'soil_moisture_vwc':     _DriverMeta('Soil Moisture', '🌱', suffix: '%', round: 1),
+  'pressure_msl_hpa':      _DriverMeta('Pressure', '🧭', suffix: ' hPa', round: 0),
+  'wind_gusts_kph':        _DriverMeta('Wind Gusts', '🌬', suffix: ' km/h', round: 0),
+  'temperature_max_c':     _DriverMeta('High Temp', '🌡', suffix: '°C', round: 0),
+  'temperature_min_c':     _DriverMeta('Low Temp', '🌡', suffix: '°C', round: 0),
+  'feels_like_c':          _DriverMeta('Feels Like', '🥵', suffix: '°C', round: 0),
+  'dew_point_c':           _DriverMeta('Dew Point', '🌡', suffix: '°C', round: 0),
+  'uv_index':              _DriverMeta('UV Index', '☀️', round: 0),
+  'visibility_km':         _DriverMeta('Visibility', '👁', suffix: ' km', round: 1),
+  'rain_probability_pct':  _DriverMeta('Rain Chance', '☔', suffix: '%', round: 0),
+};
+
+String _titleCase(String snake) => snake
+    .split('_')
+    .where((w) => w.isNotEmpty)
+    .map((w) => w[0].toUpperCase() + w.substring(1))
+    .join(' ');
 
 // ─── Main Widget ──────────────────────────────────────────────────────────────
 class DashboardScreen extends StatefulWidget {
@@ -1342,7 +1404,8 @@ class _RainfallOutlookRow extends StatelessWidget {
 // Row-per-day, styled after a classic "5-Day Forecast" list: an icon, the
 // day label, a plain-language risk description, and a value pill — but
 // driven by the model's own forward flood-probability outlook rather than
-// temperature.
+// temperature. Each row is tappable — see _showFloodDriversSheet — to
+// break that day's probability down into what actually fed the model.
 class _DailyFloodForecastList extends StatelessWidget {
   final List<_DailyFloodForecast> days;
   final bool loading;
@@ -1400,47 +1463,282 @@ class _DailyFloodForecastList extends StatelessWidget {
             final isLast = idx == days.length - 1;
             final color  = _alertColors[d.alertLevel] ?? _alertColors['NORMAL']!;
 
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: isLast ? BorderSide.none : const BorderSide(color: Color(0xFF13284a)),
-                ),
-              ),
-              child: Row(children: [
-                SizedBox(
-                  width: 66,
-                  child: Text(_dayLabel(d), style: const TextStyle(
-                      color: Color(0xFFe2eaf5), fontSize: 11, fontWeight: FontWeight.w800)),
-                ),
-                Text(_riskEmoji(d.probabilityPct), style: const TextStyle(fontSize: 17)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_riskWordFromPct(d.probabilityPct), style: const TextStyle(
-                        color: Color(0xFF8da4be), fontSize: 11.5, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 1),
-                    Text(_confidenceLabels[d.confidenceBand] ?? 'Outlook only',
-                        style: const TextStyle(color: Color(0xFF4a6080), fontSize: 9)),
-                  ]),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: color.withValues(alpha: 0.4)),
+            return InkWell(
+              onTap: () => _showFloodDriversSheet(context, d, _dayLabel(d)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: isLast ? BorderSide.none : const BorderSide(color: Color(0xFF13284a)),
                   ),
-                  child: Text('${d.probabilityPct.toStringAsFixed(0)}%',
-                      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
                 ),
-              ]),
+                child: Row(children: [
+                  SizedBox(
+                    width: 66,
+                    child: Text(_dayLabel(d), style: const TextStyle(
+                        color: Color(0xFFe2eaf5), fontSize: 11, fontWeight: FontWeight.w800)),
+                  ),
+                  Text(_riskEmoji(d.probabilityPct), style: const TextStyle(fontSize: 17)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(_riskWordFromPct(d.probabilityPct), style: const TextStyle(
+                          color: Color(0xFF8da4be), fontSize: 11.5, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 1),
+                      Text(_confidenceLabels[d.confidenceBand] ?? 'Outlook only',
+                          style: const TextStyle(color: Color(0xFF4a6080), fontSize: 9)),
+                    ]),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: color.withValues(alpha: 0.4)),
+                    ),
+                    child: Text('${d.probabilityPct.toStringAsFixed(0)}%',
+                        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF4a6080), size: 18),
+                ]),
+              ),
             );
           }).toList(),
         ),
       ),
     );
   }
+}
+
+// ── Flood Drivers Sheet ───────────────────────────────────────────────────────
+// Opened by tapping a day in _DailyFloodForecastList. Breaks that day's
+// flood-probability reading down into the actual model inputs behind it —
+// rainfall and wind get dedicated, bigger callouts since they're the two
+// primary drivers the app already surfaces elsewhere; anything else the
+// backend sends for that day (humidity, soil moisture, temperature, etc.)
+// is read straight from _DailyFloodForecast.raw, so a new field the model
+// starts using later shows up here automatically rather than needing an
+// app update to surface it.
+void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String dayLabel) {
+  final color = _alertColors[d.alertLevel] ?? _alertColors['NORMAL']!;
+
+  // Any raw field beyond the ones already parsed onto dedicated properties
+  // or excluded as pure metadata — these render as the "Other Factors" grid
+  // below the primary rainfall/wind callouts.
+  final otherEntries = d.raw.entries.where((e) {
+    if (_driverExcludedKeys.contains(e.key)) return false;
+    final v = e.value;
+    return v is num || (v is String && num.tryParse(v) != null);
+  }).toList();
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: AppColors.bgDark,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          20, 16, 20, 28 + MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4, margin: const EdgeInsets.only(bottom: 18),
+                decoration: BoxDecoration(
+                  color: AppColors.bgBorder,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+
+            // ── Header: day, risk word, probability pill ──────────────────
+            Row(children: [
+              Text(_riskEmoji(d.probabilityPct), style: const TextStyle(fontSize: 30)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(dayLabel, style: const TextStyle(
+                      color: AppColors.textPri, fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 1),
+                  Text(_riskWordFromPct(d.probabilityPct), style: const TextStyle(
+                      color: AppColors.textSec, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withValues(alpha: 0.45)),
+                ),
+                child: Text('${d.probabilityPct.toStringAsFixed(0)}%',
+                    style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w900)),
+              ),
+            ]),
+            const SizedBox(height: 14),
+
+            // ── Confidence note ────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
+              ),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_confidenceLabels[d.confidenceBand] ?? 'Outlook only', style: const TextStyle(
+                        color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(
+                      _confidenceExplainers[d.confidenceBand] ??
+                          'Forecast confidence decreases the further out the day is.',
+                      style: const TextStyle(color: AppColors.textSec, fontSize: 11.5, height: 1.4),
+                    ),
+                  ]),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 20),
+
+            const Text('WHAT DROVE THIS FORECAST', style: TextStyle(
+                color: AppColors.textMuted, fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
+            const SizedBox(height: 10),
+
+            // ── Primary drivers: rainfall + wind ──────────────────────────
+            Row(children: [
+              Expanded(
+                child: _DriverCallout(
+                  icon: '☔', label: 'Rainfall',
+                  value: d.rainfallMm != null ? '${d.rainfallMm!.toStringAsFixed(1)}' : '—',
+                  suffix: 'mm',
+                  note: 'Forecast total for the day',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _DriverCallout(
+                  icon: '💨', label: 'Wind',
+                  value: d.windSpeedMaxKph != null ? d.windSpeedMaxKph!.toStringAsFixed(0) : '—',
+                  suffix: 'km/h',
+                  note: 'Forecast max for the day',
+                ),
+              ),
+            ]),
+
+            // ── Any other model inputs the backend sent for this day ─────
+            if (otherEntries.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 2.5,
+                children: otherEntries.map((entry) {
+                  final meta = _driverMeta[entry.key];
+                  final v = entry.value;
+                  final n = v is num ? v : num.tryParse(v.toString());
+                  final display = n == null
+                      ? v.toString()
+                      : n.toStringAsFixed(meta?.round ?? 1);
+                  return Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0d1f3c),
+                      border: Border.all(color: const Color(0xFF1e3a5f)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(children: [
+                      Container(
+                        width: 32, height: 32,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Text(meta?.icon ?? '📊', style: const TextStyle(fontSize: 14)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('$display${meta?.suffix ?? ''}', style: const TextStyle(
+                                color: Color(0xFFe2eaf5), fontSize: 13, fontWeight: FontWeight.w800),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Text(meta?.label ?? _titleCase(entry.key), style: const TextStyle(
+                                color: Color(0xFF4a6080), fontSize: 9, fontWeight: FontWeight.w700),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ),
+                    ]),
+                  );
+                }).toList(),
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Rainfall and wind are the main inputs the model uses for this day.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.4),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+// Single big driver readout (rainfall / wind) at the top of the drivers
+// sheet — same visual language as the app's other stat callouts, just
+// sized up since these two are the headline inputs.
+class _DriverCallout extends StatelessWidget {
+  final String icon, label, value, suffix, note;
+  const _DriverCallout({
+    required this.icon, required this.label, required this.value,
+    required this.suffix, required this.note,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFF0d1f3c),
+      border: Border.all(color: const Color(0xFF1e3a5f)),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Text(icon, style: const TextStyle(fontSize: 15)),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(
+            color: Color(0xFF8da4be), fontSize: 11, fontWeight: FontWeight.w700)),
+      ]),
+      const SizedBox(height: 6),
+      Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+        Text(value, style: const TextStyle(
+            color: Color(0xFFe2eaf5), fontSize: 20, fontWeight: FontWeight.w900)),
+        const SizedBox(width: 3),
+        Text(suffix, style: const TextStyle(color: Color(0xFF4a6080), fontSize: 11)),
+      ]),
+      const SizedBox(height: 2),
+      Text(note, style: const TextStyle(color: Color(0xFF4a6080), fontSize: 9.5)),
+    ]),
+  );
 }
 
 // ── Quick Actions Row ─────────────────────────────────────────────────────────
