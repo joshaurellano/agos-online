@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import '../models/incident_report.dart';
@@ -17,6 +18,12 @@ const _categoryIcons = <String, IconData>{
   'Other':              Icons.report_rounded,
 };
 
+// Remembers the name a resident typed in on this device, so they don't have
+// to retype it on every report — same idea as the anonymous device ID
+// already used for `reported_by`, just for the friendlier display name
+// shown in the community feed ("by ...").
+const _savedNameKey = 'agos_reporter_name';
+
 class ReportIncidentScreen extends StatefulWidget {
   const ReportIncidentScreen({super.key});
 
@@ -26,6 +33,7 @@ class ReportIncidentScreen extends StatefulWidget {
 
 class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   final _descriptionCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
   String _category = kIncidentCategories.first;
   File? _photo;
 
@@ -39,8 +47,36 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   String? _errorMsg;
 
   @override
+  void initState() {
+    super.initState();
+    _loadSavedName();
+  }
+
+  Future<void> _loadSavedName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_savedNameKey);
+      if (saved != null && saved.isNotEmpty && mounted) {
+        setState(() => _nameCtrl.text = saved);
+      }
+    } catch (_) {
+      // Non-critical — the field just starts blank if this fails.
+    }
+  }
+
+  Future<void> _saveName(String name) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_savedNameKey, name);
+    } catch (_) {
+      // Non-critical — worst case the resident retypes it next time.
+    }
+  }
+
+  @override
   void dispose() {
     _descriptionCtrl.dispose();
+    _nameCtrl.dispose();
     super.dispose();
   }
 
@@ -141,6 +177,16 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
     // device ID above, so "My Reports" keeps working.
     final profile = context.read<AuthService>().currentUser;
 
+    // What the resident typed into "Your Name" on this form takes priority
+    // over the legacy profile name — AGOS has no accounts anymore (see
+    // main_shell.dart), so profile?.name is effectively always null in
+    // practice, but this ordering keeps old data sensible if it's ever not.
+    final typedName = _nameCtrl.text.trim();
+    final displayName = typedName.isNotEmpty
+        ? typedName
+        : (profile?.name ?? 'Anonymous Resident');
+    if (typedName.isNotEmpty) _saveName(typedName); // remember for next time
+
     try {
       String? photoUrl;
       if (_photo != null) {
@@ -149,7 +195,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
       await IncidentService.submitReport(
         reportedBy:    anonId,
-        reporterName:  profile?.name ?? 'Anonymous Resident',
+        reporterName:  displayName,
         reporterRole:  profile?.roleDesc ?? 'Resident',
         category:      _category,
         description:   _descriptionCtrl.text.trim(),
@@ -207,6 +253,35 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
               ),
               const SizedBox(height: 20),
 
+              _sectionLabel('Your Name (optional)'),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.bgCard,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.bgBorder),
+                ),
+                child: TextField(
+                  controller: _nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  style: const TextStyle(color: AppColors.textPri, fontSize: 14),
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. Juan Dela Cruz',
+                    hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    border: InputBorder.none,
+                    prefixIcon: Icon(Icons.badge_outlined, color: AppColors.textMuted, size: 19),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Leave blank to submit as "Anonymous Resident". Your name is shown '
+                'next to your report in the community feed.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.35),
+              ),
+
+              const SizedBox(height: 20),
               _sectionLabel('What kind of incident?'),
               const SizedBox(height: 8),
               Wrap(
