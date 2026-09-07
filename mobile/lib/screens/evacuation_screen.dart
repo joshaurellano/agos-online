@@ -138,6 +138,12 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
 
   // Nearest center
   _EvacCenter? _nearest;
+  // The "Nearest Evacuation Center" banner used to have no way to close
+  // it once it appeared — it just sat there permanently covering the top
+  // of the map after the first "Locate me" tap. This tracks whether the
+  // user has dismissed it; reset to false in _locate() so a fresh locate
+  // shows it again.
+  bool _nearestBannerDismissed = false;
   double? _nearestDist;
 
   final MapController _mapController = MapController();
@@ -145,6 +151,11 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   bool _showLegend = false;
+  // Same "fullscreen" convention as flood_map_screen.dart: fills this
+  // tab's whole content area by hiding the detail-cards section below
+  // the map. The persistent AGOS header/bottom nav (owned by MainShell)
+  // stay either way — this isn't OS-level edge-to-edge fullscreen.
+  bool _isFullscreen = false;
   double _zoom = 14.5;
   String? _searchError;
 
@@ -240,6 +251,9 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         _nearestDist = nearestDist;
         _locating = false;
         _selectedCenterId = nearest?.id;
+        // A fresh "locate me" should show the summary again even if the
+        // user dismissed it earlier this session.
+        _nearestBannerDismissed = false;
       });
 
       if (nearest != null) {
@@ -293,10 +307,22 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate:
-                      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                  subdomains: const ['a', 'b', 'c', 'd'],
+                  // CARTO's free raster basemap tiles (basemaps.cartocdn.com)
+                  // started requiring an API key in late August 2026 —
+                  // unauthenticated requests now render with an "API KEY
+                  // REQUIRED" watermark baked into every tile instead of
+                  // failing outright, which is why the map looked "broken"
+                  // rather than just blank. Switched to the same keyless
+                  // OpenStreetMap standard tiles already used as the
+                  // "Standard" basemap in flood_map_screen.dart, for
+                  // consistency and so this doesn't silently break again
+                  // the same way.
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.agos.app',
+                ),
+                const RichAttributionWidget(
+                  alignment: AttributionAlignment.bottomRight,
+                  attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
                 ),
 
                 // Barangay boundary
@@ -475,7 +501,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
             // it, since that banner assumed the first one was always 60px
             // tall. Stacking them in a Column sizes each to its real content
             // height, so nothing overlaps regardless of name length.
-            if (_nearest != null)
+            if (_nearest != null && !_nearestBannerDismissed)
               Positioned(
                 top: _bannerTop, left: 12, right: 60,
                 child: Column(
@@ -514,6 +540,17 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                             child: Text(
                               _formatDistance(_nearestDist!),
                               style: const TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          // Dismiss — previously there was no way to get this
+                          // banner off the map once it appeared.
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => setState(() => _nearestBannerDismissed = true),
+                            child: const Padding(
+                              padding: EdgeInsets.only(left: 2, top: 1),
+                              child: Icon(Icons.close_rounded, color: Color(0xFF7fd9a0), size: 16),
                             ),
                           ),
                         ]),
@@ -627,6 +664,11 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
               right: 10,
               child: MapToolStack(children: [
                 MapToolButton(
+                  icon: _isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
+                  active: _isFullscreen,
+                  onTap: () => setState(() => _isFullscreen = !_isFullscreen),
+                ),
+                MapToolButton(
                   icon: Icons.layers_rounded,
                   active: _showLegend,
                   onTap: () => setState(() => _showLegend = !_showLegend),
@@ -713,6 +755,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         ),
 
         // ── Detail cards ───────────────────────────────────────────────────────
+        if (!_isFullscreen)
         Expanded(
           flex: 13,
           child: SingleChildScrollView(

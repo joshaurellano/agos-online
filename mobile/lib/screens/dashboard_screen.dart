@@ -111,8 +111,8 @@ class _HeroCopy {
 }
 
 const _heroCopy = {
-  'NORMAL':   _HeroCopy("You're Safe Right Now",  'No flooding risk in Brgy. Triangulo. Enjoy your day.'),
-  'ADVISORY': _HeroCopy('Stay Alert',              'Water levels are starting to rise. Keep an eye on updates.'),
+  'NORMAL':   _HeroCopy("You're Safe Right Now",  'No flooding risk. Enjoy your day.'),
+  'ADVISORY': _HeroCopy('Stay Alert',              'Flood risk starting to rise. Keep an eye on updates.'),
   'WARNING':  _HeroCopy('Get Ready to Evacuate',   'Flooding is likely soon. Prepare to leave if it worsens.'),
   'CRITICAL': _HeroCopy('Evacuate Now',            'Flooding is happening or about to happen. Move to safety.'),
 };
@@ -169,14 +169,15 @@ class _Prediction {
     }
     return _Prediction(
       probability: (parseNum(j['probability']))?.toDouble() ?? 0.0,
-      // alert_level comes back from the backend as a string ("NORMAL" /
-      // "ADVISORY" / "WARNING" / "CRITICAL" — see
-      // app/utils/alerts.py::probability_to_alert_level()), never a
-      // number. parseNum() on a non-numeric string like "NORMAL" quietly
-      // returns null (num.tryParse doesn't throw), so this used to fall
-      // back to 0 every time — silently showing "Normal" on the
-      // dashboard regardless of the real alert level. Convert the string
-      // key directly instead.
+      // The backend's alert_level has always been a string enum
+      // ("NORMAL"/"ADVISORY"/"WARNING"/"CRITICAL" — see
+      // probability_to_alert_level() in backend/app/utils/alerts.py),
+      // never a number. Running it through parseNum() silently failed
+      // for every value (none of those words parse as a number) and fell
+      // back to the ?? 0 default — meaning this was always reporting
+      // NORMAL regardless of the real alert level, whenever the backend
+      // sent a live prediction. _alertKeyToInt() is the existing helper
+      // for this exact conversion; it just wasn't being used here.
       alertLevel:  _alertKeyToInt(j['alert_level']?.toString() ?? 'NORMAL'),
       status:       j['status']?.toString()                ?? '',
       rainfallMm:  (parseNum(m['rainfall_mm']))?.toDouble() ?? 0.0,
@@ -235,41 +236,6 @@ class _DailyFloodForecast {
   }
 
   double get probabilityPct => (probability * 100).clamp(0, 100).toDouble();
-}
-
-// ─── Daily weather entry (from GET /api/forecast → "daily") ─────────────────
-// Same response the hourly strip already reads — app/api/routes_weather.py's
-// `daily` array. Keyed by ISO date string so it can be merged with
-// _DailyFloodForecast (which comes from a *different* endpoint,
-// /api/forecast-flood) purely on the client, without a third network call.
-class _DailyWeather {
-  final String date; // "YYYY-MM-DD", straight from the backend
-  final double? tempMaxC;
-  final String condition;
-  final dynamic weathercode;
-  final double? rainMm;
-  final int? rainProbabilityPct;
-
-  const _DailyWeather({
-    required this.date,
-    required this.tempMaxC,
-    required this.condition,
-    required this.weathercode,
-    required this.rainMm,
-    required this.rainProbabilityPct,
-  });
-
-  factory _DailyWeather.fromJson(Map<String, dynamic> j) {
-    num? n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '');
-    return _DailyWeather(
-      date: j['date']?.toString() ?? '',
-      tempMaxC: n(j['temperature_max_c'])?.toDouble(),
-      condition: j['condition']?.toString() ?? 'Unknown',
-      weathercode: j['weathercode'],
-      rainMm: n(j['precipitation_sum_mm'])?.toDouble(),
-      rainProbabilityPct: n(j['rain_probability_pct'])?.toInt(),
-    );
-  }
 }
 
 // ─── AlertLevelTypeX ───────────────────────────────────────────────────────
@@ -339,12 +305,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // same endpoint AlertScreen was also polling separately.
   FloodStatusService? _statusService;
 
-  // Hourly (next 48h) and daily weather (next 14 days) — both come from the
-  // SAME GET /api/forecast call (see _fetchForecast below), so pulling the
-  // daily[] array in alongside hourly[] costs nothing extra over the wire.
+  // Hourly (next 48h) — GET /api/forecast
   List<Map<String, dynamic>> _hourly = [];
   bool _hourlyLoading = true;
-  Map<String, _DailyWeather> _dailyWeatherByDate = {};
+
+  // Rainfall outlook (next 6h/12h/24h totals + peak chance) and the full
+  // parameter set (wind, gusts, humidity, visibility, pressure, UV, dew
+  // point, soil moisture) for the current hour — both already returned by
+  // /api/forecast and already shown on the web dashboard's WeatherForecast
+  // panel, but previously left unused here; the mobile Hourly Forecast
+  // strip only ever read `hourly[].temperature_c`/`precipitation`.
+  Map<String, dynamic>? _outlook;
 
   // Daily flood outlook (next 14 days) — GET /api/forecast-flood
   List<_DailyFloodForecast> _dailyFlood = [];
@@ -354,7 +325,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchForecast();
+    _fetchHourly();
     _fetchDailyFlood();
     // context.read is safe in initState (unlike context.watch).
     final svc = context.read<FloodStatusService>();
@@ -388,31 +359,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _fetchForecast() async {
+  Future<void> _fetchHourly() async {
     try {
-      // Same call helper as _fetchDailyFlood/FloodStatusService (see
-      // services/model_api_client.dart). If Open-Meteo itself is down,
-      // the backend serves its own last-known-good, Upstash-persisted
-      // cache instead of erroring — there's no second app host to fall
-      // back to on the client side, matching how the web frontend calls
-      // this same endpoint.
-      // Explicit override matches fetchModelApi's own default (see
-      // model_api_client.dart) — long enough to survive a Render
-      // free-tier cold start, which is what was timing this out on
-      // mobile while web (no client-side timeout) sailed through.
-      final res = await fetchModelApi(_forecastUrl,
-          timeout: const Duration(seconds: 60));
+      // Same primary→backup fallback as _fetchDailyFlood/FloodStatusService
+      // (see services/model_api_client.dart). Previously this used a plain
+      // http.get with no fallback, so whenever the primary backend host
+      // was asleep/unreachable, the Hourly Forecast card alone would show
+      // "unavailable" even though every other card had already recovered
+      // via the backup host.
+      final res = await getWithFallback(_forecastUrl,
+          timeout: const Duration(seconds: 15));
       if (!mounted) return;
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
-        final dailyList = (body['daily'] as List? ?? [])
-            .cast<Map<String, dynamic>>()
-            .map(_DailyWeather.fromJson)
-            .toList();
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() {
             _hourly = (body['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
-            _dailyWeatherByDate = {for (final d in dailyList) d.date: d};
+            _outlook = body['outlook'] as Map<String, dynamic>?;
             _hourlyLoading = false;
           });
         });
@@ -426,7 +389,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _fetchDailyFlood() async {
     try {
-      final res = await fetchModelApi(_forecastFloodUrl);
+      final res = await getWithFallback(_forecastFloodUrl);
       if (!mounted) return;
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
@@ -451,13 +414,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _refreshAll() => Future.wait([
     context.read<FloodStatusService>().refresh(),
-    _fetchForecast(),
+    _fetchHourly(),
     _fetchDailyFlood(),
   ]);
-
-  // "Now" reading for the Weather Now card — the first hourly[] entry is
-  // always the current hour (see routes_weather.py's start_idx logic).
-  Map<String, dynamic>? get _nowWeather => _hourly.isNotEmpty ? _hourly.first : null;
 
   // ── Derived helpers ───────────────────────────────────────────────────────
   String get _currentAlertKey => _alertKey(_pred?.alertLevel ?? 0);
@@ -469,7 +428,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final user = context.watch<AuthService>().currentUser;
     final firstName = (user?.name.trim().isNotEmpty ?? false)
         ? user!.name.trim().split(' ').first
-        : 'Neighbor';
+        : '';
 
     return RefreshIndicator(
       onRefresh: _refreshAll,
@@ -498,13 +457,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 14),
 
             _RightNowCard(alertKey: _currentAlertKey, alertColor: _alertColor),
-            const SizedBox(height: 14),
-
-            // Weather Now — actual current condition + temperature from
-            // GET /api/forecast (hourly[0]), separate from the flood-model
-            // metrics already shown in the hero above (which only cover
-            // rainfall/humidity, not temperature or sky condition).
-            _WeatherNowCard(now: _nowWeather, loading: _hourlyLoading),
             const SizedBox(height: 22),
 
             // 2 — Hourly Forecast (next 48h)
@@ -514,7 +466,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
             const SizedBox(height: 10),
             _HourlyForecastStrip(hourly: _hourly, loading: _hourlyLoading),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+
+            // Full current-conditions parameter grid — wind, gusts,
+            // humidity, visibility, pressure, UV index, dew point, soil
+            // moisture. Same 8 stats the web dashboard's WeatherForecast
+            // panel already shows; ported here so mobile has the same
+            // level of detail instead of just temp + rain.
+            _WeatherDetailsGrid(current: _hourly.isNotEmpty ? _hourly.first : null),
+            const SizedBox(height: 16),
+
+            // Rainfall outlook — next 6h/12h/24h accumulated totals and
+            // peak rain-probability, from the same /api/forecast payload.
+            if (_outlook != null) ...[
+              _RainfallOutlookRow(outlook: _outlook!),
+              const SizedBox(height: 24),
+            ] else
+              const SizedBox(height: 8),
 
             // 3 — Daily Flood Forecast (the model's own 14-day outlook)
             const _SectionLabel(icon: '📅', text: '14-Day Flood Forecast'),
@@ -526,7 +494,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               days: _dailyFlood,
               loading: _dailyLoading,
               error: _dailyError,
-              weatherByDate: _dailyWeatherByDate,
             ),
             const SizedBox(height: 26),
 
@@ -616,7 +583,7 @@ class _TopBar extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${_greetingWord()}, $firstName 👋', style: const TextStyle(
+            Text('${_greetingWord()} $firstName 👋', style: const TextStyle(
               color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.2,
             )),
             const SizedBox(height: 2),
@@ -844,141 +811,18 @@ class _RightNowCard extends StatelessWidget {
   }
 }
 
-// ── Weather Now Card ──────────────────────────────────────────────────────
-// Actual current temperature + sky condition, from GET /api/forecast's
-// hourly[0] (see routes_weather.py — start_idx always resolves to "now").
-// The flood hero card above only carries rainfall/humidity (what the flood
-// model consumes); this is the plain "what's it like outside" reading a
-// resident actually expects from a weather app.
-class _WeatherNowCard extends StatelessWidget {
-  final Map<String, dynamic>? now;
-  final bool loading;
-  const _WeatherNowCard({required this.now, required this.loading});
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return Container(
-        height: 92,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0a1828),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
-        ),
-      );
-    }
-
-    if (now == null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0a1828),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
-        ),
-        child: const Text('Weather data unavailable right now — check back soon',
-            style: TextStyle(color: Color(0xFF4a6080), fontSize: 12)),
-      );
-    }
-
-    final temp      = now!['temperature_c'];
-    final feelsLike = now!['feels_like_c'];
-    final condition = now!['condition']?.toString() ?? 'Unknown';
-    final humidity  = now!['humidity'];
-    final windKph   = now!['wind_speed_kph'];
-    final rainMm    = (now!['precipitation'] as num? ?? 0).toDouble();
-    final icon      = _weatherIcon(now!['weathercode'], now!['is_day'] != false);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0d1f3c),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1e3a5f)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('WEATHER NOW', style: TextStyle(
-                  color: AppColors.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-              const SizedBox(height: 4),
-              Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(temp != null ? '$temp°' : '—', style: const TextStyle(
-                    color: AppColors.textPri, fontSize: 30, fontWeight: FontWeight.w800, height: 1)),
-                if (feelsLike != null) Padding(
-                  padding: const EdgeInsets.only(left: 6, bottom: 5),
-                  child: Text('feels like $feelsLike°', style: const TextStyle(
-                      color: AppColors.textSec, fontSize: 11.5)),
-                ),
-              ]),
-              const SizedBox(height: 2),
-              Text(condition, style: const TextStyle(
-                  color: AppColors.textSec, fontSize: 12.5, fontWeight: FontWeight.w600)),
-            ]),
-          ),
-          Text(icon, style: const TextStyle(fontSize: 38)),
-        ]),
-        const SizedBox(height: 12),
-        Container(height: 1, color: const Color(0xFF1e3a5f)),
-        const SizedBox(height: 12),
-        Row(children: [
-          _WeatherNowStat(icon: Icons.water_outlined, label: 'Humidity',
-              value: humidity != null ? '$humidity%' : '—'),
-          _WeatherNowStat(icon: Icons.air_rounded, label: 'Wind',
-              value: windKph != null ? '$windKph kph' : '—'),
-          _WeatherNowStat(icon: Icons.water_drop_outlined, label: 'Rain',
-              value: '${rainMm.toStringAsFixed(1)} mm'),
-        ]),
-      ]),
-    );
-  }
-}
-
-class _WeatherNowStat extends StatelessWidget {
-  final IconData icon;
-  final String label, value;
-  const _WeatherNowStat({required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: Column(children: [
-      Icon(icon, size: 15, color: AppColors.textMuted),
-      const SizedBox(height: 4),
-      Text(value, style: const TextStyle(
-          color: AppColors.textPri, fontSize: 12.5, fontWeight: FontWeight.w700)),
-      Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
-    ]),
-  );
-}
-
-// WMO weather-code → icon map, mirroring frontend/src/components/
-// WeatherForecast.jsx's WMO_ICONS so the same Open-Meteo code always
-// looks the same across web and mobile.
-const _wmoIcons = {
-  0:  ['☀️', '🌙'], 1:  ['🌤️', '🌙'], 2:  ['⛅', '☁️'], 3:  ['☁️', '☁️'],
-  45: ['🌫️', '🌫️'], 48: ['🌫️', '🌫️'],
-  51: ['🌦️', '🌦️'], 53: ['🌦️', '🌦️'], 55: ['🌧️', '🌧️'],
-  56: ['🌧️', '🌧️'], 57: ['🌧️', '🌧️'],
-  61: ['🌧️', '🌧️'], 63: ['🌧️', '🌧️'], 65: ['🌧️', '🌧️'],
-  66: ['🌧️', '🌧️'], 67: ['🌧️', '🌧️'],
-  71: ['🌨️', '🌨️'], 73: ['🌨️', '🌨️'], 75: ['❄️', '❄️'], 77: ['❄️', '❄️'],
-  80: ['🌦️', '🌦️'], 81: ['🌧️', '🌧️'], 82: ['⛈️', '⛈️'],
-  85: ['🌨️', '🌨️'], 86: ['❄️', '❄️'],
-  95: ['⛈️', '⛈️'], 96: ['⛈️', '⛈️'], 99: ['⛈️', '⛈️'],
-};
-
-String _weatherIcon(dynamic weathercode, bool isDay) {
-  final code = weathercode is num ? weathercode.toInt() : null;
-  final entry = _wmoIcons[code] ?? _wmoIcons[2]!;
-  return isDay ? entry[0] : entry[1];
-}
-
 // ── Hourly Forecast Strip (GET /api/forecast → "hourly") ─────────────────────
 class _HourlyForecastStrip extends StatelessWidget {
   final List<Map<String, dynamic>> hourly;
   final bool loading;
   const _HourlyForecastStrip({required this.hourly, required this.loading});
+
+  String _emoji(num precip) {
+    if (precip > 10) return '⛈';
+    if (precip > 2)  return '🌧';
+    if (precip > 0)  return '🌦';
+    return '☀️';
+  }
 
   Color _precipColor(num precip) {
     if (precip > 10) return const Color(0xFFef4444);
@@ -990,13 +834,13 @@ class _HourlyForecastStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     if (loading) {
       return SizedBox(
-        height: 132,
+        height: 118,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: 6,
           separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (_, __) => Container(
-            width: 82, height: 124,
+            width: 82, height: 110,
             decoration: BoxDecoration(
               color: const Color(0xFF0a1828),
               borderRadius: BorderRadius.circular(10),
@@ -1028,7 +872,7 @@ class _HourlyForecastStrip extends StatelessWidget {
     });
 
     return SizedBox(
-      height: 132,
+      height: 118,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: hourly.length,
@@ -1043,13 +887,11 @@ class _HourlyForecastStrip extends StatelessWidget {
           final h      = time.hour % 12 == 0 ? 12 : time.hour % 12;
           final ampm   = time.hour < 12 ? 'AM' : 'PM';
           final label  = idx == 0 ? 'Now' : '$h:00 $ampm';
-          final rainPct = f['rain_probability_pct'];
-          final icon   = _weatherIcon(f['weathercode'], f['is_day'] != false);
 
           return ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: Container(
-              width: 82, height: 124,
+              width: 82, height: 110,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
               decoration: BoxDecoration(
                 color: idx == 0
@@ -1065,13 +907,7 @@ class _HourlyForecastStrip extends StatelessWidget {
                       color: idx == 0 ? const Color(0xFF38bdf8) : const Color(0xFF8da4be),
                       fontSize: 10, fontWeight: FontWeight.w700),
                       textAlign: TextAlign.center),
-                  // Rain-chance % — same field (rain_probability_pct) the
-                  // web hourly cards show; previously unused on mobile.
-                  Text(
-                    rainPct != null ? '$rainPct%' : ' ',
-                    style: const TextStyle(color: Color(0xFF38bdf8), fontSize: 9.5, fontWeight: FontWeight.w700),
-                  ),
-                  Text(icon, style: const TextStyle(fontSize: 20)),
+                  Text(_emoji(precip), style: const TextStyle(fontSize: 20)),
                   Text('$temp°C', style: const TextStyle(
                       color: Color(0xFFe2eaf5), fontSize: 12, fontWeight: FontWeight.w700)),
                   Column(children: [
@@ -1097,6 +933,155 @@ class _HourlyForecastStrip extends StatelessWidget {
   }
 }
 
+// ── Weather Details grid (wind/gusts/humidity/visibility/pressure/UV/dew
+// point/soil moisture for the current hour) ─────────────────────────────────
+// Mirrors the `Stat` grid in the web dashboard's WeatherForecast.jsx —
+// same 8 fields, same /api/forecast payload, just laid out for a phone
+// screen (2 columns instead of a wide row).
+class _WeatherDetailsGrid extends StatelessWidget {
+  final Map<String, dynamic>? current;
+  const _WeatherDetailsGrid({required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    String fmt(String key, {String suffix = '', int? round}) {
+      final v = current?[key];
+      if (v == null) return '—';
+      if (v is num) {
+        final n = round != null ? v.toStringAsFixed(round) : v.toString();
+        return '$n$suffix';
+      }
+      return '$v$suffix';
+    }
+
+    final stats = <({String icon, String label, String value})>[
+      (icon: '💨', label: 'WIND', value: fmt('wind_speed_kph', suffix: ' km/h')),
+      (icon: '🌬', label: 'WIND GUSTS', value: fmt('wind_gusts_kph', suffix: ' km/h')),
+      (icon: '💧', label: 'HUMIDITY', value: fmt('humidity', suffix: '%')),
+      (icon: '👁', label: 'VISIBILITY', value: fmt('visibility_km', suffix: ' km')),
+      (icon: '🧭', label: 'PRESSURE', value: fmt('pressure_msl_hpa', suffix: ' hPa')),
+      (icon: '☀️', label: 'UV INDEX', value: fmt('uv_index')),
+      (icon: '🌡', label: 'DEW POINT', value: fmt('dew_point_c', suffix: '°C')),
+      (
+        icon: '🌱',
+        label: 'SOIL MOISTURE',
+        value: current?['soil_moisture_vwc'] != null
+            ? '${((current!['soil_moisture_vwc'] as num) * 100).toStringAsFixed(1)}%'
+            : '—',
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionLabel(icon: '📊', text: 'Weather Details'),
+        const SizedBox(height: 2),
+        const Text('Current conditions · Open-Meteo',
+            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+        const SizedBox(height: 10),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 2.6,
+          children: stats.map((s) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0d1f3c),
+              border: Border.all(color: const Color(0xFF1e3a5f)),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(children: [
+                  Text(s.icon, style: const TextStyle(fontSize: 11)),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(s.label, style: const TextStyle(
+                        color: Color(0xFF4a6080), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+                  ),
+                ]),
+                const SizedBox(height: 3),
+                Text(s.value, style: const TextStyle(
+                    color: Color(0xFFe2eaf5), fontSize: 13.5, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          )).toList(),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Rainfall Outlook row (next 6h / 12h / 24h) ────────────────────────────────
+// Mirrors the `outlook` block in web's WeatherForecast.jsx — accumulated
+// mm and peak rain-probability for each window, straight from
+// /api/forecast's `outlook` object (previously computed on the backend
+// but never read by this screen).
+class _RainfallOutlookRow extends StatelessWidget {
+  final Map<String, dynamic> outlook;
+  const _RainfallOutlookRow({required this.outlook});
+
+  @override
+  Widget build(BuildContext context) {
+    final windows = [
+      ('Next 6 Hours', outlook['next_6h_rain_mm'], outlook['next_6h_rain_probability_pct']),
+      ('Next 12 Hours', outlook['next_12h_rain_mm'], outlook['next_12h_rain_probability_pct']),
+      ('Next 24 Hours', outlook['next_24h_rain_mm'], outlook['next_24h_rain_probability_pct']),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionLabel(icon: '☔', text: 'Rainfall Outlook'),
+        const SizedBox(height: 10),
+        Row(
+          children: windows.map((w) {
+            final (label, mm, pct) = w;
+            final isLast = w == windows.last;
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: isLast ? 0 : 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0d1f3c),
+                    border: Border.all(color: const Color(0xFF1e3a5f)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label, style: const TextStyle(
+                          color: Color(0xFF4a6080), fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                      const SizedBox(height: 6),
+                      Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                        Text(mm != null ? '$mm' : '—', style: const TextStyle(
+                            color: Color(0xFF38bdf8), fontSize: 16, fontWeight: FontWeight.w900)),
+                        const SizedBox(width: 3),
+                        const Text('mm', style: TextStyle(color: Color(0xFF4a6080), fontSize: 9)),
+                      ]),
+                      if (pct != null) ...[
+                        const SizedBox(height: 3),
+                        Text('☔ $pct% chance', style: const TextStyle(
+                            color: Color(0xFF8da4be), fontSize: 9)),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+}
+
 // ── Daily Flood Forecast list (GET /api/forecast-flood → "forecast") ─────────
 // Row-per-day, styled after a classic "5-Day Forecast" list: an icon, the
 // day label, a plain-language risk description, and a value pill — but
@@ -1106,17 +1091,7 @@ class _DailyFloodForecastList extends StatelessWidget {
   final List<_DailyFloodForecast> days;
   final bool loading;
   final bool error;
-  // Joined client-side by date string against GET /api/forecast's daily[]
-  // (see _DailyWeather above) — two independent endpoints, same calendar
-  // day, merged purely for display so each row can show both the flood
-  // model's outlook AND the actual weather (temp/condition) for that day.
-  final Map<String, _DailyWeather> weatherByDate;
-  const _DailyFloodForecastList({
-    required this.days,
-    required this.loading,
-    required this.error,
-    this.weatherByDate = const {},
-  });
+  const _DailyFloodForecastList({required this.days, required this.loading, required this.error});
 
   String _dayLabel(_DailyFloodForecast d) {
     if (d.dayAhead == 1) return 'Tomorrow';
@@ -1168,10 +1143,6 @@ class _DailyFloodForecastList extends StatelessWidget {
             final d      = e.value;
             final isLast = idx == days.length - 1;
             final color  = _alertColors[d.alertLevel] ?? _alertColors['NORMAL']!;
-            // Joined by date string ("YYYY-MM-DD") — both endpoints use the
-            // same Open-Meteo-derived calendar day for date 0 (today).
-            final dateKey = d.date.toIso8601String().substring(0, 10);
-            final w = weatherByDate[dateKey];
 
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -1186,22 +1157,12 @@ class _DailyFloodForecastList extends StatelessWidget {
                   child: Text(_dayLabel(d), style: const TextStyle(
                       color: Color(0xFFe2eaf5), fontSize: 11, fontWeight: FontWeight.w800)),
                 ),
-                Text(
-                  // Prefer the real Open-Meteo condition icon for that day
-                  // when we have it; fall back to the flood-risk emoji.
-                  w != null ? _weatherIcon(w.weathercode, true) : _riskEmoji(d.probabilityPct),
-                  style: const TextStyle(fontSize: 17),
-                ),
+                Text(_riskEmoji(d.probabilityPct), style: const TextStyle(fontSize: 17)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(
-                      w != null
-                          ? '${w.condition}${w.tempMaxC != null ? " · ${w.tempMaxC!.toStringAsFixed(0)}°" : ""}'
-                          : _riskWordFromPct(d.probabilityPct),
-                      style: const TextStyle(
-                          color: Color(0xFF8da4be), fontSize: 11.5, fontWeight: FontWeight.w600),
-                    ),
+                    Text(_riskWordFromPct(d.probabilityPct), style: const TextStyle(
+                        color: Color(0xFF8da4be), fontSize: 11.5, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 1),
                     Text(_confidenceLabels[d.confidenceBand] ?? 'Outlook only',
                         style: const TextStyle(color: Color(0xFF4a6080), fontSize: 9)),
@@ -1214,8 +1175,8 @@ class _DailyFloodForecastList extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: color.withValues(alpha: 0.4)),
                   ),
-                  child: Text('${d.probabilityPct.toStringAsFixed(0)}% flood',
-                      style: TextStyle(color: color, fontSize: 10.5, fontWeight: FontWeight.w900)),
+                  child: Text('${d.probabilityPct.toStringAsFixed(0)}%',
+                      style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
                 ),
               ]),
             );
@@ -1308,7 +1269,7 @@ class _MapTeaserCard extends StatelessWidget {
             Text('Flood Zone Map & Live Radar', style: TextStyle(
                 color: AppColors.textPri, fontSize: 12.5, fontWeight: FontWeight.w700)),
             SizedBox(height: 1),
-            Text('See the barangay boundary and rain moving in, live',
+            Text('See the barangay boundary and rain visualization',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
           ]),
         ),

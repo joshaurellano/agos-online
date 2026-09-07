@@ -1,20 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
+import 'package:maplibre_gl/maplibre_gl.dart' as mlibre;
 import 'package:http/http.dart' as http;
 import '../main.dart';
+import '../models/alert_level.dart';
 import '../theme/panahon_ui.dart';
 import '../services/model_api_client.dart';
-import '../widgets/rain_overlay.dart';
-import '../widgets/wind_direction_arrow.dart';
 
 // ─── URL (no fallback for a missing/misspelled .env key — see
-// dashboard_screen.dart for that rationale. There is no second app host
-// fallback either — see services/model_api_client.dart; the backend's own
-// Upstash-persisted cache is what keeps this endpoint answering) ──────────
+// dashboard_screen.dart for that rationale; a network-level fallback to the
+// backup deployment is still applied at the fetch call site below) ─────────
 String _requireEnv(String key) {
   final v = dotenv.env[key];
   if (v == null || v.isEmpty) {
@@ -25,9 +25,6 @@ String _requireEnv(String key) {
 }
 
 String get _modelUrl => _requireEnv('MODEL_API_URL');
-// Same weather endpoint dashboard_screen.dart's _fetchForecast() reads --
-// only used here for the "now" condition text (see _fetchCondition below).
-String get _forecastUrl => _requireEnv('FORECAST_API_URL');
 
 // ─── Alert colors / labels ──────────────────────────────────────────────────────
 const _alertColors = {
@@ -38,6 +35,20 @@ const _alertColors = {
 };
 
 const _alertLevelKeys = ['NORMAL', 'ADVISORY', 'WARNING', 'CRITICAL'];
+
+// Same shape-coded icon set as dashboard_screen.dart / alert_screen.dart
+// (see models/alert_level.dart) — so the map's status pill and legend
+// don't rely on color alone to distinguish NORMAL/ADVISORY/WARNING/
+// CRITICAL, which matters since red/orange (WARNING vs CRITICAL) are
+// hard to tell apart for red-green colorblind users.
+IconData _iconForAlertKey(String key) {
+  switch (key) {
+    case 'CRITICAL': return AlertLevelType.critical.icon;
+    case 'WARNING':  return AlertLevelType.warning.icon;
+    case 'ADVISORY': return AlertLevelType.advisory.icon;
+    default:         return AlertLevelType.normal.icon;
+  }
+}
 
 // ─── Basemap options ──────────────────────────────────────────────────────────
 // Free, no-API-key raster sources. `monochrome` controls whether we apply
@@ -136,16 +147,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   bool _loading = true;
   Timer? _timer;
 
-  // ── Weather overlay inputs, matching Dashboard.jsx's FloodMap props ──────
-  // rainfall/wind come from the same /predict-flood response already
-  // polled below (its `live_metrics` object); `condition` comes from a
-  // separate, one-time weather-endpoint fetch since it changes far more
-  // slowly than the flood prediction itself (see _fetchCondition).
-  double _rainfallMm = 0.0;
-  double _windSignal = 0.0;
-  double? _windDirectionDeg;
-  String? _condition;
-
   bool _liveDataStale = false;
   DateTime? _lastUpdated;
 
@@ -155,11 +156,32 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   double _zoom = 14.5;
   final MapController _mapController = MapController();
 
+  // ── 3D vector view (new) ─────────────────────────────────────────────────
+  // Mirrors the web dashboard's 2D/3D toggle (see FloodMap3D.jsx). Uses
+  // maplibre_gl, which was already a pubspec dependency but wasn't wired
+  // into any screen yet. NOTE: this plugin does not currently support
+  // fill-extrusion layers on Android/iOS (only Web) — see
+  // https://github.com/maplibre/flutter-maplibre-gl — so unlike the web
+  // version this can't render an actual extruded 3D water slab. Instead
+  // it gives a genuinely different, tilted vector-map view with the same
+  // road network + boundary overlay, colored by alert level, which *is*
+  // fully supported (Line/Fill layers work on all platforms).
+  bool _is3D = false;
+  mlibre.MapLibreMapController? _mlController;
+  List<dynamic>? _roadsData; // parsed triangulo_roads.json, loaded once
+  bool _roadsLoading = false;
+
+  static const _vectorStyles = {
+    'liberty':  'https://tiles.openfreemap.org/styles/liberty',
+    'bright':   'https://tiles.openfreemap.org/styles/bright',
+    'positron': 'https://tiles.openfreemap.org/styles/positron',
+  };
+  String _vectorStyleKey = 'liberty';
+
   @override
   void initState() {
     super.initState();
     _fetchStatus();
-    _fetchCondition();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchStatus());
   }
 
@@ -175,42 +197,32 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     var url = '(unresolved)';
     try {
       url = _modelUrl;
-      final res = await fetchModelApi(url);
+      final res = await getWithFallback(url);
       if (!mounted) return;
       if (res.statusCode == 200) {
         final j = jsonDecode(res.body) as Map<String, dynamic>;
-        // The backend's alert_level is a string ("NORMAL"/"ADVISORY"/
-        // "WARNING"/"CRITICAL" — see app/utils/alerts.py's
-        // probability_to_alert_level()), not a number. The web frontend
-        // already treats it this way (see modelApi.js). Casting it to
-        // `num` here was wrong and crashed with "type 'String' is not a
-        // subtype of type 'num?'" on every real device/response.
-        final rawLevel = j['alert_level'] as String?;
+        // alert_level is a string enum from the backend ("NORMAL" /
+        // "ADVISORY" / "WARNING" / "CRITICAL" — see
+        // probability_to_alert_level() in backend/app/utils/alerts.py),
+        // never a number. The old `as num?` cast threw
+        // "type 'String' is not a subtype of type 'num?'" on every single
+        // successful response, which is why this screen kept falling
+        // back to "live data unavailable" even when the backend was
+        // perfectly healthy.
+        final rawLevel = j['alert_level']?.toString().toUpperCase();
         final level = _alertLevelKeys.contains(rawLevel) ? rawLevel! : 'NORMAL';
         final prob  = (j['probability'] as num?)?.toDouble();
-        // Same live_metrics object dashboard_screen.dart's _Prediction
-        // parses -- rainfall/wind_signal/wind_direction_deg feed the rain
-        // overlay + wind arrow below.
-        final metrics = j['live_metrics'] as Map<String, dynamic>? ?? {};
-        num? parseNum(dynamic v) {
-          if (v == null) return null;
-          if (v is num) return v;
-          return num.tryParse(v.toString());
-        }
-        final rainfall  = parseNum(metrics['rainfall_mm'])?.toDouble() ?? 0.0;
-        final windSig   = parseNum(metrics['wind_signal'])?.toDouble() ?? 0.0;
-        final windDeg   = parseNum(metrics['wind_direction_deg'])?.toDouble();
         if (!mounted) return;
         setState(() {
-          _alertKey         = level;
-          _probability      = prob;
-          _rainfallMm       = rainfall;
-          _windSignal       = windSig;
-          _windDirectionDeg = windDeg;
-          _loading          = false;
-          _liveDataStale    = false;
-          _lastUpdated      = DateTime.now();
+          _alertKey      = level;
+          _probability   = prob;
+          _loading       = false;
+          _liveDataStale = false;
+          _lastUpdated   = DateTime.now();
         });
+        // Keep the 3D road/boundary colors in sync with the alert level,
+        // same as the 2D map's polygon fill.
+        _refreshVectorLayers();
       } else {
         debugPrint('AGOS: _fetchStatus failed ($url): HTTP ${res.statusCode}');
         if (mounted) setState(() { _loading = false; _liveDataStale = true; });
@@ -221,28 +233,142 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     }
   }
 
-  // "now" weather condition text (e.g. "Heavy Rain", "Thunderstorm",
-  // "Overcast") for the rain overlay -- same endpoint + same "hourly[0] is
-  // now" convention as dashboard_screen.dart's _fetchForecast /
-  // _nowWeather. Fetched once rather than on the 30s timer: condition
-  // changes far more slowly than the flood prediction, and the overlay
-  // still gets fresh strength/wind info every poll via rainfall_mm alone.
-  Future<void> _fetchCondition() async {
+  // ── 3D vector layer data ─────────────────────────────────────────────────
+
+  Future<void> _ensureRoadsLoaded() async {
+    if (_roadsData != null || _roadsLoading) return;
+    _roadsLoading = true;
     try {
-      final res = await fetchModelApi(_forecastUrl, timeout: const Duration(seconds: 60));
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        final hourly = (body['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
-        if (hourly.isNotEmpty && mounted) {
-          setState(() => _condition = hourly.first['condition']?.toString());
-        }
-      }
+      final raw = await rootBundle.loadString('assets/data/triangulo_roads.json');
+      _roadsData = jsonDecode(raw) as List<dynamic>;
     } catch (e) {
-      debugPrint('AGOS: _fetchCondition failed: $e');
-      // Left as null -- resolveIntensity() falls back to rainfall_mm-only
-      // tiering, so the overlay still works without condition text.
+      debugPrint('AGOS: failed to load triangulo_roads.json: $e');
+      _roadsData = [];
+    } finally {
+      _roadsLoading = false;
     }
+  }
+
+  Map<String, dynamic> _roadsGeoJson() {
+    final roads = _roadsData ?? [];
+    return {
+      'type': 'FeatureCollection',
+      'features': roads.map((r) {
+        final positions = (r['positions'] as List)
+            .map((p) => [p[1], p[0]]) // GeoJSON wants [lng, lat]
+            .toList();
+        return {
+          'type': 'Feature',
+          'properties': {'highway': r['highway']},
+          'geometry': {'type': 'LineString', 'coordinates': positions},
+        };
+      }).toList(),
+    };
+  }
+
+  Map<String, dynamic> _boundaryFillGeoJson() {
+    final ring = _trianguloPolygon.map((p) => [p.longitude, p.latitude]).toList();
+    if (ring.isNotEmpty && ring.first != ring.last) ring.add(ring.first);
+    return {
+      'type': 'Feature',
+      'properties': {},
+      'geometry': {'type': 'Polygon', 'coordinates': [ring]},
+    };
+  }
+
+  Map<String, dynamic> _boundaryLineGeoJson() {
+    return {
+      'type': 'Feature',
+      'properties': {},
+      'geometry': {
+        'type': 'LineString',
+        'coordinates': _trianguloPolygon.map((p) => [p.longitude, p.latitude]).toList(),
+      },
+    };
+  }
+
+  // Simple, explicit RGB → hex (avoids relying on newer Color component
+  // getters that vary across Flutter versions).
+  String _hex(Color c) {
+    final r = (c.r * 255.0).round() & 0xff;
+    final g = (c.g * 255.0).round() & 0xff;
+    final b = (c.b * 255.0).round() & 0xff;
+    String h(int v) => v.toRadixString(16).padLeft(2, '0');
+    return '#${h(r)}${h(g)}${h(b)}';
+  }
+
+  // Adds the roads + boundary GeoJSON sources/layers, colored by the
+  // current alert level. Safe to call multiple times — each add is
+  // wrapped so a "layer already exists" error from a previous call
+  // doesn't crash the screen.
+  Future<void> _addVectorLayers() async {
+    final controller = _mlController;
+    if (controller == null) return;
+    await _ensureRoadsLoaded();
+    if (!mounted) return;
+
+    final color = _alertColors[_alertKey] ?? _alertColors['NORMAL']!;
+    final hex = _hex(color);
+
+    Future<void> safely(Future<void> Function() fn) async {
+      try {
+        await fn();
+      } catch (e) {
+        debugPrint('AGOS: 3D map layer setup skipped a step: $e');
+      }
+    }
+
+    await safely(() => controller.addGeoJsonSource('triangulo-roads', _roadsGeoJson()));
+    await safely(() => controller.addLineLayer(
+          'triangulo-roads',
+          'triangulo-roads-line',
+          mlibre.LineLayerProperties(
+            lineColor: hex,
+            lineWidth: 2.0,
+            lineOpacity: 0.85,
+          ),
+        ));
+
+    await safely(() => controller.addGeoJsonSource('triangulo-boundary', _boundaryFillGeoJson()));
+    await safely(() => controller.addFillLayer(
+          'triangulo-boundary',
+          'triangulo-boundary-fill',
+          mlibre.FillLayerProperties(
+            fillColor: hex,
+            fillOpacity: 0.20,
+          ),
+        ));
+
+    await safely(() => controller.addGeoJsonSource('triangulo-boundary-outline', _boundaryLineGeoJson()));
+    await safely(() => controller.addLineLayer(
+          'triangulo-boundary-outline',
+          'triangulo-boundary-outline-line',
+          mlibre.LineLayerProperties(
+            lineColor: hex,
+            lineWidth: 3.0,
+            lineOpacity: 1.0,
+          ),
+        ));
+  }
+
+  // Called whenever the alert level changes (from _fetchStatus) — removes
+  // and re-adds the layers so their color follows the new alert level.
+  // (setStyle-driven color-only updates would be cheaper via
+  // setLayerProperties, but remove+re-add is the safest option here since
+  // it doesn't depend on that method's exact signature being stable
+  // across maplibre_gl versions.)
+  Future<void> _refreshVectorLayers() async {
+    final controller = _mlController;
+    if (controller == null || !_is3D) return;
+    for (final id in [
+      'triangulo-roads-line', 'triangulo-boundary-fill', 'triangulo-boundary-outline-line',
+    ]) {
+      try { await controller.removeLayer(id); } catch (_) {}
+    }
+    for (final id in ['triangulo-roads', 'triangulo-boundary', 'triangulo-boundary-outline']) {
+      try { await controller.removeSource(id); } catch (_) {}
+    }
+    await _addVectorLayers();
   }
 
   String _timeAgo(DateTime dt) {
@@ -323,26 +449,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                     border: _isFullscreen ? null : Border.all(color: const Color(0xFF1e3a5f)),
                   ),
                   child: Stack(children: [
-                    Positioned.fill(child: _build2DMap(color, activeStyle)),
-
-                    // ── Weather overlay ─────────────────────────────────────
-                    // Sits above the tiles/boundary but under the floating
-                    // UI cards below (paint order = Stack child order), and
-                    // never intercepts touches (IgnorePointer inside).
-                    Positioned.fill(
-                      child: RainOverlay(
-                        rainfallMm: _rainfallMm,
-                        condition: _condition,
-                        windSignal: _windSignal,
-                      ),
-                    ),
+                    Positioned.fill(child: _is3D ? _build3DMap(color) : _build2DMap(color, activeStyle)),
 
                     // ── Status bar ─────────────────────────────────────────
                     Positioned(top: 10, left: 10, right: 58, child: _statusPill(color)),
-
-                    // ── Wind readout ────────────────────────────────────────
-                    if (_windDirectionDeg != null)
-                      Positioned(top: 62, left: 10, child: _windPill()),
 
                     // ── Legend panel ───────────────────────────────────────
                     if (_showLegend) Positioned(top: 62, right: 56, child: _legendPanel()),
@@ -352,6 +462,21 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                       top: 62,
                       right: 10,
                       child: MapToolStack(children: [
+                        Tooltip(
+                          message: _is3D ? 'Switch to 2D map' : 'Switch to 3D view',
+                          child: MapToolButton(
+                            icon: _is3D ? Icons.map_rounded : Icons.view_in_ar_rounded,
+                            active: _is3D,
+                            onTap: () {
+                              setState(() => _is3D = !_is3D);
+                              // Layers are (re)added once the new style
+                              // finishes loading — see onStyleLoadedCallback
+                              // in _build3DMap. If the controller from a
+                              // previous mount is still around, nudge it too.
+                              if (_is3D) _addVectorLayers();
+                            },
+                          ),
+                        ),
                         Tooltip(
                           message: _isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
                           child: MapToolButton(
@@ -399,7 +524,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                     ),
 
                     // ── Basemap style switcher ──────────────────────────────
-                    Positioned(bottom: 10, left: 10, child: _styleSwitcher()),
+                    Positioned(bottom: 10, left: 10, child: _is3D ? _vectorStyleSwitcher() : _styleSwitcher()),
                   ]),
                 ),
               ),
@@ -470,6 +595,65 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     );
   }
 
+  // ── 3D-style tilted vector map ───────────────────────────────────────────
+  // See the _is3D field comment above for why this isn't a true extruded
+  // 3D flood surface like the web version — the Flutter MapLibre plugin
+  // doesn't support fill-extrusion on device yet. What it does give: a
+  // free (no API key) OpenFreeMap vector basemap, tilted/rotated camera,
+  // and the same road network + boundary overlay as the 2D map, colored
+  // by alert level.
+  Widget _build3DMap(Color color) {
+    return mlibre.MapLibreMap(
+      key: const ValueKey('agos_flood_map_3d'),
+      styleString: _vectorStyles[_vectorStyleKey]!,
+      initialCameraPosition: const mlibre.CameraPosition(
+        target: mlibre.LatLng(13.6140, 123.1915),
+        zoom: 15.3,
+        tilt: 52,
+        bearing: -17,
+      ),
+      compassEnabled: true,
+      onMapCreated: (controller) => _mlController = controller,
+      onStyleLoadedCallback: () => _addVectorLayers(),
+    );
+  }
+
+  Widget _vectorStyleSwitcher() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.bgDark.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.bgBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(mainAxisSize: MainAxisSize.min, children: _vectorStyles.keys.map((key) {
+        final selected = key == _vectorStyleKey;
+        return GestureDetector(
+          onTap: () {
+            // Just changing the widget's styleString prop and letting
+            // Flutter rebuild it is the approach the plugin's own
+            // maintainers point to (a dedicated setStyleString
+            // controller call has a rockier history in this plugin) —
+            // onStyleLoadedCallback fires again after the swap and
+            // re-adds the layers via _addVectorLayers().
+            setState(() => _vectorStyleKey = key);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            color: selected ? AppColors.accent : Colors.transparent,
+            child: Text(
+              key[0].toUpperCase() + key.substring(1),
+              style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppColors.textMuted,
+              ),
+            ),
+          ),
+        );
+      }).toList()),
+    );
+  }
+
   // ── Shared UI pieces ────────────────────────────────────────────────────
   Widget _statusPill(Color color) {
     final pillColor = _liveDataStale ? AppColors.textMuted : color;
@@ -483,8 +667,9 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
       ),
       child: Row(children: [
         Container(
-          width: 9, height: 9,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: pillColor),
+          width: 22, height: 22,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: pillColor.withValues(alpha: 0.18)),
+          child: Icon(_iconForAlertKey(_alertKey), color: pillColor, size: 13),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -514,27 +699,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     );
   }
 
-  Widget _windPill() {
-    final cardinal = degToCardinal(_windDirectionDeg);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.bgDark.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.bgBorder),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 8)],
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        WindDirectionArrow(deg: _windDirectionDeg, size: 15, color: AppColors.textSec),
-        const SizedBox(width: 6),
-        Text(
-          '${cardinal ?? ''} · ${_windDirectionDeg!.round()}°',
-          style: const TextStyle(color: AppColors.textSec, fontSize: 10.5, fontWeight: FontWeight.w600),
-        ),
-      ]),
-    );
-  }
-
   Widget _legendPanel() {
     return Container(
       width: 168,
@@ -555,8 +719,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Row(children: [
-              Container(width: 10, height: 10,
-                  decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2))),
+              Icon(_iconForAlertKey(key), color: c, size: 13),
               const SizedBox(width: 7),
               Expanded(child: Text(key, style: TextStyle(
                   color: isCur ? c : AppColors.textSec,

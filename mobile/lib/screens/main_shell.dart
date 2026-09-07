@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
+import '../services/accessibility_settings.dart';
 import '../theme/panahon_ui.dart';
 import 'dashboard_screen.dart';
 import 'alert_screen.dart';
@@ -74,14 +76,25 @@ class _MainShellState extends State<MainShell> {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.bgDark,
+      // Without this, a bottom sheet is capped at a fixed default height
+      // and its content can't scroll — which is exactly what caused the
+      // overflow once the Display/accessibility section was added below
+      // the device-info block (RenderFlex overflowed by 78 pixels on
+      // smaller screens). isScrollControlled + wrapping the content in a
+      // SingleChildScrollView below lets it size to content up to the
+      // full screen height, and scroll if it's still taller than that.
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      builder: (_) => SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            24, 16, 24, 32 + MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             Container(
               width: 40, height: 4,
               decoration: BoxDecoration(
@@ -119,7 +132,12 @@ class _MainShellState extends State<MainShell> {
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.textSec, fontSize: 12.5, height: 1.45),
             ),
-          ],
+            const SizedBox(height: 22),
+            const Divider(color: AppColors.bgBorder, height: 1),
+            const SizedBox(height: 18),
+            const _AccessibilitySection(),
+            ],
+          ),
         ),
       ),
     );
@@ -194,7 +212,7 @@ class _MainShellState extends State<MainShell> {
                   onTap: _openAlerts,
                 ),
                 PanahonHeaderIcon(
-                  icon: Icons.person_rounded,
+                  icon: Icons.settings_rounded,
                   onTap: _showAccountSheet,
                 ),
               ],
@@ -216,6 +234,106 @@ class _MainShellState extends State<MainShell> {
           PanahonNavItem(icon: Icons.campaign_rounded, label: 'Reports'),
         ],
       ),
+    );
+  }
+}
+
+// ── Accessibility settings (text size + high contrast) ───────────────────────
+// Lives in the device/about sheet above. Reads/writes AccessibilitySettings
+// directly — no local state needed here, since that ChangeNotifier is
+// already the single source of truth the whole app (see main.dart's
+// MaterialApp.builder) rebuilds from.
+class _AccessibilitySection extends StatelessWidget {
+  const _AccessibilitySection();
+
+  @override
+  Widget build(BuildContext context) {
+    final a11y = context.watch<AccessibilitySettings>();
+    final steps = <double>[0.85, 1.0, 1.15, 1.3];
+    // Snap the slider to the nearest of a few sane steps rather than a
+    // continuous drag — easier to hit a specific size with a thumb, and
+    // avoids landing on an odd in-between scale that's hard to reason
+    // about when reporting a display bug.
+    final closestStep = steps.reduce(
+      (a, b) => (a - a11y.textScale).abs() < (b - a11y.textScale).abs() ? a : b,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('DISPLAY', style: TextStyle(
+            color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+        const SizedBox(height: 14),
+
+        // ── Text size ──────────────────────────────────────────────────
+        Row(children: [
+          const Icon(Icons.text_fields_rounded, color: AppColors.textSec, size: 16),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text('Text Size', style: TextStyle(
+                color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
+          ),
+          Text('${(a11y.textScale * 100).round()}%',
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+        Row(children: [
+          Text('A', style: TextStyle(color: AppColors.textMuted, fontSize: 13 * AccessibilitySettings.minScale)),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: AppColors.accent,
+                inactiveTrackColor: AppColors.bgBorder,
+                thumbColor: AppColors.accent,
+                overlayColor: AppColors.accent.withValues(alpha: 0.15),
+                trackHeight: 3,
+              ),
+              child: Slider(
+                value: closestStep,
+                min: steps.first,
+                max: steps.last,
+                divisions: steps.length - 1,
+                onChanged: (v) {
+                  // Snap to nearest defined step even mid-drag.
+                  final nearest = steps.reduce(
+                      (a, b) => (a - v).abs() < (b - v).abs() ? a : b);
+                  context.read<AccessibilitySettings>().setTextScale(nearest);
+                },
+              ),
+            ),
+          ),
+          Text('A', style: TextStyle(color: AppColors.textMuted, fontSize: 13 * AccessibilitySettings.maxScale)),
+        ]),
+        const SizedBox(height: 10),
+
+        // ── High contrast ───────────────────────────────────────────────
+        InkWell(
+          onTap: () => context.read<AccessibilitySettings>().setHighContrast(!a11y.highContrast),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(children: [
+              const Icon(Icons.contrast_rounded, color: AppColors.textSec, size: 16),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('High Contrast', style: TextStyle(
+                        color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
+                    Text('Boosts contrast across the whole app', style: TextStyle(
+                        color: AppColors.textMuted, fontSize: 11)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: a11y.highContrast,
+                activeColor: AppColors.accent,
+                onChanged: (v) => context.read<AccessibilitySettings>().setHighContrast(v),
+              ),
+            ]),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import './firebase_options.dart';
+import 'services/accessibility_settings.dart';
 import 'services/auth_service.dart';
 import 'services/flood_status_service.dart';
 import 'services/notification_service.dart';
@@ -65,6 +66,10 @@ Future<void> main() async {
         // here, so it's already running (and loading any cached last-known
         // reading) before either screen even mounts.
         ChangeNotifierProvider(create: (_) => FloodStatusService()..start()),
+        // Text size + high contrast — loaded async (SharedPreferences),
+        // defaults (scale 1.0, contrast off) apply instantly so there's
+        // no blank/loading frame at startup.
+        ChangeNotifierProvider(create: (_) => AccessibilitySettings()..load()),
       ],
       child: const AgosApp(),
     ),
@@ -100,6 +105,29 @@ class AgosApp extends StatelessWidget {
         // Tapped from a "your report was verified" / community-report push —
         // opens straight into the Reports tab (index 4, see main_shell.dart).
         '/community-reports': (_) => const MainShell(initialTabIndex: 4),
+      },
+      // Applies the text-size + high-contrast accessibility settings
+      // (see services/accessibility_settings.dart) to every screen,
+      // regardless of which one is currently showing.
+      builder: (context, child) {
+        final safeChild = child ?? const SizedBox.shrink();
+        return Consumer<AccessibilitySettings>(
+          builder: (context, a11y, _) {
+            Widget wrapped = MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(a11y.textScale),
+              ),
+              child: safeChild,
+            );
+            if (a11y.highContrast) {
+              wrapped = ColorFiltered(
+                colorFilter: ColorFilter.matrix(AccessibilitySettings.highContrastMatrix),
+                child: wrapped,
+              );
+            }
+            return wrapped;
+          },
+        );
       },
       // No login gate — AGOS's data is public. Straight into the app.
       home: const MainShell(),
