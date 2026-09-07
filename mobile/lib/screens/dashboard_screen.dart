@@ -60,16 +60,19 @@ const _alertColors = {
 // ─── Hero gradient per alert level ────────────────────────────────────────────
 // Styled after the reference weather app's mood gradients (a calm blue for
 // clear skies, deep purple for a thunderstorm) — here the "mood" is flood
-// risk instead of weather condition. Kept fairly dark/saturated so white
-// hero text stays readable, and left slightly translucent-friendly (no
-// pure white anywhere) so WeatherBackdrop/RainOverlay can still show
-// through faintly, same as lightning bleeding through the reference app's
-// purple storm header.
+// risk instead of weather condition.
+//
+// Alpha is deliberately 0xCC (~80%), not 0xFF — fully opaque colors here
+// would completely hide WeatherBackdrop/RainOverlay, which are painted
+// behind the whole screen in build() below, no matter how the Stack is
+// ordered. This is what actually lets the rain/mood animation show
+// through the hero, the same way lightning bleeds through the reference
+// app's purple storm header.
 const _heroGradients = {
-  'NORMAL':   [Color(0xFF1c6e6e), Color(0xFF0d3b52), Color(0xFF0a2540)],
-  'ADVISORY': [Color(0xFF7a5a12), Color(0xFF4a3a1e), Color(0xFF0a2540)],
-  'WARNING':  [Color(0xFF8a4310), Color(0xFF5c2a1c), Color(0xFF0a1830)],
-  'CRITICAL': [Color(0xFF7a1620), Color(0xFF4a1030), Color(0xFF0a0f28)],
+  'NORMAL':   [Color(0xCC1c6e6e), Color(0xCC0d3b52), Color(0xCC0a2540)],
+  'ADVISORY': [Color(0xCC7a5a12), Color(0xCC4a3a1e), Color(0xCC0a2540)],
+  'WARNING':  [Color(0xCC8a4310), Color(0xCC5c2a1c), Color(0xCC0a1830)],
+  'CRITICAL': [Color(0xCC7a1620), Color(0xCC4a1030), Color(0xCC0a0f28)],
 };
 
 List<Color> _severityGradient(String key) => _heroGradients[key] ?? _heroGradients['NORMAL']!;
@@ -549,13 +552,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // 2 — Floating rounded-top panel holding everything else — the
         // AGOS equivalent of the reference app's dark "Weather forecast"
         // sheet that overlaps the bottom of the colored hero.
+        //
+        // Translucent (not solid AppColors.bgDeep) so WeatherBackdrop's
+        // mood gradient and RainOverlay's animation — both painted behind
+        // this entire screen in build() below — show through the gaps
+        // between cards, instead of being fully hidden behind an opaque
+        // sheet. Individual cards inside (bgCard, etc.) stay fully opaque
+        // for text readability; only this shared panel background is see-
+        // through.
         Expanded(
           child: Transform.translate(
             offset: const Offset(0, -22),
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
               child: Container(
-                color: AppColors.bgDeep,
+                color: AppColors.bgDeep.withValues(alpha: 0.86),
                 child: RefreshIndicator(
                   onRefresh: _refreshAll,
                   color: const Color(0xFF38bdf8),
