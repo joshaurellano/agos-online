@@ -1,15 +1,20 @@
 // dashboard_screen.dart
 //
-// Resident-facing home screen for AGOS. Redesigned to read like a plain
-// weather-forecast app first, technical instrument panel a distant second:
+// Resident-facing home screen for AGOS. Redesigned to read like a flood-
+// forecasting app first, general weather app a distant second:
 //
-//   1. Hero card       — today's flood outlook, in plain language
-//   2. Quick stat bar   — rainfall now / humidity
-//   3. Hourly Forecast — next 48 hours, straight from Open-Meteo
-//   4. Daily Flood Forecast — the model's actual 14-day forward outlook
-//      (previously unused in this screen — GET /api/forecast-flood)
-//   5. Quick actions, the Alert Levels reference table, and the Rain Map
-//      link live further down, for anyone who wants to dig in.
+//   1. Hero card            — today's flood outlook, in plain language
+//   2. Right Now guidance   — what to do at the current alert level
+//   3. 7-Day Flood Risk Trend — at-a-glance bar trend of the model's daily
+//      flood probability (the flood equivalent of a weather app's
+//      temperature-over-the-week graph)
+//   4. 14-Day Flood Forecast — the model's full forward outlook
+//      (GET /api/forecast-flood)
+//   5. Rainfall Outlook, Quick Actions, Alert Levels table, Flood Map link
+//   6. "WEATHER DATA" divider, then the general weather-forecast content —
+//      minute-by-minute precip, current temp, 48h hourly, and the full
+//      wind/pressure/UV/etc. details grid — kept in full, just visually
+//      demoted below the flood content instead of leading the screen.
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -611,48 +616,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
 
                         _RightNowCard(alertKey: _currentAlertKey, alertColor: _alertColor),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 18),
 
-                        if (_minutely.length >= 2) ...[
-                          MinuteForecastCard(minutely: _minutely),
-                          const SizedBox(height: 22),
-                        ] else
-                          const SizedBox(height: 8),
+                        // ── FLOOD FORECASTING CORE ───────────────────────────
+                        // Everything from here down to the "WEATHER DATA"
+                        // divider is flood-specific: the week's risk trend,
+                        // the model's own 14-day outlook, and the rainfall
+                        // totals that actually drive that outlook. This is
+                        // the app's main content, so it comes immediately
+                        // after the hero/guidance — ahead of any raw weather
+                        // numbers (temp, wind, pressure, etc.), which are
+                        // supporting reference data, not the headline.
+                        _FloodRiskTrendChart(days: _dailyFlood, loading: _dailyLoading),
+                        const SizedBox(height: 22),
 
-                        // Current weather (big temp + Feels like/Humidity/Wind
-                        // row), then Hourly Forecast (next 48h), each with a
-                        // "see more" pill mirroring the reference app's
-                        // "168 hours >" / "45 days >" buttons.
-                        _CurrentWeatherHero(current: _hourly.isNotEmpty ? _hourly.first : null),
-                        const SizedBox(height: 14),
-                        _SectionLabel(
-                          icon: '🕐', text: 'Hourly Forecast',
-                          trailing: const SectionPill(text: '48 hours'),
-                        ),
-                        const SizedBox(height: 2),
-                        const Text('OpenMeteo · Brgy. Triangulo, Naga City',
-                            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
-                        const SizedBox(height: 10),
-                        _HourlyForecastStrip(hourly: _hourly, loading: _hourlyLoading),
-                        const SizedBox(height: 16),
-
-                        // Full current-conditions parameter grid — wind, gusts,
-                        // humidity, visibility, pressure, UV index, dew point, soil
-                        // moisture. Same 8 stats the web dashboard's WeatherForecast
-                        // panel already shows; ported here so mobile has the same
-                        // level of detail instead of just temp + rain.
-                        _WeatherDetailsGrid(current: _hourly.isNotEmpty ? _hourly.first : null),
-                        const SizedBox(height: 16),
-
-                        // Rainfall outlook — next 6h/12h/24h accumulated totals and
-                        // peak rain-probability, from the same /api/forecast payload.
-                        if (_outlook != null) ...[
-                          _RainfallOutlookRow(outlook: _outlook!),
-                          const SizedBox(height: 24),
-                        ] else
-                          const SizedBox(height: 8),
-
-                        // 3 — Daily Flood Forecast (the model's own 14-day outlook)
                         _SectionLabel(
                           icon: '📅', text: '14-Day Flood Forecast',
                           trailing: const SectionPill(text: '14 days'),
@@ -666,10 +643,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           loading: _dailyLoading,
                           error: _dailyError,
                         ),
-                        const SizedBox(height: 26),
+                        const SizedBox(height: 22),
 
-                        // 4 — Quick actions, reference table, and the map link, for
-                        // anyone who wants to dig in further.
+                        // Rainfall outlook — next 6h/12h/24h accumulated totals and
+                        // peak rain-probability. Flood-relevant (it's the direct
+                        // input to the flood model above), so it stays up here
+                        // with the rest of the flood content rather than down in
+                        // the weather-data section below.
+                        if (_outlook != null) ...[
+                          _RainfallOutlookRow(outlook: _outlook!),
+                          const SizedBox(height: 24),
+                        ] else
+                          const SizedBox(height: 8),
+
+                        // Quick actions, reference table, and the map link.
                         _QuickActionsRow(onNavigate: widget.onNavigate),
                         const SizedBox(height: 22),
 
@@ -679,6 +666,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const SizedBox(height: 18),
 
                         _MapTeaserCard(onTap: () => widget.onNavigate?.call(1)),
+                        const SizedBox(height: 28),
+
+                        // ── WEATHER DATA (supporting reference) ──────────────
+                        // The general weather-forecasting features — none of
+                        // them removed, all still one scroll away — just no
+                        // longer competing with flood content for the top of
+                        // the screen. Kept together, visually quieted (see
+                        // _WeatherSectionDivider / muted _SectionLabels), so
+                        // the app still reads as a flood-forecasting app that
+                        // happens to include full weather detail, not the
+                        // other way around.
+                        const _WeatherSectionDivider(),
+                        const SizedBox(height: 16),
+
+                        if (_minutely.length >= 2) ...[
+                          MinuteForecastCard(minutely: _minutely),
+                          const SizedBox(height: 20),
+                        ] else
+                          const SizedBox(height: 4),
+
+                        _CurrentWeatherHero(current: _hourly.isNotEmpty ? _hourly.first : null),
+                        const SizedBox(height: 14),
+                        _SectionLabel(
+                          icon: '🕐', text: 'Hourly Weather',
+                          muted: true,
+                          trailing: const SectionPill(text: '48 hours'),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text('OpenMeteo · Brgy. Triangulo, Naga City',
+                            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+                        const SizedBox(height: 10),
+                        _HourlyForecastStrip(hourly: _hourly, loading: _hourlyLoading),
+                        const SizedBox(height: 16),
+
+                        // Full current-conditions parameter grid — wind, gusts,
+                        // humidity, visibility, pressure, UV index, dew point, soil
+                        // moisture. Same 8 stats the web dashboard's WeatherForecast
+                        // panel already shows.
+                        _WeatherDetailsGrid(current: _hourly.isNotEmpty ? _hourly.first : null),
                       ],
                     ),
                   ),
@@ -794,20 +820,55 @@ class _CurrentWeatherHero extends StatelessWidget {
 class _SectionLabel extends StatelessWidget {
   final String icon, text;
   final Widget? trailing;
-  const _SectionLabel({required this.icon, required this.text, this.trailing});
+  // Weather-data sections (temp, hourly, wind/pressure/UV grid) use muted:
+  // true so they read as smaller, secondary reference headers — the flood
+  // sections (trend, 14-day outlook, rainfall outlook) keep the full-size
+  // bright treatment so they visually lead the screen.
+  final bool muted;
+  const _SectionLabel({required this.icon, required this.text, this.trailing, this.muted = false});
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    Text(icon, style: const TextStyle(fontSize: 13)),
+    Text(icon, style: TextStyle(fontSize: muted ? 12 : 13)),
     const SizedBox(width: 6),
     Expanded(
-      child: Text(text, style: const TextStyle(
-        color: AppColors.textPri, fontSize: 15,
+      child: Text(text, style: TextStyle(
+        color: muted ? AppColors.textSec : AppColors.textPri,
+        fontSize: muted ? 13 : 15,
         fontWeight: FontWeight.w800, letterSpacing: -0.2,
       )),
     ),
     if (trailing != null) trailing!,
   ]);
+}
+
+// ── Weather Data section divider ──────────────────────────────────────────────
+// Marks the boundary between AGOS's core flood-forecasting content (above)
+// and the supporting raw-weather reference data (below) — temperature,
+// hourly conditions, wind/pressure/UV grid. Deliberately quiet (a thin
+// rule + small muted label) rather than another bold _SectionLabel, so it
+// reads as "extra detail if you want it" rather than competing with the
+// flood sections for attention.
+class _WeatherSectionDivider extends StatelessWidget {
+  const _WeatherSectionDivider();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(children: [
+      Expanded(child: Container(height: 1, color: AppColors.bgBorder)),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(children: const [
+          Icon(Icons.cloud_outlined, size: 12, color: AppColors.textMuted),
+          SizedBox(width: 5),
+          Text('WEATHER DATA', style: TextStyle(
+              color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
+        ]),
+      ),
+      Expanded(child: Container(height: 1, color: AppColors.bgBorder)),
+    ]),
+  );
 }
 
 class _OfflineBanner extends StatelessWidget {
@@ -1052,7 +1113,7 @@ class _WeatherDetailsGrid extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionLabel(icon: '📊', text: 'Weather Details'),
+        const _SectionLabel(icon: '📊', text: 'Weather Details', muted: true),
         const SizedBox(height: 2),
         const Text('Current conditions · Open-Meteo',
             style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
@@ -1106,6 +1167,108 @@ class _WeatherDetailsGrid extends StatelessWidget {
           )).toList(),
         ),
       ],
+    );
+  }
+}
+
+// ── Flood Risk Trend (next 7 days, from the same 14-day model outlook) ───────
+// The flood-forecasting equivalent of a weather app's "temperature over the
+// next week" trend graph — except every bar is a flood-probability reading,
+// colored by alert level, so the shape of the week's flood risk is visible
+// at a glance before anyone reads the day-by-day list below it. This is
+// deliberately the first thing under the hero/guidance, ahead of any
+// weather content, since a trend chart is one of the strongest visual
+// signals that this is a flood-forecasting app rather than a weather app
+// with a flood banner bolted on.
+class _FloodRiskTrendChart extends StatelessWidget {
+  final List<_DailyFloodForecast> days;
+  final bool loading;
+  const _FloodRiskTrendChart({required this.days, required this.loading});
+
+  String _shortDay(_DailyFloodForecast d) {
+    if (d.dayAhead == 0) return 'Today';
+    if (d.dayAhead == 1) return 'Tmrw';
+    const wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return wdays[d.date.weekday - 1];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading || days.isEmpty) {
+      return Container(
+        height: 132, alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0a1828),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF1e3a5f)),
+        ),
+        child: Text(
+          loading ? 'Loading flood risk trend...' : 'Flood risk trend unavailable',
+          style: const TextStyle(color: Color(0xFF4a6080), fontSize: 12),
+        ),
+      );
+    }
+
+    final week = days.take(7).toList();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0d1f3c),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1e3a5f)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('7-Day Flood Risk Trend', style: TextStyle(
+              color: AppColors.textPri, fontSize: 13, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          const Text('Model probability of flooding, by day',
+              style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: week.map((d) {
+              final color = _alertColors[d.alertLevel] ?? _alertColors['NORMAL']!;
+              final pct = d.probabilityPct.clamp(0, 100).toDouble();
+              // Minimum bar height so a 0-2% day still reads as a visible
+              // bar rather than a sliver — same trick weather apps use so
+              // a calm day doesn't look like missing data. Deliberately no
+              // fixed-height wrapper around this Row: the % and day labels
+              // above/below the bar scale with the user's Text Size
+              // accessibility setting (see main_shell.dart), so any fixed
+              // pixel budget for "label + bar + label" would eventually
+              // overflow at a large enough text scale. Letting the Row
+              // size to its own content instead means it can never
+              // overflow, at any font size.
+              final barHeight = 6 + (pct / 100) * 56;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${pct.toStringAsFixed(0)}%', style: TextStyle(
+                          color: color, fontSize: 9.5, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Container(
+                        height: barHeight,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.85),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(_shortDay(d), style: const TextStyle(
+                          color: Color(0xFF8da4be), fontSize: 9.5, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
     );
   }
 }
