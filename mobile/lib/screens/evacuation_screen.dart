@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../main.dart';
 import '../theme/panahon_ui.dart';
+import '../services/routing_service.dart';
 
 // ─── Evacuation Centers ────────────────────────────────────────────────────────
 class _EvacCenter {
@@ -146,6 +147,18 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
   bool _nearestBannerDismissed = false;
   double? _nearestDist;
 
+  // Real street-following route to whichever center is currently "the
+  // one" (the selected center if any, otherwise the nearest). Was already
+  // built (services/routing_service.dart, OSRM-backed) but never actually
+  // called anywhere — the map was drawing a straight haversine line
+  // regardless. null routePoints means "no route fetched yet, or the
+  // fetch failed" — the map falls back to the straight line in that case,
+  // same behavior as before this existed.
+  List<LatLng>? _routePoints;
+  double? _routeDistanceMeters;
+  int? _routeDurationSeconds;
+  bool _routing = false;
+
   final MapController _mapController = MapController();
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchCtrl = TextEditingController();
@@ -179,6 +192,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       _searchError = null;
       _selectedCenterId = c.id;
     });
+    _fetchRoute(c);
     _mapController.move(LatLng(c.lat, c.lng), 16.5);
     HapticFeedback.selectionClick();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -193,6 +207,71 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
     final target = (_zoom + delta).clamp(12.0, 19.0);
     setState(() => _zoom = target);
     _mapController.move(_mapController.camera.center, target);
+  }
+
+  // ── Street-following route to a center ─────────────────────────────────────
+  // Fetches once per selection change, not on every rebuild — call sites are
+  // the handful of places _selectedCenterId or _nearest actually change.
+  Future<void> _fetchRoute(_EvacCenter? to) async {
+    if (_userLocation == null || to == null) {
+      setState(() {
+        _routePoints = null;
+        _routeDistanceMeters = null;
+        _routeDurationSeconds = null;
+      });
+      return;
+    }
+    setState(() => _routing = true);
+    final result = await RoutingService.fetchWalkingRoute(
+      _userLocation!,
+      LatLng(to.lat, to.lng),
+    );
+    if (!mounted) return;
+    setState(() {
+      _routing = false;
+      _routePoints = result?.points;
+      _routeDistanceMeters = result?.distanceMeters;
+      _routeDurationSeconds = result?.durationSeconds;
+      // result == null (offline, OSRM demo server unreachable, etc.) —
+      // all three go back to null, and the map falls back to the plain
+      // haversine straight line further down, same as before this feature
+      // existed. Never leaves a stale route from a previous center on
+      // screen after a failed fetch for a new one.
+    });
+  }
+
+  // Central place that changes which center is "selected" — every tap
+  // target (marker, list card, search) routes through this so the fetched
+  // walking route always matches what's highlighted, instead of the route
+  // staying stuck on whichever center was nearest at locate-time.
+  void _selectCenter(String? id) {
+    setState(() => _selectedCenterId = id);
+    _EvacCenter? target = _nearest;
+    if (id != null) {
+      for (final c in _centers) {
+        if (c.id == id) { target = c; break; }
+      }
+    }
+    _fetchRoute(target);
+  }
+
+  String _formatDuration(int seconds) {
+    final minutes = (seconds / 60).round();
+    if (minutes < 1) return '<1 min';
+    if (minutes < 60) return '$minutes min';
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    return m == 0 ? '${h}h' : '${h}h ${m}m';
+  }
+
+  // Whichever center the route line/banners currently point at — the
+  // selected one if the user picked one, otherwise the nearest.
+  _EvacCenter? get _routeTarget {
+    if (_selectedCenterId == null) return _nearest;
+    for (final c in _centers) {
+      if (c.id == _selectedCenterId) return c;
+    }
+    return _nearest;
   }
 
   // ── Location fetching ──────────────────────────────────────────────────────
@@ -262,6 +341,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         _zoom = 14.8;
         _mapController.move(LatLng(midLat, midLng), _zoom);
       }
+      _fetchRoute(nearest);
 
       // Scroll list to top so the highlighted card is visible
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -299,7 +379,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 initialCenter: _trianguloCenter,
                 initialZoom: 14.5,
                 // Tapping the map clears the selection highlight
-                onTap: (_, __) => setState(() => _selectedCenterId = null),
+                onTap: (_, __) => _selectCenter(null),
                 onPositionChanged: (pos, _) => _zoom = pos.zoom,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
@@ -335,17 +415,24 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                   ),
                 ]),
 
-                // Route line: user → nearest center
-                if (_userLocation != null && _nearest != null)
+                // Route line: user → whichever center is selected (or the
+                // nearest one, if none is). Real street-following path
+                // when OSRM returned one (_routePoints); falls back to the
+                // old straight haversine line if the fetch is still in
+                // flight or failed (offline, demo server unreachable).
+                if (_userLocation != null && _routeTarget != null)
                   PolylineLayer(polylines: [
                     Polyline(
-                      points: [
-                        _userLocation!,
-                        LatLng(_nearest!.lat, _nearest!.lng),
-                      ],
+                      points: _routePoints ??
+                          [
+                            _userLocation!,
+                            LatLng(_routeTarget!.lat, _routeTarget!.lng),
+                          ],
                       color: const Color(0xFF22C55E),
                       strokeWidth: 3.5,
-                      pattern: StrokePattern.dashed(segments: [12, 6]),
+                      pattern: _routePoints == null
+                          ? StrokePattern.dashed(segments: [12, 6])
+                          : const StrokePattern.solid(),
                     ),
                   ]),
 
@@ -400,8 +487,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                         height: 60,
                         child: GestureDetector(
                           onTap: () {
-                            setState(() => _selectedCenterId =
-                                _selectedCenterId == c.id ? null : c.id);
+                            _selectCenter(_selectedCenterId == c.id ? null : c.id);
                             // Scroll list so the tapped card is visible at top
                             WidgetsBinding.instance.addPostFrameCallback((_) {
                               if (_scrollController.hasClients) {
@@ -527,6 +613,15 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                               const SizedBox(height: 2),
                               Text(_nearest!.name,
                                   style: const TextStyle(color: Color(0xFFe2eaf5), fontSize: 12, fontWeight: FontWeight.w700)),
+                              if (_routeTarget?.id == _nearest!.id && _routeDurationSeconds != null) ...[
+                                const SizedBox(height: 2),
+                                Text('🚶 ${_formatDuration(_routeDurationSeconds!)} by street',
+                                    style: const TextStyle(color: Color(0xFF7fd9a0), fontSize: 10, fontWeight: FontWeight.w600)),
+                              ] else if (_routeTarget?.id == _nearest!.id && _routing) ...[
+                                const SizedBox(height: 2),
+                                const Text('Finding walking route…',
+                                    style: TextStyle(color: Color(0xFF7fd9a0), fontSize: 10, fontWeight: FontWeight.w600)),
+                              ],
                             ]),
                           ),
                           const SizedBox(width: 8),
@@ -783,8 +878,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: GestureDetector(
-                    onTap: () => setState(() =>
-                        _selectedCenterId = isSelected ? null : c.id),
+                    onTap: () => _selectCenter(isSelected ? null : c.id),
                     child: _CenterCard(
                       center: c,
                       isNearest: isNearest,
@@ -988,14 +1082,36 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                   ]),
                 ]),
               ),
-              if (dist != null) ...[
+              if (_routing && _selectedCenterId == c.id) ...[
+                const SizedBox(height: 6),
+                Row(children: [
+                  const SizedBox(
+                    width: 11, height: 11,
+                    child: CircularProgressIndicator(strokeWidth: 1.6, color: Color(0xFF22C55E)),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text('Finding walking route…',
+                      style: TextStyle(color: Color(0xFF8da4be), fontSize: 11, fontWeight: FontWeight.w600)),
+                ]),
+              ] else if (_routeDistanceMeters != null && _selectedCenterId == c.id) ...[
+                const SizedBox(height: 6),
+                Row(children: [
+                  const Icon(Icons.directions_walk_rounded, color: Color(0xFF22C55E), size: 13),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${_formatDistance(_routeDistanceMeters!)} · ${_formatDuration(_routeDurationSeconds ?? 0)} by street'
+                    '${dist != null ? ' (${_formatDistance(dist)} straight-line)' : ''}',
+                    style: const TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                ]),
+              ] else if (dist != null) ...[
                 const SizedBox(height: 6),
                 Row(children: [
                   const Icon(Icons.directions_walk_rounded,
                       color: Color(0xFF22C55E), size: 13),
                   const SizedBox(width: 4),
                   Text(
-                    '${_formatDistance(dist)} away',
+                    '${_formatDistance(dist)} away (straight-line — street route unavailable)',
                     style: const TextStyle(
                         color: Color(0xFF22C55E),
                         fontSize: 11,
@@ -1007,7 +1123,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
           ),
           // Dismiss button
           GestureDetector(
-            onTap: () => setState(() => _selectedCenterId = null),
+            onTap: () => _selectCenter(null),
             child: const Padding(
               padding: EdgeInsets.all(4),
               child:
