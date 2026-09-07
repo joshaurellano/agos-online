@@ -18,24 +18,7 @@ const _categoryIcons = <String, IconData>{
 };
 
 class ReportIncidentScreen extends StatefulWidget {
-  // Lets a caller (e.g. the Evacuation screen's "I'm stranded here" quick
-  // action) hand off a GPS fix it already has, so the resident doesn't have
-  // to tap "Attach my current location" again — and so the report carries
-  // real coordinates even if the device's location fix is flaky in the
-  // moment. Purely optional; the normal in-form "Attach my current
-  // location" flow still works exactly as before when these are null.
-  final double? initialLat;
-  final double? initialLng;
-  final String? initialLocationLabel;
-  final String? initialCategory;
-
-  const ReportIncidentScreen({
-    super.key,
-    this.initialLat,
-    this.initialLng,
-    this.initialLocationLabel,
-    this.initialCategory,
-  });
+  const ReportIncidentScreen({super.key});
 
   @override
   State<ReportIncidentScreen> createState() => _ReportIncidentScreenState();
@@ -54,21 +37,6 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
   bool _submitting = false;
   String? _errorMsg;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.initialCategory != null &&
-        kIncidentCategories.contains(widget.initialCategory)) {
-      _category = widget.initialCategory!;
-    }
-    if (widget.initialLat != null && widget.initialLng != null) {
-      _lat = widget.initialLat;
-      _lng = widget.initialLng;
-      _locationLabel = widget.initialLocationLabel ??
-          '${widget.initialLat!.toStringAsFixed(5)}, ${widget.initialLng!.toStringAsFixed(5)}';
-    }
-  }
 
   @override
   void dispose() {
