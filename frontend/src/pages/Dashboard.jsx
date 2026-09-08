@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { SectionLabel, ErrorBanner } from '../components/ui';
 import Swal from 'sweetalert2';
-import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup, CircleMarker as LeafletCircleMarker } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -13,6 +13,7 @@ import {
   REPORT_STATUS_COLORS,
   reportTimeAgo,
   findNearbyDuplicates,
+  haversineMeters,
 } from '../lib/incidentReports';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -21,6 +22,7 @@ import {
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { useAuth } from '../hooks/useAuth';
+import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
 import { useFloodForecast14Day } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
@@ -82,6 +84,7 @@ function createReportIcon(report) {
 // pops locally so the interaction itself can be reviewed and wired up
 // without holding up the rest of the redesign on a schema change.
 function StillHappeningButton({ reportId }) {
+  const { t } = useLanguage();
   const [confirmed, setConfirmed] = useState(false);
   const [count, setCount] = useState(0);
   return (
@@ -93,7 +96,7 @@ function StillHappeningButton({ reportId }) {
       onClick={() => { setConfirmed(true); setCount(c => c + 1); }}
       aria-pressed={confirmed}
     >
-      {confirmed ? `✓ Confirmed${count > 1 ? ` (${count})` : ''}` : 'Still happening?'}
+      {confirmed ? `✓ ${t('confirmed')}${count > 1 ? ` (${count})` : ''}` : t('stillHappening')}
     </button>
   );
 }
@@ -397,6 +400,7 @@ function Sparkline({ data, color, width = 72, height = 22 }) {
 // validity window, and enumerated recommended actions, with the emergency
 // dispatch action attached directly to the bulletin it corresponds to.
 function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, probabilityPct, onSendAlert, canSendAlert }) {
+  const { t } = useLanguage();
   const TREND_COPY = {
     rising:  { icon: '↗', label: 'Rising trend', color: '#f97316' },
     falling: { icon: '↘', label: 'Falling trend', color: '#22c55e' },
@@ -442,7 +446,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
               color: '#fff', background: alertColor,
               padding: '4px 12px', borderRadius: 5, letterSpacing: '0.04em',
             }}>
-              {currentAlert}
+              {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
             </span>
             {trend && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 700, color: trend.color }}>
@@ -451,7 +455,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
             )}
           </div>
           <div style={{ fontSize: '0.86rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-            {alertInfo.description}
+            {t(`alertLevel.${currentAlert}.desc`)}
           </div>
         </div>
 
@@ -463,7 +467,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
             Recommended Action
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            {alertInfo.action}
+            {(currentAlert === 'WARNING' || currentAlert === 'CRITICAL') ? t('evacuateNow') + ' — ' + alertInfo.action : alertInfo.action}
           </div>
         </div>
 
@@ -474,6 +478,93 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
             </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Public accountability strip — shows how actively the moderation queue
+// is being worked, not just the raw report counts staff already see on
+// CommunityReportsPage. The idea (borrowed from how the UK Environment
+// Agency and US NWS publish service performance alongside raw alerts) is
+// that residents keep reporting when they can see reports actually get
+// looked at, not just filed into a void. Reads the same public
+// pending+verified snapshot the map already fetches, no separate
+// permission needed; rejected reports and average review time need
+// `reviewed_at` on rows that have moved past pending, which
+// CommunityReportsPage already writes on verify/reject.
+function CommunityTrustStrip() {
+  // Fetches its own slice of incident_reports rather than threading state
+  // down from FloodMap — the map's report list is scoped to markers
+  // (pending+verified with coordinates), while this only needs status +
+  // timestamps and should keep working even if the map layer changes.
+  const [reports, setReports] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStats = async () => {
+      const { data, error } = await supabase
+        .from('incident_reports')
+        .select('status, created_at, reviewed_at');
+      if (error) {
+        logger.error('incident_reports fetch error (trust strip):', error.message);
+        return;
+      }
+      if (!cancelled) setReports(data ?? []);
+    };
+    fetchStats();
+    const channel = supabase
+      .channel('incident_reports_trust_strip')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incident_reports' }, fetchStats)
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, []);
+
+  const stats = useMemo(() => {
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const verifiedToday = reports.filter(r =>
+      r.status === 'verified' && r.reviewed_at && (now - new Date(r.reviewed_at).getTime()) < oneDayMs
+    );
+    const pending = reports.filter(r => r.status === 'pending');
+    const withReviewTime = reports.filter(r => r.status === 'verified' && r.reviewed_at && r.created_at);
+    const avgMinutes = withReviewTime.length
+      ? Math.round(
+          withReviewTime.reduce((sum, r) => sum + (new Date(r.reviewed_at) - new Date(r.created_at)), 0)
+          / withReviewTime.length / 60000
+        )
+      : null;
+    return { verifiedTodayCount: verifiedToday.length, pendingCount: pending.length, avgMinutes };
+  }, [reports]);
+
+  const avgLabel = stats.avgMinutes == null ? '—'
+    : stats.avgMinutes < 60 ? `${stats.avgMinutes}m`
+    : `${(stats.avgMinutes / 60).toFixed(1)}h`;
+
+  return (
+    <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 20, padding: '14px 20px', marginBottom: 16, alignItems: 'center' }}>
+      <div style={{ fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+        Community reporting, today
+      </div>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+        <div>
+          <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#22c55e' }}>
+            {stats.verifiedTodayCount}
+          </span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>verified today</span>
+        </div>
+        <div>
+          <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#eab308' }}>
+            {stats.pendingCount}
+          </span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>awaiting review</span>
+        </div>
+        <div>
+          <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--accent)' }}>
+            {avgLabel}
+          </span>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>average time to verify</span>
+        </div>
       </div>
     </div>
   );
@@ -523,17 +614,20 @@ function ConditionsStrip({ items }) {
 // Standing footer disclaimer — the "provisional data, not a substitute for
 // official warnings" language every USGS/NOAA gauge page carries.
 function DisclaimerFooter() {
+  const { t } = useLanguage();
   return (
     <div style={{
       marginTop: 20, padding: '12px 16px',
       borderTop: '1px solid var(--blue-border)',
       fontSize: '0.66rem', color: 'var(--text-muted)', lineHeight: 1.6,
-      display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
     }}>
-      <span>
-        Forecasts are model-generated (no physical water-level sensor) and intended for situational awareness only
-      </span>
-      <span style={{ whiteSpace: 'nowrap' }}>Sources: Open-Meteo · GloFAS · flood_snapshots</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
+        <span>
+          Forecasts are model-generated (no physical water-level sensor) and intended for situational awareness only
+        </span>
+        <span style={{ whiteSpace: 'nowrap' }}>Sources: Open-Meteo · GloFAS · flood_snapshots</span>
+      </div>
+      <div>{t('disclaimer')}</div>
     </div>
   );
 }
@@ -588,6 +682,31 @@ function BasemapSwitcher({ basemap, onChange }) {
   );
 }
 
+// Groups verified Flood-category reports into simple proximity clusters
+// (greedy, radius-based — same distance helper used for duplicate
+// detection) so the map can show "this spot has flooded before" as a
+// density read, the way Google Flood Hub's inundation-history layer works
+// off past events rather than only the live forecast. This is a
+// client-side approximation from whatever verified reports the public
+// query already returns; a production version would query a longer,
+// date-scoped history from the backend rather than the current
+// pending+verified snapshot.
+const HISTORY_CLUSTER_RADIUS_METERS = 60;
+
+function clusterFloodHistory(reports) {
+  const floodReports = reports.filter(r => r.category === 'Flood' && r.status === 'verified');
+  const clusters = [];
+  for (const r of floodReports) {
+    const existing = clusters.find(c => haversineMeters(c.lat, c.lng, r.latitude, r.longitude) <= HISTORY_CLUSTER_RADIUS_METERS);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      clusters.push({ lat: r.latitude, lng: r.longitude, count: 1 });
+    }
+  }
+  return clusters;
+}
+
 // Small checkbox panel for toggling map overlays on/off — lets a visitor
 // declutter the map (hide the boundary tint, hide report pins) without
 // needing a full GIS-style layer list.
@@ -626,11 +745,13 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   const [reports, setReports] = useState([]);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showReports, setShowReports] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
   // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
+  const historyClusters = useMemo(() => clusterFloodHistory(reports), [reports]);
 
   // Resident-submitted incident reports, as map pins. Only pending +
   // verified are shown — rejected reports are moderation history, not
@@ -698,6 +819,22 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
             </LeafletTooltip>
           </LeafletPolygon>
         )}
+
+        {showHistory && historyClusters.map((c, i) => (
+          <LeafletCircleMarker
+            key={`history-${i}`}
+            center={[c.lat, c.lng]}
+            radius={6 + Math.min(c.count, 6) * 2}
+            pathOptions={{
+              color: '#a855f7', weight: 1, fillColor: '#a855f7',
+              fillOpacity: Math.min(0.15 + c.count * 0.08, 0.55),
+            }}
+          >
+            <LeafletTooltip>
+              {c.count} verified flood report{c.count > 1 ? 's' : ''} recorded near here
+            </LeafletTooltip>
+          </LeafletCircleMarker>
+        ))}
 
         <MarkerClusterGroup chunkedLoading maxClusterRadius={55} iconCreateFunction={createReportClusterIcon}>
           {showReports && reports.map(report => {
@@ -801,8 +938,13 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
         layers={[
           { key: 'boundary', label: 'Boundary', visible: showBoundary },
           { key: 'reports', label: 'Reports', visible: showReports },
+          { key: 'history', label: 'Flood history', visible: showHistory },
         ]}
-        onToggle={(key) => key === 'boundary' ? setShowBoundary(v => !v) : setShowReports(v => !v)}
+        onToggle={(key) => {
+          if (key === 'boundary') setShowBoundary(v => !v);
+          else if (key === 'reports') setShowReports(v => !v);
+          else setShowHistory(v => !v);
+        }}
       />
     </div>
   );
@@ -1616,6 +1758,8 @@ export default function Dashboard() {
         onSendAlert={handleEvacuationAlert}
         canSendAlert={!!user && !userIsResident}
       />
+
+      <CommunityTrustStrip />
 
       {/* ── 3. Current Conditions Strip ─────────────────────────── */}
       <ConditionsStrip
