@@ -72,6 +72,32 @@ function createReportIcon(report) {
   });
 }
 
+// Lightweight "still happening?" confirm control for a report popup.
+// Purely client-side (no backend column for this yet) — it gives any
+// visitor, resident or staff, a one-tap way to signal a pending report
+// still matches what they're seeing, the way PetaBencana's crowdsourced
+// map treats confirmation as a first-class, low-friction action rather
+// than something only a moderator can register. A real deployment would
+// wire this to a `confirmations` count on the report row; until then it
+// pops locally so the interaction itself can be reviewed and wired up
+// without holding up the rest of the redesign on a schema change.
+function StillHappeningButton({ reportId }) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [count, setCount] = useState(0);
+  return (
+    <button
+      type="button"
+      className={`confirm-btn${confirmed ? ' confirmed' : ''}`}
+      style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }}
+      disabled={confirmed}
+      onClick={() => { setConfirmed(true); setCount(c => c + 1); }}
+      aria-pressed={confirmed}
+    >
+      {confirmed ? `✓ Confirmed${count > 1 ? ` (${count})` : ''}` : 'Still happening?'}
+    </button>
+  );
+}
+
 // Cluster bubble shown when pins are too close together to tell apart at
 // the current zoom. Colored yellow (pending) if ANY report inside still
 // needs review, green (verified) only once every report in the cluster has
@@ -153,6 +179,76 @@ const TRIANGULO_BOUNDARY = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+// Smoothly tweens a numeric readout from its previous value to the next one
+// (ease-out cubic over ~700ms) instead of snapping instantly, so a poll that
+// nudges rainfall from 4.2 → 4.6mm reads as a live instrument rather than a
+// static label that occasionally changes. Non-numeric / missing values just
+// render the em-dash immediately.
+function AnimatedNumber({ value, decimals = 0, duration = 700 }) {
+  const hasValue = typeof value === 'number' && !Number.isNaN(value);
+  const [display, setDisplay] = useState(hasValue ? value : 0);
+  const prevRef = useRef(hasValue ? value : 0);
+  const rafRef = useRef(null);
+
+  useEffect(() => {
+    if (!hasValue) return;
+    const start = prevRef.current;
+    const startTime = performance.now();
+    cancelAnimationFrame(rafRef.current);
+
+    const step = (now) => {
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(start + (value - start) * eased);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        prevRef.current = value;
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, hasValue, duration]);
+
+  if (!hasValue) return <>—</>;
+  return <span className="numeric">{display.toFixed(decimals)}</span>;
+}
+
+// Expand/collapse wrapper for secondary sections (reference tables,
+// forecasts) so the dashboard doesn't dump every panel on the visitor at
+// once — current status stays fully visible, supporting detail is a tap
+// away. Uses a grid-rows trick (0fr / 1fr) instead of max-height so content
+// of any length animates smoothly without a hardcoded ceiling.
+function CollapsibleSection({ title, subtitle, defaultOpen = true, children, className = 'card' }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className={className} style={{ marginBottom: 16, padding: 0, overflow: 'hidden' }}>
+      <button
+        className="collapse-header"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        style={{ padding: '18px 20px', paddingBottom: open ? 0 : 18 }}
+      >
+        <div>
+          <div className="card-title" style={{ marginBottom: subtitle ? 2 : 0 }}>{title}</div>
+          {subtitle && (
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 400, letterSpacing: 0, textTransform: 'none' }}>
+              {subtitle}
+            </div>
+          )}
+        </div>
+        <span className={`collapse-chevron${open ? ' open' : ''}`} style={{ color: 'var(--text-muted)', fontSize: '0.85rem', flexShrink: 0 }}>
+          ▾
+        </span>
+      </button>
+      <div className="collapse-body" style={{ gridTemplateRows: open ? '1fr' : '0fr' }}>
+        <div style={{ padding: '14px 20px 20px' }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 // Slim official-bulletin masthead — jurisdiction breadcrumb, coordinates,
 // active model engine and sync status. Modeled after the station header
 // strip on gauge pages like NOAA's National Water Prediction Service and
@@ -223,23 +319,104 @@ function StationHeader({ area, activeModel, lastUpdated, engineStatus, feedStatu
   );
 }
 
+// Converts a #rrggbb (or #rgb) hex color to an rgba() string at the given
+// alpha — used to build the two glow-intensity stops for the pulsing
+// advisory card without relying on CSS color-mix()/var() concatenation.
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+  const num = parseInt(full, 16);
+  const r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// Circular progress dial for the headline risk number — draws the eye the
+// way a real gauge does, rather than a number sitting flat in a colored
+// pill. Draws from empty on mount/color-change, then eases in.
+function RadialGauge({ value, color, size = 104, strokeWidth = 9 }) {
+  const clamped = Math.max(0, Math.min(100, value ?? 0));
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const [offset, setOffset] = useState(circumference);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setOffset(circumference - (clamped / 100) * circumference);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [clamped, circumference]);
+
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--blue-mid)" strokeWidth={strokeWidth} />
+        <circle
+          cx={size / 2} cy={size / 2} r={radius} fill="none"
+          stroke={color} strokeWidth={strokeWidth} strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.22,1,0.36,1), stroke 0.5s ease' }}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.5rem', color, lineHeight: 1 }}>
+          <AnimatedNumber value={clamped} decimals={0} />%
+        </span>
+        <span style={{ fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: 2 }}>
+          Risk
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Tiny inline trend line — no axes, no grid, just the shape of the last
+// N readings, so a stat card can show "where this has been heading" at a
+// glance without a full chart.
+function Sparkline({ data, color, width = 72, height = 22 }) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = (max - min) || 1;
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((v - min) / range) * (height - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg width={width} height={height} style={{ display: 'block', overflow: 'visible' }}>
+      <polyline points={points} fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+    </svg>
+  );
+}
+
 // Official advisory bulletin — replaces the old glow-card alert header.
 // Formatted like a PAGASA/PDRRMO bulletin: classification, issuing basis,
 // validity window, and enumerated recommended actions, with the emergency
 // dispatch action attached directly to the bulletin it corresponds to.
-function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, onSendAlert, canSendAlert }) {
+function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, probabilityPct, onSendAlert, canSendAlert }) {
   const TREND_COPY = {
     rising:  { icon: '↗', label: 'Rising trend', color: '#f97316' },
     falling: { icon: '↘', label: 'Falling trend', color: '#22c55e' },
     stable:  { icon: '→', label: 'Stable',        color: 'var(--text-muted)' },
   };
   const trend = recentTrend ? TREND_COPY[recentTrend] : null;
+  const isSevere = currentAlert === 'WARNING' || currentAlert === 'CRITICAL';
 
   return (
-    <div className="card" style={{
-      padding: 0, overflow: 'hidden', marginBottom: 16,
-      borderLeft: `5px solid ${alertColor}`,
-    }}>
+    <div
+      className={`card${isSevere ? ' alert-glow-pulse' : ''}`}
+      style={{
+        padding: 0, overflow: 'hidden', marginBottom: 16,
+        borderLeft: `5px solid ${alertColor}`,
+        boxShadow: `var(--shadow), 0 0 24px ${hexToRgba(alertColor, 0.18)}`,
+        transition: 'box-shadow 0.6s ease, border-color 0.6s ease',
+        '--glow-a': hexToRgba(alertColor, 0.16),
+        '--glow-b': hexToRgba(alertColor, 0.5),
+      }}
+    >
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
         padding: '10px 20px', background: 'var(--blue-mid)', borderBottom: '1px solid var(--blue-border)',
@@ -253,7 +430,11 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, on
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', padding: '18px 20px' }}>
-        <div style={{ flex: '1 1 320px', minWidth: 260 }}>
+        {typeof probabilityPct === 'number' && (
+          <RadialGauge value={probabilityPct} color={alertColor} />
+        )}
+
+        <div style={{ flex: '1 1 260px', minWidth: 220 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -275,7 +456,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, on
         </div>
 
         <div style={{
-          flex: '1 1 260px', minWidth: 220,
+          flex: '1 1 220px', minWidth: 200,
           borderLeft: '1px solid var(--blue-border)', paddingLeft: 20,
         }}>
           <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
@@ -320,13 +501,18 @@ function ConditionsStrip({ items }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 800, color: it.color || 'var(--text-primary)', lineHeight: 1 }}>
-                {it.value}
+                {typeof it.numeric === 'number' ? <AnimatedNumber value={it.numeric} decimals={it.decimals ?? 0} /> : it.value}
               </span>
               {it.unit && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{it.unit}</span>}
             </div>
             <div style={{ fontSize: '0.68rem', color: it.badgeColor || 'var(--text-secondary)', marginTop: 4, fontWeight: it.badge ? 700 : 400 }}>
               {it.badge || it.sub}
             </div>
+            {it.sparkline && it.sparkline.length >= 2 && (
+              <div style={{ marginTop: 6 }}>
+                <Sparkline data={it.sparkline} color={it.color || 'var(--accent)'} />
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -388,7 +574,7 @@ function BasemapSwitcher({ basemap, onChange }) {
       borderRadius: 6, overflow: 'hidden',
     }}>
       {['street', 'satellite'].map(key => (
-        <button key={key} onClick={() => onChange(key)} style={{
+        <button key={key} className="toggle-pill" onClick={() => onChange(key)} style={{
           padding: '5px 12px', fontSize: '0.65rem', fontWeight: 700,
           letterSpacing: '0.04em', cursor: 'pointer', border: 'none',
           background: basemap === key ? 'var(--accent, #0ea5e9)' : 'transparent',
@@ -402,11 +588,46 @@ function BasemapSwitcher({ basemap, onChange }) {
   );
 }
 
+// Small checkbox panel for toggling map overlays on/off — lets a visitor
+// declutter the map (hide the boundary tint, hide report pins) without
+// needing a full GIS-style layer list.
+function LayerToggle({ layers, onToggle }) {
+  return (
+    <div style={{
+      position: 'absolute', top: 12, right: 12, zIndex: 500,
+      background: 'rgba(13, 31, 60, 0.82)', backdropFilter: 'blur(6px)',
+      border: '1px solid rgba(56,189,248,0.3)', borderRadius: 8,
+      padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6,
+    }}>
+      <span style={{ fontSize: '0.56rem', fontWeight: 800, letterSpacing: '0.08em', color: '#8da4be', textTransform: 'uppercase' }}>
+        Layers
+      </span>
+      {layers.map(l => (
+        <label key={l.key} className="toggle-pill" style={{
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem',
+          color: '#e2eaf5', cursor: 'pointer', userSelect: 'none',
+        }}>
+          <input
+            type="checkbox"
+            checked={l.visible}
+            onChange={() => onToggle(l.key)}
+            style={{ accentColor: '#38bdf8', cursor: 'pointer' }}
+          />
+          {l.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
   const [basemap, setBasemap] = useState('street');
   const [reports, setReports] = useState([]);
+  const [showBoundary, setShowBoundary] = useState(true);
+  const [showReports, setShowReports] = useState(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
@@ -461,23 +682,25 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
         {basemap === 'satellite' && (
           <TileLayer url={BASEMAP_LABELS_URL} attribution="" />
         )}
-        <LeafletPolygon
-          positions={boundaryPositions}
-          pathOptions={{
-            color: '#1E90FF',
-            weight: 2,
-            opacity: 0.95,
-            fillColor: color,
-            fillOpacity: 0.28,
-          }}
-        >
-          <LeafletTooltip sticky>
-            Barangay Triangulo — {currentAlert}
-          </LeafletTooltip>
-        </LeafletPolygon>
+        {showBoundary && (
+          <LeafletPolygon
+            positions={boundaryPositions}
+            pathOptions={{
+              color: '#1E90FF',
+              weight: 2,
+              opacity: 0.95,
+              fillColor: color,
+              fillOpacity: 0.28,
+            }}
+          >
+            <LeafletTooltip sticky>
+              Barangay Triangulo — {currentAlert}
+            </LeafletTooltip>
+          </LeafletPolygon>
+        )}
 
         <MarkerClusterGroup chunkedLoading maxClusterRadius={55} iconCreateFunction={createReportClusterIcon}>
-          {reports.map(report => {
+          {showReports && reports.map(report => {
             const duplicates = findNearbyDuplicates(report, reports);
             return (
               <LeafletMarker
@@ -530,16 +753,22 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
                       </div>
                     )}
 
-                    <button
-                      onClick={() => navigate('/community-reports')}
-                      style={{
-                        width: '100%', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                        background: 'var(--accent, #0ea5e9)', color: '#fff', border: 'none',
-                        borderRadius: 5, padding: '6px 0',
-                      }}
-                    >
-                      {report.status === 'pending' ? '✅ Review & Moderate →' : 'View in Reports →'}
-                    </button>
+                    {report.status === 'pending' && (
+                      <StillHappeningButton reportId={report.id} />
+                    )}
+
+                    {user && !isResident(user) && (
+                      <button
+                        onClick={() => navigate('/community-reports')}
+                        style={{
+                          width: '100%', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                          background: 'var(--accent, #0ea5e9)', color: '#fff', border: 'none',
+                          borderRadius: 5, padding: '6px 0',
+                        }}
+                      >
+                        {report.status === 'pending' ? '✅ Review & Moderate →' : 'View in Reports →'}
+                      </button>
+                    )}
                   </div>
                 </LeafletPopup>
               </LeafletMarker>
@@ -568,6 +797,13 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
       )}
 
       <BasemapSwitcher basemap={basemap} onChange={setBasemap} />
+      <LayerToggle
+        layers={[
+          { key: 'boundary', label: 'Boundary', visible: showBoundary },
+          { key: 'reports', label: 'Reports', visible: showReports },
+        ]}
+        onToggle={(key) => key === 'boundary' ? setShowBoundary(v => !v) : setShowReports(v => !v)}
+      />
     </div>
   );
 }
@@ -791,7 +1027,7 @@ function FloodForecastChart() {
         </div>
         <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
           {['hourly', 'daily'].map(v => (
-            <button key={v} onClick={() => setView(v)} style={{
+            <button key={v} className="toggle-pill" onClick={() => setView(v)} style={{
               padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
               letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
               background: view === v ? 'var(--accent)' : 'transparent',
@@ -805,10 +1041,12 @@ function FloodForecastChart() {
       </div>
 
       {loading ? (
-        <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-            <div style={{ fontSize: '1.5rem', marginBottom: 8, opacity: 0.4 }}>📊</div>
-            Loading predictions from Supabase...
+        <div>
+          <div className="skeleton" style={{ height: 46, marginBottom: 14 }} />
+          <div style={{ height: 260, display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+            {[38, 62, 45, 80, 55, 70, 40, 90, 50, 65, 35, 58].map((h, i) => (
+              <div key={i} className="skeleton" style={{ flex: 1, height: `${h}%`, animationDelay: `${i * 0.06}s` }} />
+            ))}
           </div>
         </div>
       ) : !chartData.length ? (
@@ -836,7 +1074,7 @@ function FloodForecastChart() {
                 fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 900,
                 color: getRiskColor(latestRisk), lineHeight: 1,
               }}>
-                {latestRisk}%
+                <AnimatedNumber value={latestRisk} decimals={0} />%
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -1060,7 +1298,7 @@ function FloodForecast14Day() {
         </div>
         <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
           {[3, 7, 14].map(n => (
-            <button key={n} onClick={() => setRangeDays(n)} style={{
+            <button key={n} className="toggle-pill" onClick={() => setRangeDays(n)} style={{
               padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
               letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
               background: rangeDays === n ? 'var(--accent)' : 'transparent',
@@ -1074,8 +1312,10 @@ function FloodForecast14Day() {
       </div>
 
       {loading14 ? (
-        <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-          Loading forecast...
+        <div style={{ display: 'flex', gap: 6, overflowX: 'hidden' }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ minWidth: 62, height: 92, flexShrink: 0, animationDelay: `${i * 0.05}s` }} />
+          ))}
         </div>
       ) : error14 || !visibleForecast.length ? (
         <div style={{
@@ -1162,6 +1402,7 @@ export default function Dashboard() {
   const [forecastLoading, setForecastLoading] = useState(true);
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
+  const [probHistory, setProbHistory]         = useState([]);
   const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
   
   useEffect(() => {
@@ -1228,6 +1469,7 @@ export default function Dashboard() {
       .then(({ data }) => {
         if (!data || data.length < 6) return;
         const probs = data.map(r => r.probability).reverse(); // oldest → newest
+        setProbHistory(probs.map(p => p * 100));
         const mid = Math.floor(probs.length / 2);
         const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
         const delta = avg(probs.slice(mid)) - avg(probs.slice(0, mid));
@@ -1370,6 +1612,7 @@ export default function Dashboard() {
         alertColor={alertColor}
         currentAlert={currentAlert}
         recentTrend={recentTrend}
+        probabilityPct={prediction ? prediction.probability * 100 : null}
         onSendAlert={handleEvacuationAlert}
         canSendAlert={!!user && !userIsResident}
       />
@@ -1385,7 +1628,9 @@ export default function Dashboard() {
           },
           {
             label: 'Rainfall Intensity',
-            value: prediction ? rainfallMm.toFixed(1) : '—',
+            value: '—',
+            numeric: prediction ? rainfallMm : null,
+            decimals: 1,
             unit: 'mm/hr',
             color: 'var(--accent)',
             badge: prediction && rainfallMm > 10 ? 'Heavy' : prediction && rainfallMm > 2 ? 'Moderate' : prediction ? 'Light' : null,
@@ -1394,7 +1639,9 @@ export default function Dashboard() {
         ] : [
           {
             label: 'Rainfall Intensity',
-            value: prediction ? rainfallMm.toFixed(1) : '—',
+            value: '—',
+            numeric: prediction ? rainfallMm : null,
+            decimals: 1,
             unit: 'mm/hr',
             color: 'var(--accent)',
             badge: prediction && rainfallMm > 10 ? 'Heavy' : prediction && rainfallMm > 2 ? 'Moderate' : prediction ? 'Light' : null,
@@ -1402,7 +1649,9 @@ export default function Dashboard() {
           },
           {
             label: 'Humidity',
-            value: humidityVal !== null ? humidityVal : '—',
+            value: '—',
+            numeric: humidityVal !== null ? humidityVal : null,
+            decimals: 0,
             unit: '%',
             sub: prediction ? 'Atmospheric moisture' : 'Forecast model',
             color: !humidityVal ? 'var(--text-muted)'
@@ -1413,11 +1662,15 @@ export default function Dashboard() {
           {
             label: 'Flood Probability',
             value: modelLoading ? '…' : probabilityPct,
+            numeric: !modelLoading && prediction ? prediction.probability * 100 : null,
+            decimals: 0,
+            unit: !modelLoading && prediction ? '%' : undefined,
             sub: prediction ? `Wind signal #${prediction.live_metrics.wind_signal}` : 'Forecast model',
             color: !prediction ? 'var(--text-muted)'
               : prediction.probability >= 0.75 ? '#ef4444' : prediction.probability >= 0.50 ? '#f97316' : prediction.probability >= 0.25 ? '#eab308' : '#22c55e',
             badge: prediction ? 'Model prediction' : null,
             noData: !prediction,
+            sparkline: probHistory,
           },
         ]}
       />
@@ -1450,7 +1703,7 @@ export default function Dashboard() {
           )}
           <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
             {['2d', '3d'].map(v => (
-              <button key={v} onClick={() => setMapView(v)} style={{
+              <button key={v} className="toggle-pill" onClick={() => setMapView(v)} style={{
                 padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
                 letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
                 background: mapView === v ? 'var(--accent)' : 'transparent',
@@ -1516,10 +1769,13 @@ export default function Dashboard() {
       </div>
 
       {/* ── 5. Alert Classification Reference ───────────────────── */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <SectionLabel>🚦 Alert Classification Reference</SectionLabel>
+      <CollapsibleSection
+        title="🚦 Alert Classification Reference"
+        subtitle="How probability thresholds map to alert levels and recommended actions"
+        defaultOpen={false}
+      >
         <AlertLevelTable currentAlert={currentAlert} />
-      </div>
+      </CollapsibleSection>
 
       {/* ── 6. Flood Forecast Chart ───────────────────── */}
       <div style={{ marginBottom: 18 }}>
@@ -1536,10 +1792,7 @@ export default function Dashboard() {
 
       {/* ── 8. Weather Forecast ───────────── */}
       <div style={{ marginBottom: 18 }}>
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <SectionLabel>⛅ Weather Forecast — Barangay Triangulo</SectionLabel>
-          </div>
+        <CollapsibleSection title="⛅ Weather Forecast — Barangay Triangulo" defaultOpen={true}>
           <WeatherForecast
             hourly={forecast}
             daily={dailyForecast}
@@ -1548,8 +1801,7 @@ export default function Dashboard() {
             outlook={forecastOutlook}
             weatherCache={forecastCache}
           />
-        </div>
-
+        </CollapsibleSection>
       </div>
 
       {/* ── 9. Standing Disclaimer ───────────────────────────────── */}

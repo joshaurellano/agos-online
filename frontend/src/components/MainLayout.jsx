@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import QuickActionsBar from './QuickActionsBar';
 import { useModelPrediction } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
 
@@ -42,6 +43,7 @@ export default function MainLayout() {
         <div className="page-body">
           <Outlet context={{ prediction, modelLoading, modelError }} />
         </div>
+        <QuickActionsBar />
       </div>
     </div>
   );
