@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
+import { LanguageProvider } from './hooks/useLanguage';
 import { DataSourceProvider } from './hooks/useDataSource';
 import { ModelSelectionProvider } from './hooks/useModelSelection';
 
@@ -20,6 +21,7 @@ import ResidentRoute from './components/ResidentRoute';
 function App() {
   return (
     <ThemeProvider>
+      <LanguageProvider>
       <AuthProvider>
         <DataSourceProvider>
         <ModelSelectionProvider>
@@ -69,6 +71,7 @@ function App() {
         </ModelSelectionProvider>
         </DataSourceProvider>
       </AuthProvider>
+      </LanguageProvider>
     </ThemeProvider>
   );
 }

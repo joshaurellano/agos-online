@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { isAdmin } from '../lib/roles';
@@ -11,6 +12,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { lang, setLang, languages } = useLanguage();
   const { isMock, toggleDataSource } = useDataSource();
   const { modelKey, setModelKey, options: modelOptions } = useModelSelection();
   const [time, setTime] = useState(new Date());
@@ -126,6 +128,23 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
             <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>⇄</span>
           </button>
         )}
+
+        {/* Language — alert wording and evacuation guidance are translated;
+            covers Naga City's everyday languages so the highest-stakes
+            text during an emergency isn't English-only. */}
+        <select
+          value={lang}
+          onChange={e => setLang(e.target.value)}
+          aria-label="Choose language"
+          title="Choose language"
+          style={{
+            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
+            color: 'var(--text-secondary)', borderRadius: 6,
+            fontSize: '0.76rem', fontWeight: 600, padding: '7px 8px', cursor: 'pointer',
+          }}
+        >
+          {languages.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
 
         {/* Dark / Light toggle */}
         <button

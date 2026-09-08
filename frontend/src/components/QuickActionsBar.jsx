@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useLanguage } from '../hooks/useLanguage';
 import { isResident } from '../lib/roles';
 
 // Sticky bottom bar shown only on narrow (phone-width) viewports -- see
@@ -9,25 +10,27 @@ import { isResident } from '../lib/roles';
 // Staff/admin get "Report" + "Resident reports" front and center, since
 // /reports and /community-reports are where they actually work. Residents
 // and anonymous visitors are redirected away from both of those pages by
-// ResidentRoute today -- there's no self-service incident form for the
-// public yet -- so their bar leads with the two things they *can* act on
-// during a flood: the evacuation map and the current rainfall/status read.
+// ResidentRoute today -- reporting for the public happens through the
+// mobile app -- so this bar leads with the two things a resident can act
+// on right here in the browser: the evacuation map and the current
+// rainfall/status read.
 export default function QuickActionsBar() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const staffView = !!user && !isResident(user);
 
   const actions = staffView
     ? [
-        { label: 'Report',           icon: '📝', to: '/reports',            primary: true },
-        { label: 'Resident reports', icon: '📣', to: '/community-reports' },
-        { label: 'Evacuation map',   icon: '🧭', to: '/evacuation-map' },
-        { label: 'Status',           icon: '📊', to: '/dashboard' },
+        { label: t('reportWhatYouSee'), icon: '📝', to: '/reports',            primary: true },
+        { label: 'Resident reports',    icon: '📣', to: '/community-reports' },
+        { label: t('nav.evacuationMap'),icon: '🧭', to: '/evacuation-map' },
+        { label: t('nav.status'),       icon: '📊', to: '/dashboard' },
       ]
     : [
-        { label: 'Status',           icon: '📊', to: '/dashboard',          primary: true },
-        { label: 'Evacuation route', icon: '🧭', to: '/evacuation-map' },
-        { label: 'Rainfall',         icon: '🌧', to: '/rainfall' },
+        { label: t('nav.status'),          icon: '📊', to: '/dashboard',      primary: true },
+        { label: t('findEvacuationRoute'), icon: '🧭', to: '/evacuation-map' },
+        { label: t('nav.rainfall'),        icon: '🌧', to: '/rainfall' },
       ];
 
   return (
