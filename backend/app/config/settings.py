@@ -157,3 +157,111 @@ DEFAULT_MODEL_KEY = os.environ.get("FLOOD_DEFAULT_MODEL", "gru")
 
 SCALER_FILE = "flood_scaler.pkl"
 FEATURE_METADATA_FILE = "feature_metadata.json"
+
+# ===========================================================================
+# PAGASA CALIBRATION
+# ===========================================================================
+#
+# Open-Meteo is a numerical-weather-model estimate for our coordinates --
+# not an actual instrument reading. PAGASA operates a real Automated
+# Weather Station (AWS) network, and the closest one to the Naga City
+# forecast point (LAT/LON above) is "Pili Camarines Sur AWS" (~15 km away,
+# also the site of Naga Airport). That station is treated as ground truth:
+# Open-Meteo's live/forecast values are bias-corrected against it before
+# they reach feature engineering and the flood model.
+#
+# PAGASA does not publish a documented public API for AWS observations.
+# The only available source is the live HTML table at PAGASA_AWS_URL,
+# which lists every AWS station nationwide and is refreshed periodically.
+# app.weather.pagasa_client scrapes that table for our one station.
+#
+# IMPORTANT: this is a bias-correction layer, not a replacement data
+# source. It nudges Open-Meteo's numbers toward what the real station
+# has been reading on average -- it does NOT swap in PAGASA's raw feed as
+# the model's input (PAGASA doesn't publish forecasts, soil moisture, or
+# wind gusts, all of which the model needs). Precipitation correction is
+# OFF by default (see PAGASA_CALIBRATE_PRECIPITATION below) since PAGASA's
+# AWS reports an instantaneous mm/hr rate while Open-Meteo's precipitation
+# is an hourly accumulated total -- they're not quite the same quantity,
+# and rainfall is the single most safety-critical input to a flood model.
+PAGASA_STATION_ID = "5037"
+PAGASA_STATION_NAME = "Pili, Camarines Sur AWS"
+PAGASA_AWS_URL = "https://bagong.pagasa.dost.gov.ph/automated-weather-station"
+
+PAGASA_CALIBRATION_ENABLED = os.environ.get(
+    "PAGASA_CALIBRATION_ENABLED", "true"
+).strip().lower() in ("1", "true", "yes")
+
+# A fresh PAGASA sample is recorded each time fetch_weather() performs an
+# actual live Open-Meteo call (i.e. once per CACHE_TTL_SECONDS window, not
+# once per incoming request) -- see app.weather.client. This keeps PAGASA
+# polling frequency tied to the existing cache cadence instead of adding a
+# separate scheduler.
+#
+# How many of those paired (Open-Meteo, PAGASA) samples to keep for
+# computing the rolling bias correction. More samples = a more stable
+# estimate; fewer = faster to react to genuine station drift/recalibration.
+CALIBRATION_MAX_SAMPLES = int(
+    os.environ.get("PAGASA_CALIBRATION_MAX_SAMPLES", "500")
+)
+
+# Minimum number of samples required before any correction is applied.
+# Below this, there isn't enough data to trust a bias estimate yet, so
+# raw Open-Meteo values are used unmodified (see get_calibration_status()
+# for a way to check readiness/progress).
+CALIBRATION_MIN_SAMPLES = int(
+    os.environ.get("PAGASA_CALIBRATION_MIN_SAMPLES", "20")
+)
+
+# Reject a PAGASA reading if its "Last Updated" timestamp is older than
+# this many minutes. The live AWS table is known to contain stations with
+# stuck/broken sensors reporting stale or nonsensical (e.g. far-future)
+# timestamps -- this filters those out before they can pollute the
+# calibration sample set.
+PAGASA_MAX_READING_AGE_MINUTES = int(
+    os.environ.get("PAGASA_MAX_READING_AGE_MINUTES", "180")
+)
+
+# ---------------------------------------------------------------------------
+# OPT-IN: PRECIPITATION CALIBRATION AGAINST THE PILI AWS STATION
+# ---------------------------------------------------------------------------
+#
+# Off by default. See the module comment above for why -- PAGASA's AWS
+# precipitation reading is an instantaneous mm/hr rate, not an hourly
+# accumulated total like Open-Meteo's, so a naive bias estimate here is
+# noisier than for temperature/humidity/wind/pressure. Turn this on only
+# once you're comfortable with that trade-off (e.g. after watching
+# /api/calibration's precipitation bias/sample numbers for a while with
+# this still off, to see how noisy it actually looks for your station).
+#
+# When enabled:
+#   - Precipitation gets its own (higher, independently configurable)
+#     minimum-sample threshold before any correction is applied --
+#     PAGASA_CALIBRATION_MIN_SAMPLES_PRECIPITATION -- separate from the
+#     general CALIBRATION_MIN_SAMPLES used for the other fields.
+#   - The applied correction is capped in magnitude
+#     (PAGASA_PRECIPITATION_BIAS_CAP_MM) so one bad/stale AWS reading
+#     can't swing the model's rainfall input by an unbounded amount.
+#   - The corrected value is always floored at 0 (rainfall can't go
+#     negative).
+#   - Only "current" and "hourly" precipitation are corrected. Daily
+#     precipitation_sum is deliberately left alone: it's a SUM over 24
+#     hours, and additively applying a single hourly-rate-scale bias to
+#     a daily total would misapply the unit rather than correct it.
+PAGASA_CALIBRATE_PRECIPITATION = os.environ.get(
+    "PAGASA_CALIBRATE_PRECIPITATION", "false"
+).strip().lower() in ("1", "true", "yes")
+
+CALIBRATION_MIN_SAMPLES_PRECIPITATION = int(
+    os.environ.get("PAGASA_CALIBRATION_MIN_SAMPLES_PRECIPITATION", "50")
+)
+
+# Maximum absolute correction (mm) that can ever be added to/subtracted
+# from a precipitation value, regardless of what the computed median bias
+# is. This is a safety clamp on the CORRECTION itself (not just the
+# resulting value) -- it exists so a handful of noisy/mistimed
+# rate-vs-accumulation sample pairs can't produce a runaway bias that
+# meaningfully distorts the flood model's rainfall input.
+PRECIPITATION_BIAS_CAP_MM = float(
+    os.environ.get("PAGASA_PRECIPITATION_BIAS_CAP_MM", "5.0")
+)

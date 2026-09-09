@@ -167,6 +167,7 @@ def predict_flood():
         "probability": today_entry["flood_probability"],
         "live_metrics": full.get("live_metrics", {}),
         "weather_cache": full.get("weather_cache", {}),
+        "pagasa_calibration": full.get("pagasa_calibration", {}),
         "meta": full["meta"],
     }
 
@@ -194,5 +195,6 @@ def predict_flood_for_model(model_key: str):
         "probability": today_entry["flood_probability"],
         "live_metrics": full.get("live_metrics", {}),
         "weather_cache": full.get("weather_cache", {}),
+        "pagasa_calibration": full.get("pagasa_calibration", {}),
         "meta": full["meta"],
     }

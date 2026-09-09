@@ -11,6 +11,7 @@ from fastapi import APIRouter
 
 from app.weather.client import fetch_weather, WeatherUnavailableError
 from app.weather.cache import get_cache_status
+from app.weather.calibration import get_calibration_status
 from app.features.aggregation import hourly_to_daily_mean, get_live_metrics
 from app.utils.alerts import wmo_label, wind_to_signal
 
@@ -723,6 +724,9 @@ def get_forecast():
 
             "weather_cache":
                 get_cache_status(),
+
+            "pagasa_calibration":
+                get_calibration_status(),
 
             "outlook": {
 

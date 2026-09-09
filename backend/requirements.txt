@@ -8,6 +8,10 @@ scikit-learn
 joblib
 tensorflow-cpu
 
+# Needed to parse the PAGASA AWS table for ground-truth calibration
+# (app/weather/pagasa_client.py).
+beautifulsoup4
+
 # Only needed for training/train_models.py (charts/eval plots), not for
 # serving the API:
 matplotlib

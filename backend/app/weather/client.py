@@ -11,9 +11,14 @@ fetch_weather() wraps the raw HTTP call with:
     - a last-known-good fallback, backed by Upstash (see
       app.weather.persistence) so it survives process restarts
 
-IMPORTANT: this module does NOT modify the weather data itself. It only
-controls WHEN Open-Meteo is contacted, and what to serve when Open-Meteo
-can't be reached at all.
+IMPORTANT: this module controls WHEN Open-Meteo is contacted, and what
+to serve when Open-Meteo can't be reached at all. The one exception to
+"doesn't modify the data" is PAGASA calibration (see
+app.weather.calibration): every genuinely fresh Open-Meteo response is
+bias-corrected against PAGASA's Pili AWS station before being cached, so
+everything downstream of fetch_weather() -- including stale/fallback
+replays of a past response -- sees PAGASA-calibrated values, not raw
+Open-Meteo output.
 """
 
 import datetime
@@ -39,6 +44,7 @@ from app.weather.cache import (
     FAILURE_COOLDOWN_SECONDS,
 )
 from app.weather.persistence import persist_cache_to_disk
+from app.weather.calibration import record_sample, apply_calibration
 
 
 class WeatherUnavailableError(Exception):
@@ -190,13 +196,15 @@ def fetch_weather():
         - exponential backoff
         - timeout handling
         - last-known-good fallback (in-memory AND Upstash-persisted)
+        - PAGASA bias-correction of every freshly fetched response
+          (see app.weather.calibration)
 
     IMPORTANT:
 
-    This function does NOT modify the weather data itself.
-
-    It only controls WHEN Open-Meteo is contacted, and what to serve
-    when Open-Meteo can't be reached at all.
+    Aside from PAGASA calibration, this function does not otherwise
+    modify the weather data itself. It controls WHEN Open-Meteo is
+    contacted, and what to serve when Open-Meteo can't be reached at
+    all.
     """
 
     # ----------------------------------------------------------------------
@@ -357,6 +365,29 @@ def fetch_weather():
                 # ----------------------------------------------------------
                 # SUCCESS
                 # ----------------------------------------------------------
+
+                # ----------------------------------------------------------
+                # PAGASA CALIBRATION
+                # ----------------------------------------------------------
+                #
+                # This is the one point every consumer of fetch_weather()
+                # passes through, so it's where we (a) take the chance to
+                # record a fresh (Open-Meteo, PAGASA) sample pair for this
+                # fetch cycle, and (b) bias-correct this response against
+                # PAGASA's Pili AWS station before it's cached. Both steps
+                # are best-effort: any PAGASA failure here just means this
+                # cycle's response stays as plain Open-Meteo data, exactly
+                # like before this feature existed.
+
+                try:
+                    record_sample(data)
+                except Exception as err:
+                    print(f"⚠️ PAGASA calibration sample recording failed: {err}")
+
+                try:
+                    data = apply_calibration(data)
+                except Exception as err:
+                    print(f"⚠️ PAGASA calibration application failed: {err}")
 
                 fetched_now = time.time()
 

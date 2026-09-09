@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.weather.persistence import load_cache_from_disk
-from app.api import routes_diagnostics, routes_weather, routes_flood
+from app.api import routes_diagnostics, routes_weather, routes_flood, routes_cron
 
 app = FastAPI(
     title="Naga City Brgy. Triangulo 14-Day Flood & Rain Forecast API (v3)",
@@ -40,6 +40,7 @@ app.add_middleware(
 app.include_router(routes_diagnostics.router)
 app.include_router(routes_weather.router)
 app.include_router(routes_flood.router)
+app.include_router(routes_cron.router)
 
 # Prime the weather cache from Upstash immediately at import time, before
 # any request comes in and before the first fetch_weather() call -- same
