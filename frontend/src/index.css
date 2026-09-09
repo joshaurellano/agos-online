@@ -25,19 +25,29 @@
   --shadow:         0 4px 24px rgba(0,0,0,0.3);
 }
 
-/* ── LIGHT MODE ── */
+/* ── LIGHT MODE ──
+   Same hue family as dark mode (~210°) kept strictly monochromatic so the
+   two themes read as one system, just re-lit. The old canvas (#c2d5ec)
+   sat around 45% saturation, which is too vivid for a large flat field —
+   it fought with the white cards instead of setting them off. Desaturating
+   the canvas and stepping lightness gradually (deep → mid → panel → card)
+   gives a calmer backdrop while keeping enough separation to read as
+   layers, not a flat wash. Borders and shadows are pulled back to match,
+   and the warm advisory/alert colors (yellow/orange/red) are left as-is —
+   they sit near blue's complement on the wheel, so they already pop
+   without needing to be louder. */
 :root.light {
-  --blue-deep:      #c2d5ec;   /* richer blue canvas — no longer washed out */
-  --blue-mid:       #e9f0fa;   /* subtle nested panels inside cards */
-  --blue-panel:     #eef3fb;   /* topbar chrome */
-  --blue-card:      #ffffff;   /* crisp white so cards pop off the blue canvas */
-  --blue-border:    #93b0d6;   /* stronger, more visible border */
+  --blue-deep:      #dbe6f4;   /* soft, low-saturation canvas — sets cards apart without competing */
+  --blue-mid:       #eef3fa;   /* nested panels, one step up from canvas */
+  --blue-panel:     #f4f8fc;   /* topbar chrome, closer to white */
+  --blue-card:      #ffffff;   /* crisp white so cards still pop off the canvas */
+  --blue-border:    #bccfe6;   /* softened — present but no longer a hard outline */
   --accent:         #0284c7;
   --accent2:        #0369a1;
-  --text-primary:   #0c1e35;
-  --text-secondary: #2d4a6a;
-  --text-muted:     #5a7a9a;
-  --shadow:         0 14px 32px rgba(15,45,90,0.20), 0 2px 8px rgba(15,45,90,0.10);
+  --text-primary:   #14283f;   /* softened off-black so long text isn't harsh */
+  --text-secondary: #40597a;
+  --text-muted:     #6e88a3;
+  --shadow:         0 10px 28px rgba(15,45,90,0.12), 0 2px 6px rgba(15,45,90,0.06);
 }
 
 /* Sidebar stays a deep navy blue in light mode for contrast against the lighter canvas */
@@ -252,7 +262,7 @@ body {
 }
 
 :root.light .card:hover {
-  box-shadow: 0 18px 40px rgba(15,45,90,0.24), 0 4px 10px rgba(15,45,90,0.12);
+  box-shadow: 0 16px 34px rgba(15,45,90,0.15), 0 3px 8px rgba(15,45,90,0.07);
   transform: translateY(-2px);
 }
 
