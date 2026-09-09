@@ -94,16 +94,15 @@ serve(async (req) => {
         body: JSON.stringify({
           message: {
             topic: topic ?? 'flood_alerts',
-            // Data-only message on purpose: including a top-level
-            // `notification` block here causes the OS to auto-render a
-            // notification from it, IN ADDITION to whatever the app's
-            // FirebaseMessagingService/onMessageReceived builds from
-            // `data` — resulting in two identical notifications per
-            // message. Keeping title/body in `data` only means the app
-            // is the single place that ever displays the notification.
+            // Real `notification` block on purpose: this lets the OS render
+            // and manage the notification itself (system tray in background/
+            // terminated, and — since the app no longer builds its own via
+            // flutter_local_notifications — the OS foreground banner too, so
+            // there's exactly one notification pipeline instead of two
+            // competing ones. `data` still carries the routing metadata
+            // (level/type) the app reads on tap.
+            notification: { title, body },
             data: {
-              title,
-              body,
               level: level ?? 'CRITICAL',
               type: type ?? 'alert',
               click_action: 'FLUTTER_NOTIFICATION_CLICK',
