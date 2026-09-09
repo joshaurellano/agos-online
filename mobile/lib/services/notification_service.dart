@@ -7,11 +7,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ─── Must be top-level (not inside a class) ────────────────────────────────────
 // Called when a notification arrives while the app is fully terminated/background.
+// The push now carries a real FCM `notification` payload (see
+// supabase/functions/send-push-notification), so the OS renders it into the
+// system tray on its own via the agos_alerts channel — nothing to do here
+// beyond making sure Firebase is initialized in case the app process was
+// woken up just for this.
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  // flutter_local_notifications displays it automatically via the
-  // high-importance channel — nothing else needed here.
 }
 
 // ─── Global navigator key ──────────────────────────────────────────────────────
@@ -74,7 +77,6 @@ class NotificationService {
     );
     await _localNotifications.initialize(
       settings: const InitializationSettings(android: androidSettings, iOS: iosSettings),
-      onDidReceiveNotificationResponse: _onNotificationTap,
     );
 
     // 6. Save this device's FCM token to Supabase
@@ -82,12 +84,20 @@ class NotificationService {
     // Refresh whenever Firebase rotates the token
     _messaging.onTokenRefresh.listen(_saveToken);
 
-    // 7. Foreground message → show a local heads-up notification
+    // 7. Foreground message — deliberately no manual popup here. The app
+    // used to build its own heads-up notification via
+    // flutter_local_notifications on top of whatever the OS/FCM already
+    // shows, which meant two separate alert UIs for one event. Now that
+    // the push carries a real `notification` payload, the system is the
+    // single place that renders it (see setForegroundNotificationPresentationOptions
+    // above for iOS's foreground banner); while the user is already in the
+    // app, the new alert simply shows up live in the Alerts list via the
+    // Supabase realtime subscription in alert_screen.dart. Kept as a log
+    // line for debugging delivery, not display.
     FirebaseMessaging.onMessage.listen((message) {
-      debugPrint('[FCM] onMessage fired');
+      debugPrint('[FCM] onMessage fired (foreground, no popup by design)');
       debugPrint('[FCM] title: ${message.notification?.title}');
       debugPrint('[FCM] data: ${message.data}');
-      _onForegroundMessage(message);
     });
 
     // 8. User tapped a notification while app was in background (not terminated)
@@ -144,48 +154,13 @@ class NotificationService {
     }
   }
 
-  // ── Foreground message ─────────────────────────────────────────────────────
-  Future<void> _onForegroundMessage(RemoteMessage message) async {
-    final level = message.data['level'] as String? ?? 'normal';
-    final type  = message.data['type']  as String? ?? 'alert';
-    final title = message.notification?.title ?? '${_emoji(level)} AGOS Alert';
-    final body  = message.notification?.body  ?? message.data['message'] ?? '';
-
-    await _localNotifications.show(
-      id: message.hashCode,
-      title: title,
-      body: body,
-      notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channel.id,
-          _channel.name,
-          channelDescription: _channel.description,
-          importance:    Importance.max,
-          priority:      Priority.high,
-          color:         _color(level),
-          icon:          '@mipmap/ic_launcher',
-          styleInformation: BigTextStyleInformation(body),
-        ),
-        iOS: const DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      ),
-      // Carries the notification "type" (alert vs. community_report) so a
-      // tap on this local notification (see _onNotificationTap below) can
-      // route to the right screen, same as a tap from the system tray.
-      payload: type,
-    );
-  }
-
   // ── Notification tap handlers ──────────────────────────────────────────────
+  // Taps on the OS-rendered notification (background/terminated, and now
+  // foreground too since the system owns display) come through here —
+  // flutter_local_notifications' own tap callback is unused since the app
+  // no longer calls _localNotifications.show() anywhere.
   void _onNotificationOpened(RemoteMessage message) {
     _routeForType(message.data['type'] as String?);
-  }
-
-  void _onNotificationTap(NotificationResponse response) {
-    _routeForType(response.payload);
   }
 
   void _routeForType(String? type) {
@@ -194,24 +169,5 @@ class NotificationService {
       route,
       (route) => route.isFirst,
     );
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  String _emoji(String level) {
-    switch (level.toUpperCase()) {
-      case 'CRITICAL':  return '🔴';
-      case 'WARNING':   return '🟠';
-      case 'ADVISORY':  return '🟡';
-      default:          return '🟢';
-    }
-  }
-
-  Color _color(String level) {
-    switch (level.toUpperCase()) {
-      case 'CRITICAL':  return const Color(0xFFEF4444);
-      case 'WARNING':   return const Color(0xFFF97316);
-      case 'ADVISORY':  return const Color(0xFFEAB308);
-      default:          return const Color(0xFF22C55E);
-    }
   }
 }
