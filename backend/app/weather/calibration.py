@@ -38,11 +38,8 @@ WHAT THIS DELIBERATELY DOES NOT DO:
 """
 
 import copy
-import json
 import statistics
 import time
-
-import requests
 
 from app.config.settings import (
     PAGASA_CALIBRATION_ENABLED,
@@ -55,9 +52,9 @@ from app.config.settings import (
     PAGASA_STATION_NAME,
 )
 from app.weather.pagasa_client import fetch_pagasa_station, PagasaUnavailableError
-from app.weather.persistence import UPSTASH_URL, UPSTASH_TOKEN
+from app.weather.supabase_store import kv_get, kv_set
 
-UPSTASH_CALIBRATION_KEY = "pagasa_calibration_samples"
+CALIBRATION_SAMPLES_KEY = "pagasa_calibration_samples"
 
 # Open-Meteo field -> PAGASA field, for the variables both sources report
 # and that are safe to additively bias-correct with the general
@@ -100,18 +97,7 @@ def _clamp(field, value):
 
 
 def _persist_samples():
-    if not (UPSTASH_URL and UPSTASH_TOKEN):
-        return
-    try:
-        resp = requests.post(
-            f"{UPSTASH_URL}/set/{UPSTASH_CALIBRATION_KEY}",
-            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
-            data=json.dumps(_calibration_samples),
-            timeout=10,
-        )
-        resp.raise_for_status()
-    except Exception as err:
-        print(f"⚠️ Could not persist PAGASA calibration samples: {err}")
+    kv_set(CALIBRATION_SAMPLES_KEY, _calibration_samples)
 
 
 def _load_samples_from_disk():
@@ -122,25 +108,14 @@ def _load_samples_from_disk():
 
     _samples_loaded_from_disk = True
 
-    if not (UPSTASH_URL and UPSTASH_TOKEN):
-        return
+    stored = kv_get(CALIBRATION_SAMPLES_KEY)
 
-    try:
-        resp = requests.get(
-            f"{UPSTASH_URL}/get/{UPSTASH_CALIBRATION_KEY}",
-            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
-            timeout=10,
+    if stored:
+        _calibration_samples = stored
+        print(
+            f"🟡 Loaded {len(_calibration_samples)} persisted PAGASA "
+            "calibration samples from Supabase."
         )
-        resp.raise_for_status()
-        result = resp.json().get("result")
-        if result:
-            _calibration_samples = json.loads(result)
-            print(
-                f"🟡 Loaded {len(_calibration_samples)} persisted PAGASA "
-                "calibration samples from Upstash."
-            )
-    except Exception as err:
-        print(f"⚠️ Could not load persisted PAGASA calibration samples: {err}")
 
 
 def record_sample(open_meteo_data):

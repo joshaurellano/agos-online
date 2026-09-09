@@ -30,7 +30,7 @@ side by side.
     │
     ├── weather/
     │   ├── cache.py            # in-process TTL cache + status
-    │   ├── persistence.py      # Upstash Redis restart-proof fallback
+    │   ├── persistence.py      # Supabase restart-proof source of truth
     │   ├── client.py           # Open-Meteo fetch, retries, circuit breaker
     │   ├── pagasa_client.py    # scrapes PAGASA's Pili AWS station (ground truth)
     │   └── calibration.py      # bias-corrects Open-Meteo against PAGASA
@@ -143,11 +143,12 @@ How it works:
   scrapes that page for station 5037's row, discarding readings that are
   stale or unparseable (a few stations on that page are known to report
   stuck/broken timestamps).
-- Each time `fetch_weather()` performs a genuine live Open-Meteo call
-  (i.e. once per `WEATHER_CACHE_TTL_MINUTES` window, not once per
-  request), `calibration.py` pairs that response with a fresh PAGASA
-  reading and stores the sample (persisted via Upstash so it survives a
-  restart, bounded to `PAGASA_CALIBRATION_MAX_SAMPLES`).
+- Each time `refresh_weather_from_openmeteo()` performs a genuine live
+  Open-Meteo call (only from `/api/cron/refresh-weather`, on your
+  external schedule -- never from a user-facing request), `calibration.py`
+  pairs that response with a fresh PAGASA reading and stores the sample
+  (persisted to Supabase so it survives a restart, bounded to
+  `PAGASA_CALIBRATION_MAX_SAMPLES`).
 - Once a field has at least `PAGASA_CALIBRATION_MIN_SAMPLES` paired
   samples, its bias (median PAGASA − Open-Meteo difference) is applied
   as a correction to every Open-Meteo value of that field — current,

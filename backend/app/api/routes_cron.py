@@ -1,47 +1,45 @@
 """
-Cron / keep-alive endpoint.
+Scheduled weather-refresh endpoint.
 
-WHY THIS EXISTS:
-PAGASA calibration sampling is intentionally tied to the weather cache's
-normal fetch cadence rather than its own scheduler (see
-app.config.settings PAGASA_CALIBRATION comments and
-app.weather.calibration's module docstring) -- a sample is only recorded
-when app.weather.client.fetch_weather() performs a genuine (non-cached)
-Open-Meteo call.
+This is the ONLY endpoint in the whole app that triggers a live
+Open-Meteo call (see app.weather.client.refresh_weather_from_openmeteo).
+Every other endpoint (/api/forecast, /api/forecast-flood/*, etc.) only
+ever reads the snapshot this endpoint produces, via fetch_weather() --
+they never contact Open-Meteo themselves.
 
-That design assumes *something* calls a weather-backed endpoint often
-enough for the cache to actually expire and refresh on its own. In
-practice that "something" is real frontend traffic, which is exactly the
-thing this project can't guarantee on a schedule -- especially on
-Render's free tier, where the whole service spins down after ~15 minutes
-of inactivity and only wakes back up on the next inbound request.
+SETUP:
+Point your existing external scheduler at this URL:
 
-Left alone, that means:
-  - PAGASA calibration samples stop accumulating entirely during any
-    quiet period longer than CACHE_TTL_SECONDS.
-  - The first user of the day eats a slow cold start.
+    GET https://<your-render-app>.onrender.com/api/cron/refresh-weather
 
-This endpoint gives an external scheduler (GitHub Actions, Render Cron
-Jobs, cron-job.org, etc.) something cheap to hit on a fixed interval so
-both problems go away, WITHOUT changing how or when PAGASA is actually
-sampled -- it just makes sure fetch_weather() gets called regularly, the
-same way a real user's request would.
+Hitting "/" only keeps Render awake -- it does NOT refresh the weather
+cache or feed PAGASA calibration, since read_root() never calls
+fetch_weather(). This endpoint is what actually needs to be on a
+schedule.
+
+Recommended interval: roughly every WEATHER_CACHE_TTL_MINUTES (default
+180 min / 3 hours). Hitting it more often than that doesn't get you
+fresher data (Open-Meteo's own forecast doesn't change meaningfully
+faster than that) -- it just spends Open-Meteo calls for no benefit.
+Hitting it less often means both the app and the PAGASA calibration
+sampler go longer on older data.
 """
 
 import os
 
 from fastapi import APIRouter, Header, HTTPException
 
-from app.weather.client import fetch_weather, WeatherUnavailableError
+from app.weather.client import refresh_weather_from_openmeteo
 from app.weather.cache import get_cache_status
 from app.weather.calibration import get_calibration_status
 
 router = APIRouter()
 
 # Optional shared-secret guard. Leave CRON_SECRET unset in the environment
-# to leave this endpoint open (it only ever triggers a read-through cache
-# refresh, never anything destructive) -- set it if you'd rather not let
-# randoms nudge your Open-Meteo request volume.
+# to leave this endpoint open -- set it (and pass the same value as the
+# X-Cron-Secret header from your scheduler) if you'd rather not let
+# randoms nudge your Open-Meteo request volume, since this is the one
+# endpoint in the app that can actually cause an Open-Meteo call.
 CRON_SECRET = os.environ.get("CRON_SECRET")
 
 
@@ -51,13 +49,13 @@ def cron_refresh_weather(x_cron_secret: str | None = Header(default=None)):
     Meant to be hit on a schedule by an external cron service -- NOT by
     the frontend.
 
-    Every call runs the exact same fetch_weather() every other endpoint
-    already uses:
-      - If the cache is still fresh, this is a no-op cache hit (cheap).
-      - If the cache has expired, this performs a real Open-Meteo fetch,
-        which also attempts a fresh PAGASA calibration sample as a side
-        effect (see app.weather.calibration.record_sample) and persists
-        the new snapshot to Upstash.
+    Every call runs refresh_weather_from_openmeteo(), which:
+      - Fetches fresh Open-Meteo data (with retries/backoff + a failure
+        cooldown so a bad run doesn't turn into a retry storm),
+      - Attempts a fresh PAGASA calibration sample as a side effect,
+      - Persists the result to Supabase so every app instance/request
+        picks it up via fetch_weather() -- without ever calling
+        Open-Meteo themselves.
 
     Returns the resulting cache + calibration status so the scheduler's
     logs double as a lightweight health check.
@@ -69,14 +67,7 @@ def cron_refresh_weather(x_cron_secret: str | None = Header(default=None)):
             detail="Missing or incorrect X-Cron-Secret header.",
         )
 
-    try:
-        fetch_weather()
-        status = "ok"
-        message = "Weather cache checked (refreshed if it had expired)."
-
-    except WeatherUnavailableError as err:
-        status = "weather_unavailable"
-        message = str(err)
+    status, message = refresh_weather_from_openmeteo()
 
     return {
         "status": status,

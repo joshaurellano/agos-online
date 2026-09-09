@@ -1,126 +1,121 @@
 """
-Restart-proof fallback cache via Upstash Redis.
+Durable fallback + source-of-truth for the weather cache, via Supabase.
 
-Render's filesystem is ephemeral -- and on the Free tier, that
-ephemerality applies to EVERY restart and spin-down, not just full
-redeploys -- local disk gets wiped every time too, so it can't help
-here. Instead, the last successful Open-Meteo response is written to
-Upstash Redis and reloaded at startup, so the flood forecast keeps
-working off the last-known-good weather data as long as the server has
-EVER fetched successfully at least once before.
+WHY THIS EXISTS:
+Render's filesystem is ephemeral -- that applies to every restart and
+free-tier spin-down, not just full redeploys -- so an in-memory-only
+cache (app.weather.cache) disappears constantly. This module persists
+the last successful Open-Meteo response to Supabase so it survives
+restarts.
 
-This does NOT change what data feeds the model. It's still the exact
-same Open-Meteo response, just given a longer, restart-proof lifetime
-as a fallback.
+IMPORTANT ARCHITECTURE NOTE (read this before touching client.py):
+save_weather_snapshot() is called from exactly ONE place: the standalone
+refresh script (scripts/refresh_weather.py / app.weather.client's
+refresh_weather_from_openmeteo()), run on a fixed external schedule --
+NOT from inside a live API request. load_weather_snapshot() is what the
+running FastAPI app calls instead, every time its own short in-process
+cache (see app.weather.cache) has gone stale. This is what decouples
+Open-Meteo request volume from app traffic entirely: the API never
+calls Open-Meteo itself, so no amount of (or absence of) usage, and no
+number of Render cold starts, can ever increase Open-Meteo call volume.
+Only the external schedule can.
 
-Set these two env vars in Render's dashboard (Settings -> Environment):
-    UPSTASH_REDIS_REST_URL
-    UPSTASH_REDIS_REST_TOKEN
-(Upstash gives you both directly on your database's page.)
+Set these two env vars (Render AND wherever the refresh script runs,
+e.g. GitHub Actions secrets):
+
+    SUPABASE_URL
+    SUPABASE_SERVICE_ROLE_KEY
+
+See supabase/schema.sql for the one-time table setup.
 """
 
-import json
-import os
+import time
 
-import requests
+from app.weather.supabase_store import kv_get, kv_set
 
-from app.weather.cache import weather_cache, cache_age_minutes
-from app.config.settings import DISABLE_DISK_CACHE
-
-UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
-UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
-UPSTASH_CACHE_KEY = "weather_cache_fallback"
+WEATHER_SNAPSHOT_KEY = "weather_cache_fallback"
 
 
-def persist_cache_to_disk():
+def save_weather_snapshot(data, fetched_at, last_successful_fetch):
     """
-    Writes the last successful Open-Meteo response to Upstash Redis.
+    Writes the given Open-Meteo response (already PAGASA-calibrated) to
+    Supabase, along with when it was fetched.
 
-    Called every time a fetch succeeds. This is what lets the flood
-    forecast keep working immediately after a Render restart/spin-down,
-    instead of only after the next successful Open-Meteo call.
+    Called only by the external refresh script after a genuine live
+    Open-Meteo fetch -- never by the request-serving app.
     """
 
-    if DISABLE_DISK_CACHE:
-        # Local dev with WEATHER_DISABLE_DISK_CACHE=true: don't write local
-        # test fetches into what may be production's shared fallback data.
-        return
+    payload = {
+        "data": data,
+        "fetched_at": fetched_at,
+        "last_successful_fetch": last_successful_fetch,
+    }
 
-    if not (UPSTASH_URL and UPSTASH_TOKEN):
-        print("⚠️ Upstash env vars not set — skipping persisted cache write.")
-        return
+    ok = kv_set(WEATHER_SNAPSHOT_KEY, payload)
 
-    try:
-        payload = {
-            "data": weather_cache["data"],
-            "fetched_at": weather_cache["fetched_at"],
-            "last_successful_fetch": weather_cache["last_successful_fetch"],
-        }
+    if ok:
+        print("🟢 Persisted weather snapshot to Supabase.")
 
-        resp = requests.post(
-            f"{UPSTASH_URL}/set/{UPSTASH_CACHE_KEY}",
-            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
-            data=json.dumps(payload),
-            timeout=10,
-        )
-        resp.raise_for_status()
+    return ok
 
-    except Exception as err:
-        # Persistence failing should never take down the API -- it's a
-        # best-effort safety net, not a hard requirement.
-        print(f"⚠️ Could not persist weather cache to Upstash: {err}")
+
+def load_weather_snapshot():
+    """
+    Reads the latest persisted Open-Meteo snapshot from Supabase.
+
+    Returns a dict with keys `data`, `fetched_at`, `last_successful_fetch`,
+    or None if nothing is stored yet or Supabase couldn't be reached.
+
+    Called by app.weather.client.fetch_weather() every time the
+    in-process cache has gone stale -- this is the ONLY thing that
+    refills it. The running app never talks to Open-Meteo directly.
+    """
+
+    payload = kv_get(WEATHER_SNAPSHOT_KEY)
+
+    if not payload or not payload.get("data"):
+        return None
+
+    return {
+        "data": payload["data"],
+        "fetched_at": payload.get("fetched_at", time.time()),
+        "last_successful_fetch": payload.get("last_successful_fetch"),
+    }
 
 
 def load_cache_from_disk():
     """
-    Loads the last persisted Open-Meteo response from Upstash at process
-    startup.
+    Primes the in-process weather cache from Supabase at app startup, so
+    the very first request doesn't have to wait on a cold read.
 
-    Without this, a restart that happens to land during an Open-Meteo
-    rate-limit window leaves the server with zero fallback data until
-    Open-Meteo becomes reachable again -- which is exactly the failure
-    mode this whole mechanism exists to avoid.
+    Marked `using_stale_data`/`loaded_from_disk` purely for status
+    reporting (see get_cache_status()) -- there is no "confirm against a
+    live fetch" step anymore, because the running app is never supposed
+    to perform a live Open-Meteo fetch at all. The data is only as fresh
+    as the last scheduled refresh run, which is exactly by design.
     """
 
-    if not (UPSTASH_URL and UPSTASH_TOKEN):
-        print("⚠️ Upstash env vars not set — no persisted cache to load.")
+    # Imported here (not at module load) to avoid a circular import --
+    # app.weather.cache imports settings only, so this is safe.
+    from app.weather.cache import weather_cache, cache_age_minutes, cache_is_fresh
+
+    snapshot = load_weather_snapshot()
+
+    if snapshot is None:
+        print("⚠️ No persisted weather snapshot found in Supabase yet.")
         return
 
-    try:
-        resp = requests.get(
-            f"{UPSTASH_URL}/get/{UPSTASH_CACHE_KEY}",
-            headers={"Authorization": f"Bearer {UPSTASH_TOKEN}"},
-            timeout=10,
-        )
-        resp.raise_for_status()
+    weather_cache["data"] = snapshot["data"]
+    weather_cache["fetched_at"] = snapshot["fetched_at"]
+    weather_cache["last_successful_fetch"] = snapshot["last_successful_fetch"]
+    weather_cache["loaded_from_disk"] = True
+    weather_cache["fallback_source"] = "supabase"
+    # Reflect the snapshot's real age -- it may already be older than
+    # CACHE_TTL_SECONDS if the scheduled refresh hasn't run recently.
+    weather_cache["using_stale_data"] = not cache_is_fresh()
 
-        result = resp.json().get("result")
-        if not result:
-            return
-
-        payload = json.loads(result)
-        if not payload.get("data"):
-            return
-
-        weather_cache["data"] = payload["data"]
-        weather_cache["fetched_at"] = payload.get("fetched_at", 0.0)
-        weather_cache["last_successful_fetch"] = payload.get("last_successful_fetch")
-        weather_cache["using_stale_data"] = True
-        weather_cache["loaded_from_disk"] = True
-        weather_cache["fallback_source"] = "upstash"
-        # Loaded, but not yet confirmed against live Open-Meteo this
-        # process lifetime -- fetch_weather() will force one real attempt
-        # before ever serving this snapshot on its own, regardless of how
-        # young payload["fetched_at"] looks.
-        weather_cache["force_live_retry"] = True
-
-        age_min = cache_age_minutes()
-        print(
-            f"🟡 Loaded persisted weather cache from Upstash "
-            f"(age: {age_min} min). This will back /api/forecast-flood "
-            f"as a fallback only if the next live Open-Meteo attempt fails."
-        )
-
-    except Exception as err:
-        print(f"⚠️ Could not load persisted weather cache from Upstash: {err}")
-
+    age_min = cache_age_minutes()
+    print(
+        f"🟡 Loaded weather snapshot from Supabase "
+        f"(age: {age_min} min)."
+    )
