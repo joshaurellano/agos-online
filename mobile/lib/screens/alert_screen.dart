@@ -1,11 +1,7 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
-import '../models/alert_level.dart';
-import '../services/auth_service.dart';
-import '../services/flood_status_service.dart';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -67,6 +63,14 @@ const _typeLabels = {
   _AlertType.info:     'INFO',
 };
 
+// Device-local "cleared up to" timestamp. "Clear all" only ever wipes this
+// device's view (the confirm dialog says as much) — but it needs to survive
+// this screen being recreated (every bell-icon tap / notification-tap opens
+// a brand new AlertScreen instance) and app restarts, or the DB fetch just
+// brings the same "cleared" alerts right back. Persisting it here is what
+// makes Clear All actually stick.
+const _clearedBeforeKey = 'agos_alerts_cleared_before';
+
 // ── Screen ─────────────────────────────────────────────────────────────────────
 
 class AlertScreen extends StatefulWidget {
@@ -79,15 +83,8 @@ class AlertScreen extends StatefulWidget {
 class _AlertScreenState extends State<AlertScreen> {
   final List<_AlertLog> _logs = [];
   String _filter = 'ALL';
-  String? _lastInjectedStatus;
   bool _loading = true;
-
-  // Model predictions now come from the shared FloodStatusService (a
-  // single app-wide poller — see services/flood_status_service.dart)
-  // instead of this screen running its own independent 30-second Timer
-  // against a URL that, before this change, had drifted to a hardcoded
-  // address different from every other screen's.
-  FloodStatusService? _statusService;
+  DateTime? _clearedBefore;
 
   // Supabase realtime channel
   RealtimeChannel? _channel;
@@ -95,17 +92,28 @@ class _AlertScreenState extends State<AlertScreen> {
   @override
   void initState() {
     super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _loadClearedBefore();
+    if (!mounted) return;
     _fetchAlertsFromDb();
-    final svc = context.read<FloodStatusService>();
-    _statusService = svc;
-    svc.addListener(_onStatusUpdate);
-    _onStatusUpdate(); // apply whatever the service already has
     _subscribeRealtime();
+  }
+
+  Future<void> _loadClearedBefore() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final iso = prefs.getString(_clearedBeforeKey);
+      if (iso != null) _clearedBefore = DateTime.tryParse(iso);
+    } catch (_) {
+      // Non-fatal — worst case Clear All just doesn't persist this session.
+    }
   }
 
   @override
   void dispose() {
-    _statusService?.removeListener(_onStatusUpdate);
     _channel?.unsubscribe();
     super.dispose();
   }
@@ -122,7 +130,16 @@ class _AlertScreenState extends State<AlertScreen> {
 
       if (!mounted) return;
 
-      final rows = (res as List).cast<Map<String, dynamic>>();
+      final clearedBefore = _clearedBefore;
+      final rows = (res as List).cast<Map<String, dynamic>>()
+          // Respect a prior "Clear all" on this device — otherwise every
+          // reopen re-fetches the exact alerts the user just cleared.
+          .where((row) {
+            if (clearedBefore == null) return true;
+            final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
+            return createdAt == null || createdAt.isAfter(clearedBefore);
+          });
+
       final dbLogs = rows.map((row) {
         final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
         final timeStr = _formatTime(createdAt);
@@ -144,40 +161,6 @@ class _AlertScreenState extends State<AlertScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
     }
-  }
-
-  void _onStatusUpdate() {
-    final svc = _statusService;
-    if (svc == null || !mounted) return;
-    final body = svc.rawJson;
-    if (body == null) return;
-    _injectFromJson(body);
-  }
-
-  void _injectFromJson(Map<String, dynamic> body) {
-    final alertKey  = body['alert_level'] as String? ?? 'NORMAL';
-    final status    = body['status'] as String? ?? '';
-    final prob      = ((body['probability'] as num?)?.toDouble() ?? 0) * 100;
-    final metrics   = body['live_metrics'] as Map<String, dynamic>? ?? {};
-    final rainfall  = (metrics['rainfall_mm'] as num?)?.toDouble() ?? 0.0;
-    final signal    = (metrics['wind_signal'] as num?)?.toInt() ?? 0;
-
-    // Only inject a new log entry when alert changes (skip NORMAL to reduce noise)
-    if (alertKey == 'NORMAL') return;
-    if (_lastInjectedStatus == status) return;
-    _lastInjectedStatus = status;
-
-    final newLog = _AlertLog(
-      id:      DateTime.now().millisecondsSinceEpoch,
-      time:    _formatTime(DateTime.now()),
-      type:    _typeFromKey(alertKey),
-      message: '[AI Model] $status — Flood probability: ${prob.toStringAsFixed(1)}%. '
-               'Rainfall: ${rainfall.toStringAsFixed(1)}mm, Signal #$signal.',
-      sentBy:  'LSTM Model (Auto)',
-      read:    false,
-    );
-
-    if (mounted) setState(() => _logs.insert(0, newLog));
   }
 
   void _subscribeRealtime() {
@@ -235,7 +218,7 @@ class _AlertScreenState extends State<AlertScreen> {
           style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w700, decoration: TextDecoration.none),
         ),
         content: const Text(
-          'This removes every alert from this list. It only clears your local view — records already saved in the database are not deleted.',
+          'This clears every alert from your view on this device, including future reopens of this screen. Records already saved in the database are not deleted, and new alerts will still show up as they arrive.',
           style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4, decoration: TextDecoration.none),
         ),
         actions: [
@@ -252,10 +235,17 @@ class _AlertScreenState extends State<AlertScreen> {
     );
 
     if (confirmed == true && mounted) {
+      final now = DateTime.now();
       setState(() {
         _logs.clear();
-        _lastInjectedStatus = null;
+        _clearedBefore = now;
       });
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_clearedBeforeKey, now.toIso8601String());
+      } catch (_) {
+        // Non-fatal — the in-memory clear above still applies this session.
+      }
     }
   }
 
@@ -287,10 +277,15 @@ class _AlertScreenState extends State<AlertScreen> {
               const Expanded(
                 child: Text(
                   'Notifications',
+                  // Matches PanahonHeader's title style (see theme/panahon_ui.dart)
+                  // so this screen's header reads the same as every other tab's —
+                  // it was previously a point smaller, one weight lighter, and
+                  // missing the -0.3 letter-spacing the rest of the app uses.
                   style: TextStyle(
                     color: AppColors.textPri,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                    letterSpacing: -0.3,
                     decoration: TextDecoration.none,
                   ),
                 ),
