@@ -31,27 +31,21 @@ weather_cache = {
     # Whether the last returned data was stale fallback data.
     "using_stale_data": False,
 
-    # True if this cache entry was loaded from Upstash at startup, rather
-    # than fetched during this process's lifetime.
+    # True if this cache entry was loaded from Supabase (either at
+    # startup, or because the in-process cache had gone stale), rather
+    # than written by this process performing a live Open-Meteo fetch.
     "loaded_from_disk": False,
 
-    # "upstash" if the current data came from the persisted fallback,
-    # or None (live fetch / nothing loaded yet).
+    # "supabase" if the current data came from the persisted snapshot,
+    # or None (this process wrote it directly via a live fetch, or
+    # nothing loaded yet).
     "fallback_source": None,
 
-    # Wall-clock time of the most recent exhausted-retries failure.
-    # Used by the cooldown/circuit-breaker so repeated incoming requests
-    # don't each re-trigger a full retry storm against Open-Meteo.
+    # Wall-clock time of the most recent exhausted-retries failure from
+    # refresh_weather_from_openmeteo(). Used by the cooldown/circuit
+    # breaker so repeated cron calls during an Open-Meteo outage don't
+    # each re-trigger a full retry storm.
     "last_failure_at": None,
-
-    # True right after a disk-persisted (Upstash) snapshot has been loaded
-    # at startup, and this process hasn't yet found out whether Open-Meteo
-    # is actually reachable. Cleared the moment a live fetch is attempted
-    # (success or failure) -- see fetch_weather(). This is what makes the
-    # disk snapshot a true last-resort fallback rather than something
-    # that can answer requests on its own merit just because it's still
-    # within the normal TTL window.
-    "force_live_retry": False,
 }
 
 weather_cache_lock = threading.Lock()

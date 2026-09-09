@@ -1,24 +1,31 @@
 """
-Open-Meteo HTTP client: URL construction + resilient fetch_weather().
+Open-Meteo client.
 
-fetch_weather() wraps the raw HTTP call with:
-    - an in-process TTL cache (see app.weather.cache)
-    - a lock so concurrent requests collapse into one upstream call
-    - HTTP 429 handling with Retry-After support
-    - exponential backoff on network/parse errors
-    - a failure cooldown (circuit breaker) so an outage doesn't turn
-      into a retry storm
-    - a last-known-good fallback, backed by Upstash (see
-      app.weather.persistence) so it survives process restarts
+Two entry points, used by two different callers, on purpose:
 
-IMPORTANT: this module controls WHEN Open-Meteo is contacted, and what
-to serve when Open-Meteo can't be reached at all. The one exception to
-"doesn't modify the data" is PAGASA calibration (see
-app.weather.calibration): every genuinely fresh Open-Meteo response is
-bias-corrected against PAGASA's Pili AWS station before being cached, so
-everything downstream of fetch_weather() -- including stale/fallback
-replays of a past response -- sees PAGASA-calibrated values, not raw
-Open-Meteo output.
+    fetch_weather()
+        Called by every user-facing endpoint (/api/forecast,
+        /api/forecast-flood/*, /api/predict-flood, etc). This NEVER
+        contacts Open-Meteo. It only ever reads the last snapshot --
+        first from a short-lived in-process cache, falling back to the
+        Supabase-persisted snapshot (app.weather.persistence) when the
+        in-process cache is empty or stale. This is what makes
+        Open-Meteo request volume completely independent of how much
+        (or how little) the app is used, and independent of Render
+        free-tier cold starts.
+
+    refresh_weather_from_openmeteo()
+        Called ONLY by GET /api/cron/refresh-weather (see
+        app.api.routes_cron), which your external scheduler hits on a
+        fixed interval. This is the ONLY code path in the whole app
+        that ever talks to Open-Meteo. It does the real HTTP fetch with
+        retries/backoff and a failure cooldown, applies PAGASA
+        calibration, and persists the result to Supabase so
+        fetch_weather() can pick it up -- it does not return data to a
+        frontend caller directly.
+
+Point your scheduler at /api/cron/refresh-weather, not "/" -- hitting
+"/" only keeps Render awake, it doesn't refresh anything.
 """
 
 import datetime
@@ -43,21 +50,18 @@ from app.weather.cache import (
     in_failure_cooldown,
     FAILURE_COOLDOWN_SECONDS,
 )
-from app.weather.persistence import persist_cache_to_disk
+from app.weather.persistence import save_weather_snapshot, load_weather_snapshot
 from app.weather.calibration import record_sample, apply_calibration
 
 
 class WeatherUnavailableError(Exception):
     """
-    Raised only when Open-Meteo could not be reached/parsed AND there is
-    no fallback data anywhere (not in memory, not on Upstash).
-
-    This is distinct from ordinary request exceptions so the API layer
-    can return a clear, specific error message instead of a generic
-    "something went wrong" response.
+    Raised only when there is no weather data anywhere -- not in the
+    in-process cache, not in Supabase. In practice this should only
+    happen on a brand-new deploy before the scheduled refresh has ever
+    run successfully once.
     """
     pass
-
 
 
 def build_weather_url():
@@ -98,13 +102,6 @@ def build_weather_url():
         # ---------------------------------------------------------------
         # MINUTELY (15-MIN STEPS)
         # ---------------------------------------------------------------
-        # Powers the short-range "minute forecast" precipitation strip on
-        # the flood map (see routes_weather.get_forecast -> "minutely").
-        # Open-Meteo's finest native resolution is 15 minutes (there is no
-        # true per-minute precipitation field), so this is a coarser
-        # cousin of OpenWeatherMap's 60x 1-min series rather than an exact
-        # match -- 8 steps covers the next 2 hours, plenty for a
-        # Now/15/30/45/60-min strip with headroom.
         "&minutely_15=precipitation"
         "&forecast_minutely_15=8"
 
@@ -146,13 +143,10 @@ def build_weather_url():
         # ---------------------------------------------------------------
         f"&forecast_days={FORECAST_DAYS}"
 
-        # Correct timezone for Naga City / Philippines.
         "&timezone=Asia/Manila"
 
-        # Historical window required by the inference pipeline.
         f"&past_days={PAST_DAYS_FOR_WINDOW}"
     )
-
 
 
 def get_retry_after_seconds(response, attempt):
@@ -173,130 +167,154 @@ def get_retry_after_seconds(response, attempt):
         except (TypeError, ValueError):
             pass
 
-    # Exponential backoff:
-    #
-    # attempt 0 -> 30 sec
-    # attempt 1 -> 60 sec
-    # attempt 2 -> 120 sec
-    # attempt 3 -> 240 sec
-    #
-    # capped at 5 minutes.
     return min(30 * (2 ** attempt), 300)
-
 
 
 def fetch_weather():
     """
-    Retrieves Open-Meteo weather data with:
+    Read-only path used by every user-facing endpoint. NEVER contacts
+    Open-Meteo.
 
-        - 30-minute cache
-        - thread locking
-        - HTTP 429 handling
-        - Retry-After support
-        - exponential backoff
-        - timeout handling
-        - last-known-good fallback (in-memory AND Upstash-persisted)
-        - PAGASA bias-correction of every freshly fetched response
-          (see app.weather.calibration)
-
-    IMPORTANT:
-
-    Aside from PAGASA calibration, this function does not otherwise
-    modify the weather data itself. It controls WHEN Open-Meteo is
-    contacted, and what to serve when Open-Meteo can't be reached at
-    all.
+        1. If the in-process cache is still within CACHE_TTL_SECONDS,
+           return it immediately -- no network call at all.
+        2. Otherwise, pull the latest snapshot from Supabase (a cheap
+           Postgres read via PostgREST, not an Open-Meteo call) and use
+           it to refill the in-process cache.
+        3. If Supabase has nothing either, fall back to whatever is
+           still sitting in the in-process cache from earlier this
+           process's life, even if stale.
+        4. Only if there is truly nothing anywhere does this raise
+           WeatherUnavailableError.
     """
 
-    # ----------------------------------------------------------------------
-    # FAST CACHE CHECK
-    # ----------------------------------------------------------------------
-    # force_live_retry (set by load_cache_from_disk()) overrides this --
-    # a disk-loaded snapshot doesn't get to answer requests on its own
-    # freshness window until a live Open-Meteo attempt has actually been
-    # made this process lifetime. That attempt happens below regardless
-    # of outcome, so this only ever gates the very first call after a
-    # snapshot load.
-
-    if not weather_cache["force_live_retry"] and cache_is_fresh():
+    if cache_is_fresh():
         weather_cache["using_stale_data"] = False
         return weather_cache["data"]
 
-    # ----------------------------------------------------------------------
-    # LOCK
-    # ----------------------------------------------------------------------
-    #
-    # Prevents concurrent API requests when several frontend requests hit
-    # the backend at the same time while the cache is expired.
-    #
-    # Example:
-    #
-    # 10 simultaneous frontend requests
-    #          ↓
-    #      expired cache
-    #          ↓
-    # Without lock:
-    #      10 Open-Meteo requests ❌
-    #
-    # With lock:
-    #      1 Open-Meteo request
-    #      9 requests use resulting cache
-    #
-    # ----------------------------------------------------------------------
-
     with weather_cache_lock:
 
-        # Another request may have refreshed the cache while we were waiting
+        # Another request may have refilled the cache while we waited
         # for the lock.
-        if not weather_cache["force_live_retry"] and cache_is_fresh():
+        if cache_is_fresh():
             weather_cache["using_stale_data"] = False
             return weather_cache["data"]
 
-        # This attempt (below) is what verifies Open-Meteo reachability --
-        # from here on, the loaded snapshot must stand on its own normal
-        # TTL like any other cache entry, not on the strength of never
-        # having been checked yet.
-        weather_cache["force_live_retry"] = False
+        snapshot = load_weather_snapshot()
 
-        # --------------------------------------------------------------
-        # FAILURE COOLDOWN (CIRCUIT BREAKER)
-        # --------------------------------------------------------------
-        #
-        # If Open-Meteo failed very recently, don't retry it again yet --
-        # go straight to whatever fallback data we have. This is what
-        # actually caps Open-Meteo request volume during an outage,
-        # regardless of how much traffic (real users or a keep-alive
-        # cron) hits the API in the meantime.
-        # --------------------------------------------------------------
+        if snapshot is not None:
+            weather_cache["data"] = snapshot["data"]
+            weather_cache["fetched_at"] = snapshot["fetched_at"]
+            weather_cache["last_successful_fetch"] = snapshot["last_successful_fetch"]
+            weather_cache["loaded_from_disk"] = True
+            weather_cache["fallback_source"] = "supabase"
+            weather_cache["using_stale_data"] = not cache_is_fresh()
 
-        if in_failure_cooldown():
+            print(
+                f"🟡 Refilled in-process cache from Supabase "
+                f"(age: {cache_age_minutes()} min)."
+            )
 
-            if weather_cache["data"] is not None:
+            return weather_cache["data"]
 
-                weather_cache["using_stale_data"] = True
+        # Supabase read failed or is empty -- fall back to whatever this
+        # process already had in memory, however old.
+        if weather_cache["data"] is not None:
+            weather_cache["using_stale_data"] = True
 
-                print(
-                    "⏸️ Skipping Open-Meteo request -- still within the "
-                    f"{FAILURE_COOLDOWN_SECONDS // 60}-minute failure "
-                    "cooldown. Serving fallback data "
-                    f"(age: {cache_age_minutes()} min)."
+            print(
+                "🟡 Supabase snapshot unavailable. Serving last in-process "
+                f"weather data (age: {cache_age_minutes()} min)."
+            )
+
+            return weather_cache["data"]
+
+        raise WeatherUnavailableError(
+            "No weather snapshot is available yet. Either Supabase isn't "
+            "configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY), or the "
+            "scheduled refresh (GET /api/cron/refresh-weather) hasn't run "
+            "successfully yet."
+        )
+
+
+def refresh_weather_from_openmeteo():
+    """
+    The ONLY function in this app that ever contacts Open-Meteo.
+
+    Called exclusively by GET /api/cron/refresh-weather (see
+    app.api.routes_cron), which your external scheduler hits on a fixed
+    interval -- e.g. every WEATHER_CACHE_TTL_MINUTES. Does the real
+    HTTP fetch with retries/backoff and a failure cooldown, applies
+    PAGASA calibration, updates the in-process cache directly (so this
+    instance doesn't need a round-trip to Supabase to see its own fresh
+    data), and persists the result to Supabase for every other
+    instance/request to read via fetch_weather().
+
+    SAFE TO CALL AS OFTEN AS YOU LIKE:
+    This checks freshness FIRST, exactly like fetch_weather() does, and
+    only proceeds to a real Open-Meteo call once the data has actually
+    expired. It checks both the in-process cache and the Supabase
+    snapshot (in case a different instance -- or a previous cron run
+    against a different Render instance after a redeploy -- already
+    refreshed it more recently than this process's own cache), so no
+    matter how frequently your scheduler hits this endpoint, Open-Meteo
+    itself is only ever contacted about once per CACHE_TTL_SECONDS,
+    total, system-wide.
+
+    Returns (status, message) rather than raising, so the cron endpoint
+    can report a clean result either way.
+    """
+
+    if cache_is_fresh():
+        weather_cache["using_stale_data"] = False
+        return "skipped_fresh", (
+            f"In-process cache is still fresh (age: {cache_age_minutes()} "
+            "min) -- no Open-Meteo call needed."
+        )
+
+    with weather_cache_lock:
+
+        # Another call (this instance or another) may have refreshed the
+        # in-process cache while we waited for the lock.
+        if cache_is_fresh():
+            weather_cache["using_stale_data"] = False
+            return "skipped_fresh", (
+                f"In-process cache is still fresh (age: "
+                f"{cache_age_minutes()} min) -- no Open-Meteo call needed."
+            )
+
+        # The in-process cache is stale, but Supabase might already have
+        # something newer -- e.g. a different Render instance (or the
+        # previous instance, before a redeploy) refreshed it recently.
+        # Adopt that instead of hitting Open-Meteo again for no reason.
+        snapshot = load_weather_snapshot()
+
+        if snapshot is not None:
+            weather_cache["data"] = snapshot["data"]
+            weather_cache["fetched_at"] = snapshot["fetched_at"]
+            weather_cache["last_successful_fetch"] = snapshot["last_successful_fetch"]
+            weather_cache["loaded_from_disk"] = True
+            weather_cache["fallback_source"] = "supabase"
+            weather_cache["using_stale_data"] = not cache_is_fresh()
+
+            if cache_is_fresh():
+                return "skipped_fresh", (
+                    "Supabase snapshot is still fresh (age: "
+                    f"{cache_age_minutes()} min) -- adopted it, no "
+                    "Open-Meteo call needed."
                 )
 
-                return weather_cache["data"]
-
-            raise WeatherUnavailableError(
-                "Open-Meteo failed recently and is still within its "
-                f"{FAILURE_COOLDOWN_SECONDS // 60}-minute cooldown, and no "
-                "cached weather data is available (no in-memory cache, "
-                "no Upstash fallback)."
+        if in_failure_cooldown():
+            message = (
+                "Open-Meteo failed recently -- still within the "
+                f"{FAILURE_COOLDOWN_SECONDS // 60}-minute failure cooldown, "
+                "skipping this refresh attempt."
             )
+            print(f"⏸️ {message}")
+            return "cooldown", message
 
         url = build_weather_url()
 
         last_exception = None
-
-        # ------------------------------------------------------------------
-        # RETRY LOOP
-        # ------------------------------------------------------------------
 
         for attempt in range(MAX_WEATHER_ATTEMPTS):
 
@@ -307,21 +325,11 @@ def fetch_weather():
                     f"(attempt {attempt + 1}/{MAX_WEATHER_ATTEMPTS})"
                 )
 
-                response = requests.get(
-                    url,
-                    timeout=WEATHER_REQUEST_TIMEOUT
-                )
-
-                # ----------------------------------------------------------
-                # RATE LIMITED
-                # ----------------------------------------------------------
+                response = requests.get(url, timeout=WEATHER_REQUEST_TIMEOUT)
 
                 if response.status_code == 429:
 
-                    wait_seconds = get_retry_after_seconds(
-                        response,
-                        attempt
-                    )
+                    wait_seconds = get_retry_after_seconds(response, attempt)
 
                     print(
                         f"⚠️ Open-Meteo returned HTTP 429 "
@@ -333,25 +341,15 @@ def fetch_weather():
                         f"429 Too Many Requests for URL: {url}"
                     )
 
-                    # Don't retry after the final attempt.
                     if attempt < MAX_WEATHER_ATTEMPTS - 1:
                         time.sleep(wait_seconds)
 
                     continue
 
-                # ----------------------------------------------------------
-                # OTHER HTTP ERROR
-                # ----------------------------------------------------------
-
                 response.raise_for_status()
-
-                # ----------------------------------------------------------
-                # PARSE JSON
-                # ----------------------------------------------------------
 
                 data = response.json()
 
-                # Basic sanity check.
                 if not isinstance(data, dict):
                     raise ValueError(
                         "Open-Meteo returned an unexpected response format."
@@ -361,23 +359,6 @@ def fetch_weather():
                     raise ValueError(
                         "Open-Meteo response is missing daily/hourly data."
                     )
-
-                # ----------------------------------------------------------
-                # SUCCESS
-                # ----------------------------------------------------------
-
-                # ----------------------------------------------------------
-                # PAGASA CALIBRATION
-                # ----------------------------------------------------------
-                #
-                # This is the one point every consumer of fetch_weather()
-                # passes through, so it's where we (a) take the chance to
-                # record a fresh (Open-Meteo, PAGASA) sample pair for this
-                # fetch cycle, and (b) bias-correct this response against
-                # PAGASA's Pili AWS station before it's cached. Both steps
-                # are best-effort: any PAGASA failure here just means this
-                # cycle's response stays as plain Open-Meteo data, exactly
-                # like before this feature existed.
 
                 try:
                     record_sample(data)
@@ -390,147 +371,75 @@ def fetch_weather():
                     print(f"⚠️ PAGASA calibration application failed: {err}")
 
                 fetched_now = time.time()
+                last_successful_fetch = datetime.datetime.now(
+                    datetime.timezone.utc
+                ).isoformat()
 
                 weather_cache["data"] = data
                 weather_cache["fetched_at"] = fetched_now
-                weather_cache["last_successful_fetch"] = (
-                    datetime.datetime.now(
-                        datetime.timezone.utc
-                    ).isoformat()
-                )
+                weather_cache["last_successful_fetch"] = last_successful_fetch
                 weather_cache["using_stale_data"] = False
                 weather_cache["loaded_from_disk"] = False
                 weather_cache["fallback_source"] = None
                 weather_cache["last_failure_at"] = None
 
-                # Persist to disk so this response survives a restart and
-                # can back /api/forecast-flood even if Open-Meteo is
-                # unreachable right after the next boot.
-                persist_cache_to_disk()
-
-                print(
-                    "🟢 Open-Meteo weather data successfully fetched "
-                    "and cached."
+                saved = save_weather_snapshot(
+                    data, fetched_now, last_successful_fetch
                 )
 
-                return data
+                if saved:
+                    print(
+                        "🟢 Open-Meteo weather data fetched, calibrated, "
+                        "and persisted to Supabase."
+                    )
+                    return "ok", "Fetched fresh Open-Meteo data and persisted to Supabase."
+
+                print(
+                    "🟡 Open-Meteo weather data fetched and calibrated, but "
+                    "the Supabase write failed -- this instance still has "
+                    "it in memory, but other instances won't until the "
+                    "next successful refresh."
+                )
+                return "fetched_not_persisted", (
+                    "Fetched fresh Open-Meteo data but the Supabase write "
+                    "failed -- check SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY."
+                )
 
             except requests.RequestException as err:
 
                 last_exception = err
+                print(f"⚠️ Open-Meteo request failed: {err}")
 
-                print(
-                    f"⚠️ Open-Meteo request failed: {err}"
-                )
-
-                # Don't sleep after final attempt.
                 if attempt < MAX_WEATHER_ATTEMPTS - 1:
-
-                    # For ordinary network errors, use shorter backoff.
-                    wait_seconds = min(
-                        5 * (2 ** attempt),
-                        60
-                    )
-
-                    print(
-                        f"   Retrying in "
-                        f"{wait_seconds}s..."
-                    )
-
+                    wait_seconds = min(5 * (2 ** attempt), 60)
+                    print(f"   Retrying in {wait_seconds}s...")
                     time.sleep(wait_seconds)
 
             except (ValueError, json.JSONDecodeError) as err:
 
                 last_exception = err
-
-                print(
-                    f"⚠️ Invalid Open-Meteo response: {err}"
-                )
+                print(f"⚠️ Invalid Open-Meteo response: {err}")
 
                 if attempt < MAX_WEATHER_ATTEMPTS - 1:
-
-                    wait_seconds = min(
-                        5 * (2 ** attempt),
-                        60
-                    )
-
-                    time.sleep(wait_seconds)
+                    time.sleep(min(5 * (2 ** attempt), 60))
 
             except Exception as err:
 
                 last_exception = err
-
-                print(
-                    f"⚠️ Unexpected weather API error: {err}"
-                )
+                print(f"⚠️ Unexpected weather API error: {err}")
 
                 if attempt < MAX_WEATHER_ATTEMPTS - 1:
+                    time.sleep(min(5 * (2 ** attempt), 60))
 
-                    wait_seconds = min(
-                        5 * (2 ** attempt),
-                        60
-                    )
-
-                    time.sleep(wait_seconds)
-
-        # ------------------------------------------------------------------
-        # ALL RETRIES FAILED
-        # ------------------------------------------------------------------
-        #
-        # If we have a previous successful Open-Meteo response -- either
-        # still in memory, or loaded from disk at startup -- use it.
-        #
-        # This keeps the flood model operational instead of returning
-        # an empty forecast simply because Open-Meteo temporarily rejected
-        # a request.
-        #
-        # IMPORTANT:
-        #
-        # This DOES NOT invent or alter weather values.
-        # It uses the exact last successful Open-Meteo response.
-        # ------------------------------------------------------------------
-
-        # Start (or refresh) the failure cooldown so subsequent requests
-        # in the next FAILURE_COOLDOWN_SECONDS skip straight to fallback
-        # data instead of re-running this whole retry loop.
         weather_cache["last_failure_at"] = time.time()
 
-        if weather_cache["data"] is not None:
-
-            weather_cache["using_stale_data"] = True
-
-            source = "upstash-persisted" if weather_cache["loaded_from_disk"] else "in-memory"
-
-            print(
-                f"🟡 Open-Meteo unavailable after retries. "
-                f"Using last successfully cached weather data "
-                f"({source}, age: {cache_age_minutes()} min). "
-                f"Entering a {FAILURE_COOLDOWN_SECONDS // 60}-minute "
-                f"cooldown before retrying Open-Meteo again."
-            )
-
-            return weather_cache["data"]
-
-        # ------------------------------------------------------------------
-        # NO CACHE AVAILABLE ANYWHERE (memory or Upstash)
-        # ------------------------------------------------------------------
-        #
-        # This is the only truly unrecoverable case: Open-Meteo could not
-        # be reached/parsed after MAX_WEATHER_ATTEMPTS retries, AND there
-        # is no last-known-good data anywhere (fresh deploy, Upstash
-        # missing/empty, and Open-Meteo down on the very first request).
-        #
-        # Raise a clearly-labeled error instead of a generic
-        # RequestException/RuntimeError so the API layer can return an
-        # unambiguous, human-readable message to the caller.
-        # ------------------------------------------------------------------
-
         detail = f" ({last_exception})" if last_exception is not None else ""
-
-        raise WeatherUnavailableError(
-            "Open-Meteo weather service is unreachable after "
-            f"{MAX_WEATHER_ATTEMPTS} attempts, and no cached weather "
-            f"data is available (no in-memory cache, no Upstash "
-            f"fallback){detail}."
+        message = (
+            f"Open-Meteo unreachable after {MAX_WEATHER_ATTEMPTS} attempts"
+            f"{detail}. Existing Supabase/in-process data (if any) is "
+            "unaffected -- fetch_weather() will keep serving it."
         )
 
+        print(f"🔴 {message}")
+
+        return "error", message

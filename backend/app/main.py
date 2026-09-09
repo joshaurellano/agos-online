@@ -42,7 +42,6 @@ app.include_router(routes_weather.router)
 app.include_router(routes_flood.router)
 app.include_router(routes_cron.router)
 
-# Prime the weather cache from Upstash immediately at import time, before
-# any request comes in and before the first fetch_weather() call -- same
-# timing the original main.py used.
+# Prime the weather cache from Supabase immediately at import time,
+# before any request comes in and before the first fetch_weather() call.
 load_cache_from_disk()
