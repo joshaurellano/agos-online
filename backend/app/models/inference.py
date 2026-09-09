@@ -18,6 +18,7 @@ from app.config.settings import MODEL_REGISTRY, DEFAULT_MODEL_KEY
 from app.features.windows import build_prediction_windows
 from app.weather.client import fetch_weather
 from app.weather.cache import get_cache_status
+from app.weather.calibration import get_calibration_status
 from app.features.aggregation import get_live_metrics
 from app.utils.alerts import probability_to_alert_level
 from app.models.registry import registry
@@ -187,6 +188,7 @@ def forecast_with_model(model_key):
         "status": "success",
         "generated_at": current_time,
         "weather_cache": get_cache_status(),
+        "pagasa_calibration": get_calibration_status(),
         "model_input_past_dates": past_dates,
         "model_input_forecast_dates": future_dates,
         "live_metrics": live_metrics,
@@ -272,6 +274,7 @@ def compare_models(model_keys=None):
         "status": "success",
         "generated_at": current_time,
         "weather_cache": get_cache_status(),
+        "pagasa_calibration": get_calibration_status(),
         "model_input_past_dates": past_dates,
         "model_input_forecast_dates": future_dates,
         "live_metrics": live_metrics,

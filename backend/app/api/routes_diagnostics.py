@@ -10,6 +10,9 @@ import requests
 from fastapi import APIRouter
 
 from app.models.registry import registry
+from app.weather.pagasa_client import fetch_pagasa_station, PagasaUnavailableError
+from app.weather.calibration import get_calibration_status
+from app.config.settings import PAGASA_STATION_ID
 
 router = APIRouter()
 
@@ -58,6 +61,42 @@ def test_openmeteo():
             "status": "error",
             "message": f"Open-Meteo request failed: {str(e)}"
         }
+
+
+@router.get("/api/test-pagasa")
+def test_pagasa():
+    """
+    Raw connectivity/parse check against the PAGASA AWS table for our
+    reference station -- mirrors /api/test-openmeteo, but for the
+    ground-truth source instead of the model's data source.
+    """
+    try:
+        start = time.time()
+        reading = fetch_pagasa_station(PAGASA_STATION_ID)
+        elapsed = time.time() - start
+
+        return {
+            "status": "success",
+            "response_time_seconds": round(elapsed, 2),
+            "pagasa": reading,
+        }
+
+    except PagasaUnavailableError as err:
+        return {
+            "status": "error",
+            "message": str(err),
+        }
+
+
+@router.get("/api/calibration")
+def calibration_status():
+    """
+    Reports the current PAGASA bias-correction state: how many
+    (Open-Meteo, PAGASA) sample pairs have been collected, the bias
+    currently being applied per field, and whether each field has
+    crossed the minimum-sample threshold to be corrected at all.
+    """
+    return get_calibration_status()
 
 
 @router.get("/api/models")
