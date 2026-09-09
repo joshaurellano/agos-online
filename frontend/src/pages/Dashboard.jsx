@@ -1541,6 +1541,7 @@ export default function Dashboard() {
   const [forecastGeneratedAt, setForecastGeneratedAt] = useState(null);
   const [forecastOutlook, setForecastOutlook] = useState(null);
   const [forecastCache, setForecastCache]     = useState(null);
+  const [pagasaCalibration, setPagasaCalibration] = useState(null);
   const [forecastLoading, setForecastLoading] = useState(true);
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
@@ -1558,6 +1559,7 @@ export default function Dashboard() {
         if (data.generated_at) setForecastGeneratedAt(data.generated_at);
         if (data.outlook) setForecastOutlook(data.outlook);
         if (data.weather_cache) setForecastCache(data.weather_cache);
+        if (data.pagasa_calibration) setPagasaCalibration(data.pagasa_calibration);
       })
       .catch(err => logger.warn('Forecast fetch failed:', err))
       .finally(() => setForecastLoading(false));
@@ -1944,6 +1946,7 @@ export default function Dashboard() {
             generatedAt={forecastGeneratedAt}
             outlook={forecastOutlook}
             weatherCache={forecastCache}
+            pagasaCalibration={pagasaCalibration}
           />
         </CollapsibleSection>
       </div>

@@ -106,7 +106,7 @@ function CustomTooltip({ active, payload, label }) {
  * stat grid, plus an hourly precipitation trend and hourly card strip.
  * Consumes the /api/forecast response shape directly (hourly[], daily[]).
  */
-export default function WeatherForecast({ hourly = [], daily = [], loading, generatedAt, outlook, weatherCache }) {
+export default function WeatherForecast({ hourly = [], daily = [], loading, generatedAt, outlook, weatherCache, pagasaCalibration }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   const days = daily; // full outlook window returned by the backend (currently up to 14 days)
@@ -364,27 +364,83 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
         </div>
       )}
 
-      {(generatedAt || weatherCache) && (
+      {(generatedAt || weatherCache || pagasaCalibration) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 10 }}>
           {generatedAt && (
             <span>
-              Source: Open-Meteo · synced {new Date(generatedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}
+              Source: Open-Meteo{pagasaCalibrationApplied(pagasaCalibration) ? ' (PAGASA-calibrated)' : ''} · synced {new Date(generatedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}
             </span>
           )}
-          {/* {weatherCache && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '1px 8px', borderRadius: 4,
-              background: weatherCache.significantly_stale ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
-              border: `1px solid ${weatherCache.significantly_stale ? 'rgba(239,68,68,0.35)' : 'rgba(34,197,94,0.35)'}`,
-              color: weatherCache.significantly_stale ? '#ef4444' : '#22c55e',
-              fontWeight: 700,
-            }}>
-              {weatherCache.significantly_stale ? '⚠ Stale cache' : '● Live'} · cache {Math.round(weatherCache.age_minutes)}m old
+
+          {weatherCache && weatherCache.status && (
+            <span
+              title={
+                weatherCache.last_successful_fetch
+                  ? `Last successful fetch: ${new Date(weatherCache.last_successful_fetch).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`
+                  : undefined
+              }
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '1px 8px', borderRadius: 4,
+                background: weatherCache.status === 'fresh' ? 'rgba(34,197,94,0.12)' : weatherCache.significantly_stale ? 'rgba(239,68,68,0.12)' : 'rgba(234,179,8,0.12)',
+                border: `1px solid ${weatherCache.status === 'fresh' ? 'rgba(34,197,94,0.35)' : weatherCache.significantly_stale ? 'rgba(239,68,68,0.35)' : 'rgba(234,179,8,0.35)'}`,
+                color: weatherCache.status === 'fresh' ? '#22c55e' : weatherCache.significantly_stale ? '#ef4444' : '#eab308',
+                fontWeight: 700,
+              }}
+            >
+              {weatherCache.status === 'fresh'
+                ? '● Live'
+                : weatherCache.status === 'unavailable'
+                ? '✕ Unavailable'
+                : weatherCache.significantly_stale
+                ? '⚠ Stale cache'
+                : '◐ Fallback data'}
+              {weatherCache.age_minutes != null && ` · ${Math.round(weatherCache.age_minutes)}m old`}
             </span>
-          )} */}
+          )}
+
+          {pagasaCalibration && pagasaCalibration.enabled && (
+            <span
+              title={pagasaCalibrationTooltip(pagasaCalibration)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '1px 8px', borderRadius: 4,
+                background: pagasaCalibrationApplied(pagasaCalibration) ? 'rgba(34,197,94,0.12)' : 'rgba(148,163,184,0.14)',
+                border: `1px solid ${pagasaCalibrationApplied(pagasaCalibration) ? 'rgba(34,197,94,0.35)' : 'rgba(148,163,184,0.35)'}`,
+                color: pagasaCalibrationApplied(pagasaCalibration) ? '#22c55e' : 'var(--text-muted)',
+                fontWeight: 700,
+                cursor: 'default',
+              }}
+            >
+              {pagasaCalibrationApplied(pagasaCalibration)
+                ? `✓ PAGASA-calibrated (${pagasaCalibration.reference_station?.name ?? 'Pili AWS'})`
+                : `PAGASA calibration warming up · ${pagasaCalibration.total_samples ?? 0}/${pagasaCalibration.min_samples_required ?? '—'} samples`}
+            </span>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+// True once at least one field is actively being bias-corrected against
+// PAGASA's Pili AWS station (see backend app.weather.calibration) --
+// before that, /api/forecast is still plain, uncorrected Open-Meteo data.
+function pagasaCalibrationApplied(pagasaCalibration) {
+  if (!pagasaCalibration || !pagasaCalibration.enabled) return false;
+  const perField = pagasaCalibration.per_field || {};
+  return Object.values(perField).some((f) => f && f.applied);
+}
+
+function pagasaCalibrationTooltip(pagasaCalibration) {
+  const perField = pagasaCalibration.per_field || {};
+  const lines = Object.entries(perField)
+    .filter(([, f]) => f && f.bias != null)
+    .map(([field, f]) => `${field}: ${f.bias > 0 ? '+' : ''}${f.bias.toFixed(2)} ${f.unit ?? ''} (${f.samples} samples)${f.applied ? '' : ' — below min sample threshold'}`);
+
+  return [
+    `Reference station: ${pagasaCalibration.reference_station?.name ?? '—'} (ID ${pagasaCalibration.reference_station?.id ?? '—'})`,
+    `Total paired samples: ${pagasaCalibration.total_samples ?? 0} (min ${pagasaCalibration.min_samples_required ?? '—'} to activate a field)`,
+    ...lines,
+  ].join('\n');
 }
