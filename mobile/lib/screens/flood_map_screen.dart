@@ -14,8 +14,7 @@ import '../widgets/rain_overlay.dart';
 import '../widgets/wind_direction_arrow.dart';
 
 // ─── URL (no fallback for a missing/misspelled .env key — see
-// dashboard_screen.dart for that rationale; a network-level fallback to the
-// backup deployment is still applied at the fetch call site below) ─────────
+// dashboard_screen.dart for that rationale) ─────────────────────────────────
 String _requireEnv(String key) {
   final v = dotenv.env[key];
   if (v == null || v.isEmpty) {
