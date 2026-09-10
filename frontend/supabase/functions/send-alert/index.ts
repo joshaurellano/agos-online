@@ -27,24 +27,38 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Message is required' }), { status: 400, headers: corsHeaders });
     }
 
-    // Init Supabase with service role key to read all profiles
+    // Init Supabase with service role key to read all phone numbers
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // Fetch all phone numbers from profiles
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('phone')
-      .not('phone', 'is', null)
-      .neq('phone', '');
+    // Phone numbers now live in two places: `profiles` (staff/admin accounts
+    // that happen to have a phone on file) and `residents` (the dedicated,
+    // account-free table residents are registered into -- see
+    // supabase/residents_schema.sql). Union both so nobody who used to get
+    // alerts via `profiles` stops getting them now that residents moved.
+    const [{ data: profiles, error: profilesError }, { data: residents, error: residentsError }] =
+      await Promise.all([
+        supabase.from('profiles').select('phone').not('phone', 'is', null).neq('phone', ''),
+        supabase.from('residents').select('phone').not('phone', 'is', null).neq('phone', ''),
+      ]);
 
     if (profilesError) {
       return new Response(JSON.stringify({ error: profilesError.message }), { status: 500, headers: corsHeaders });
     }
+    if (residentsError) {
+      return new Response(JSON.stringify({ error: residentsError.message }), { status: 500, headers: corsHeaders });
+    }
 
-    if (!profiles || profiles.length === 0) {
+    // De-dupe by phone -- a staff member could plausibly also be listed as
+    // a resident, and we don't want them getting the same SMS twice.
+    const phones = Array.from(new Set([
+      ...(profiles ?? []).map(p => p.phone),
+      ...(residents ?? []).map(r => r.phone),
+    ]));
+
+    if (phones.length === 0) {
       return new Response(JSON.stringify({ error: 'No phone numbers found' }), { status: 404, headers: corsHeaders });
     }
 
@@ -63,8 +77,8 @@ serve(async (req) => {
     };
 
     const results = await Promise.allSettled(
-      profiles.map(async (profile) => {
-        const to = toInternational(profile.phone);
+      phones.map(async (phone) => {
+        const to = toInternational(phone);
         const res = await fetch(HTTPSMS_API_URL, {
           method: 'POST',
           headers: {
@@ -80,10 +94,10 @@ serve(async (req) => {
 
         if (!res.ok) {
           const err = await res.text();
-          throw new Error(`Failed to send to ${profile.phone}: ${err}`);
+          throw new Error(`Failed to send to ${phone}: ${err}`);
         }
 
-        return profile.phone;
+        return phone;
       })
     );
 
@@ -95,7 +109,7 @@ serve(async (req) => {
         success: true,
         sent,
         failed,
-        total: profiles.length,
+        total: phones.length,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );

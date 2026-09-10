@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Form, Button, Spinner, InputGroup } from 'react-bootstrap';
 
-import { FaEyeSlash, FaEye, FaUser, FaPhone, FaAt, FaLock, FaUserShield, FaHome, FaCheckCircle } from 'react-icons/fa';
+import { FaEyeSlash, FaEye, FaUser, FaPhone, FaAt, FaLock, FaUserShield, FaHome, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
 
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
 import { SectionLabel } from '../components/ui';
+import { detectPhoneNetwork, NETWORK_INFO } from '../lib/phoneNetwork';
 
 // Simple heuristic strength meter -- purely a UX nudge, does not change or
 // loosen the actual validation rule (still 8+ chars, enforced in handleSubmit).
@@ -33,6 +34,13 @@ export default function RegisterPage() {
 
   const [localError, setLocalError] = useState('');
   const [roles, setRoles] = useState([]);
+
+  // Residents only ever need a name + phone -- no auth account (they never
+  // log in), so this mode uses its own small piece of state instead of
+  // riding along in `form` with fields it doesn't need.
+  const [residentForm, setResidentForm] = useState({ name: '', phone: '' });
+  const [smsAck, setSmsAck] = useState(false);
+
   const [form, setForm] = useState({
     name: '',
     username: '',
@@ -47,16 +55,9 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
+    if (isResidentMode) return; // role dropdown only exists in staff/admin mode
     supabase.from('roles').select('*').then(({ data }) => {
-      if (data) {
-        setRoles(data);
-        const resident = data.find(r => r.role_id === 7);
-        if (resident) {
-          if (isResidentMode) {
-            setForm(f => ({ ...f, role_id: 7 }));
-          }
-        }
-      }
+      if (data) setRoles(data);
     });
   }, [isResidentMode]);
 
@@ -71,7 +72,61 @@ export default function RegisterPage() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  const handleResidentPhoneChange = (e) => {
+    clearError();
+    setLocalError('');
+    setSmsAck(false); // re-confirm if they edit the number after acknowledging
+    setResidentForm({ ...residentForm, phone: e.target.value });
+  };
+
+  const residentPhoneValid = /^09\d{9}$/.test(residentForm.phone);
+  const residentNetwork = residentPhoneValid ? detectPhoneNetwork(residentForm.phone) : null;
+  const needsSmsAck = residentPhoneValid && residentNetwork && !residentNetwork.deliverable;
+
+  const handleResidentSubmit = async (e) => {
+    e.preventDefault();
+    clearError();
+    setLocalError('');
+
+    if (!residentPhoneValid) {
+      setLocalError('Enter a valid 11-digit PH mobile number (starts with 09).');
+      return;
+    }
+    if (needsSmsAck && !smsAck) {
+      setLocalError('Please confirm you understand this number may not receive SMS alerts before continuing.');
+      return;
+    }
+
+    setLoading(true);
+
+    const { error: insertError } = await supabase.from('residents').insert({
+      name: residentForm.name,
+      phone: residentForm.phone,
+      network: residentNetwork?.network ?? 'unknown',
+      sms_deliverable: residentNetwork?.deliverable ?? false,
+      added_by: user?.id ?? null,
+    });
+
+    setLoading(false);
+
+    if (insertError) {
+      // Unique constraint on phone -- most likely cause of a failed insert here.
+      setLocalError(
+        insertError.code === '23505'
+          ? 'A resident with this phone number is already registered.'
+          : insertError.message
+      );
+      return;
+    }
+
+    setSuccess(true);
+    setResidentForm({ name: '', phone: '' });
+    setSmsAck(false);
+  };
+
   const handleSubmit = async (e) => {
+    if (isResidentMode) return handleResidentSubmit(e);
+
     e.preventDefault();
 
     if (form.password !== form.confirmPassword) {
@@ -102,7 +157,7 @@ export default function RegisterPage() {
         password: '',
         confirmPassword: '',
         phone: '',
-        role_id: isResidentMode ? 7 : '',
+        role_id: '',
       });
     }
   };
@@ -189,7 +244,100 @@ export default function RegisterPage() {
                 )}
               </p>
             </div>
+          ) : isResidentMode ? (
+
+            /* ── Resident mode: name + phone only, no account ─────────── */
+            <Form onSubmit={handleResidentSubmit}>
+
+              <SectionLabel>👤 Resident Information</SectionLabel>
+
+              <div style={{ marginBottom: '16px' }}>
+                <Form.Label style={labelStyle}><FaUser size={11} /> Full Name</Form.Label>
+                <Form.Control
+                  name="name" type="text" value={residentForm.name}
+                  onChange={e => setResidentForm({ ...residentForm, name: e.target.value })}
+                  placeholder="e.g. Maria Santos"
+                  required style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
+                />
+              </div>
+
+              <div style={{ marginBottom: needsSmsAck ? '14px' : '24px' }}>
+                <Form.Label style={labelStyle}><FaPhone size={11} /> Phone Number</Form.Label>
+                <InputGroup>
+                  <Form.Control
+                    name="phone" type="tel" value={residentForm.phone}
+                    onChange={handleResidentPhoneChange} placeholder="e.g. 09123456789"
+                    required pattern="^09\d{9}$" maxLength={11}
+                    style={{
+                      ...inputStyle,
+                      borderColor: residentForm.phone.length > 0
+                        ? (residentPhoneValid ? '#22c55e60' : 'var(--blue-border)')
+                        : 'var(--blue-border)',
+                    }}
+                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                    onBlur={e => e.target.style.borderColor = residentForm.phone.length > 0 && residentPhoneValid ? '#22c55e60' : 'var(--blue-border)'}
+                  />
+                </InputGroup>
+                <Form.Text style={{
+                  color: residentForm.phone.length > 0 && !residentPhoneValid ? '#f0ad4e' : 'var(--text-muted)',
+                  fontSize: '0.72rem', display: 'block', marginTop: '5px',
+                }}>
+                  {residentForm.phone.length > 0 && !residentPhoneValid
+                    ? 'Format: 09 followed by 9 digits (11 digits total)'
+                    : '11-digit PH mobile number, starts with 09'}
+                </Form.Text>
+
+                {residentPhoneValid && residentNetwork && (
+                  <div style={{
+                    marginTop: '8px', padding: '8px 10px', borderRadius: 6,
+                    background: `${NETWORK_INFO[residentNetwork.network].color}18`,
+                    border: `1px solid ${NETWORK_INFO[residentNetwork.network].color}40`,
+                    fontSize: '0.72rem', color: NETWORK_INFO[residentNetwork.network].color,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                    {residentNetwork.deliverable ? <FaCheckCircle size={11} /> : <FaExclamationTriangle size={11} />}
+                    {residentNetwork.deliverable
+                      ? `${NETWORK_INFO[residentNetwork.network].label} — SMS alerts should reach this number.`
+                      : `Likely ${NETWORK_INFO[residentNetwork.network].label} — our SMS provider may not be able to deliver alerts to this number. This is a heuristic guess based on the number's prefix (number portability can make it wrong), not a guarantee either way.`}
+                  </div>
+                )}
+              </div>
+
+              {needsSmsAck && (
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox" checked={smsAck}
+                      onChange={e => setSmsAck(e.target.checked)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      I understand this number may not receive SMS alerts, and will let this resident know to install the AGOS app for push notifications instead.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              {(error || localError) && (
+                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: '16px', color: '#fca5a5', fontSize: '0.85rem' }}>
+                  ⚠️ {error || localError}
+                </div>
+              )}
+
+              <Button type="submit" className="btn btn-primary"
+                style={{ width: '100%', justifyContent: 'center', padding: '13px', fontSize: '1rem' }}
+                disabled={loading || !residentPhoneValid || (needsSmsAck && !smsAck)}>
+                {loading
+                  ? <><Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" /> Loading ...</>
+                  : '🏘️ Register Resident'}
+              </Button>
+            </Form>
+
           ) : (
+
+            /* ── Staff/admin mode: full account with credentials ──────── */
             <Form onSubmit={handleSubmit}>
 
               {/* ── Personal Information ─────────────────────────────── */}
@@ -330,27 +478,23 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              {/* Role — admin-only route only */}
-              {!isResidentMode && (
-                <>
-                  <SectionLabel>🛡️ Role &amp; Access</SectionLabel>
-                  <div style={{ marginBottom: '24px' }}>
-                    <Form.Label style={labelStyle}><FaUserShield size={11} /> Role</Form.Label>
-                    <Form.Select
-                      name="role_id" value={form.role_id}
-                      onChange={handleChange} required
-                      style={{ ...inputStyle, cursor: 'pointer' }}
-                      onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                      onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                    >
-                      <option value="">Select a role...</option>
-                      {roles.map(r => (
-                        <option key={r.role_id} value={r.role_id}>{r.role_desc}</option>
-                      ))}
-                    </Form.Select>
-                  </div>
-                </>
-              )}
+              {/* Role — staff/admin mode only */}
+              <SectionLabel>🛡️ Role &amp; Access</SectionLabel>
+              <div style={{ marginBottom: '24px' }}>
+                <Form.Label style={labelStyle}><FaUserShield size={11} /> Role</Form.Label>
+                <Form.Select
+                  name="role_id" value={form.role_id}
+                  onChange={handleChange} required
+                  style={{ ...inputStyle, cursor: 'pointer' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
+                >
+                  <option value="">Select a role...</option>
+                  {roles.filter(r => r.role_id !== 7).map(r => (
+                    <option key={r.role_id} value={r.role_id}>{r.role_desc}</option>
+                  ))}
+                </Form.Select>
+              </div>
 
               {(error || localError) && (
                 <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: '16px', color: '#fca5a5', fontSize: '0.85rem' }}>
@@ -359,18 +503,16 @@ export default function RegisterPage() {
               )}
 
               <Button type="submit" className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '13px', fontSize: '1rem', marginTop: isResidentMode ? '8px' : 0 }}
+                style={{ width: '100%', justifyContent: 'center', padding: '13px', fontSize: '1rem' }}
                 disabled={loading}>
                 {loading
                   ? <><Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" /> Loading ...</>
-                  : isResidentMode ? '🏘️ Register Resident' : '✅ Register'}
+                  : '✅ Register'}
               </Button>
 
-              {!isResidentMode && (
-                <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Already have an account? <Link to="/login" style={{ color: 'var(--accent)' }}>Sign in</Link>
-                </p>
-              )}
+              <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Already have an account? <Link to="/login" style={{ color: 'var(--accent)' }}>Sign in</Link>
+              </p>
 
             </Form>
           )}
