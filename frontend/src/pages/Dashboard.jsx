@@ -34,6 +34,7 @@ import FloodMap3D from '../components/FloodMap3D';
 import RainOverlay from '../components/RainOverlay';
 import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
 import WeatherForecast from '../components/WeatherForecast';
+import AlertDeliveryStatus from '../components/AlertDeliveryStatus';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1714,11 +1715,12 @@ export default function Dashboard() {
       // both notifications twice).
 
       Swal.fire({
-        title: '✅ Alert Dispatched',
-        html: `<p style="color:#8da4be;margin-bottom:12px">Evacuation alert sent successfully.</p>
+        title: '✅ Alert Queued',
+        html: `<p style="color:#8da4be;margin-bottom:12px">Evacuation alert saved and dispatch triggered.</p>
           <div style="background:#112240;border-radius:8px;padding:12px;text-align:left;font-size:0.85rem">
-            <div style="color:#22c55e;margin-bottom:4px">📱 SMS is being sent to all residents</div>
-            <div style="color:#22c55e;margin-top:4px">🔔 Push notification sent to all app users</div>
+            <div style="color:#8da4be;margin-bottom:4px">📱 SMS dispatch to all residents in progress</div>
+            <div style="color:#8da4be;margin-top:4px">🔔 Push notification dispatch in progress</div>
+            <div style="color:#0ea5e9;margin-top:8px;font-size:0.75rem">Check the delivery status panel below in a few seconds to confirm both went through.</div>
           </div>`,
         icon: 'success', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9',
       });
@@ -1760,6 +1762,11 @@ export default function Dashboard() {
         onSendAlert={handleEvacuationAlert}
         canSendAlert={!!user && !userIsResident}
       />
+
+      {/* Delivery status is admin/staff-only, same gate as the send-alert
+          button itself -- residents don't need to see SMS provider errors
+          or FCM error payloads. */}
+      {!!user && !userIsResident && <AlertDeliveryStatus />}
 
       <CommunityTrustStrip />
 
