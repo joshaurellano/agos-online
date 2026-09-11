@@ -29,9 +29,9 @@ import os
 
 from fastapi import APIRouter, Header, HTTPException
 
-from app.weather.client import refresh_weather_from_openmeteo
+from app.weather.client import refresh_weather_from_openmeteo, fetch_weather, WeatherUnavailableError
 from app.weather.cache import get_cache_status
-from app.weather.calibration import get_calibration_status
+from app.weather.calibration import get_calibration_status, record_sample
 
 router = APIRouter()
 
@@ -73,5 +73,77 @@ def cron_refresh_weather(x_cron_secret: str | None = Header(default=None)):
         "status": status,
         "message": message,
         "weather_cache": get_cache_status(),
+        "pagasa_calibration": get_calibration_status(),
+    }
+
+
+@router.get("/api/cron/sample-calibration")
+def cron_sample_calibration(x_cron_secret: str | None = Header(default=None)):
+    """
+    Records ONE PAGASA calibration sample against whatever Open-Meteo
+    data is already cached (in-process or Supabase) -- it NEVER performs
+    a live Open-Meteo call. Safe to hit as often as you like, since the
+    only network calls this makes are to Supabase (cheap Postgres reads)
+    and to PAGASA's AWS table (a completely separate source from
+    Open-Meteo, so this has zero effect on your Open-Meteo rate limit).
+
+    WHY THIS EXISTS:
+    record_sample() normally only runs once per LIVE Open-Meteo fetch
+    (see refresh_weather_from_openmeteo()), which -- by design -- only
+    happens once per CACHE_TTL_SECONDS (default 3 hours). That ties
+    reaching CALIBRATION_MIN_SAMPLES (default 20) to 20 x 3h = 60+
+    hours, longer still if any refresh fails. A calibration sample only
+    needs a PAGASA reading paired against Open-Meteo's *current-hour*
+    values, which don't meaningfully change within a 3-hour window --
+    so pairing a fresh PAGASA reading against the EXISTING cached
+    Open-Meteo data is just as valid a sample, and costs zero Open-Meteo
+    calls.
+
+    SETUP:
+    Point a second scheduler at this URL, on a much shorter interval
+    than /api/cron/refresh-weather -- e.g. every 15 minutes:
+
+        GET https://<your-render-app>.onrender.com/api/cron/sample-calibration
+
+    This is independent of your existing 3-hour refresh-weather cron --
+    keep both running. This one only accelerates calibration sample
+    collection; refresh-weather is still what keeps the actual forecast
+    data itself fresh.
+    """
+
+    if CRON_SECRET and x_cron_secret != CRON_SECRET:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or incorrect X-Cron-Secret header.",
+        )
+
+    try:
+        data = fetch_weather()
+    except WeatherUnavailableError as err:
+        return {
+            "status": "no_data",
+            "message": (
+                "No cached weather data available yet to sample against "
+                f"-- run /api/cron/refresh-weather at least once first. ({err})"
+            ),
+            "pagasa_calibration": get_calibration_status(),
+        }
+
+    before = get_calibration_status()["total_samples"]
+    record_sample(data)
+    after = get_calibration_status()["total_samples"]
+
+    if after > before:
+        status, message = "ok", "Recorded a new PAGASA calibration sample."
+    else:
+        status, message = "skipped", (
+            "No new sample recorded -- PAGASA's AWS table was unreachable, "
+            "stale, or PAGASA_CALIBRATION_ENABLED is off. Existing samples "
+            "are unaffected."
+        )
+
+    return {
+        "status": status,
+        "message": message,
         "pagasa_calibration": get_calibration_status(),
     }
