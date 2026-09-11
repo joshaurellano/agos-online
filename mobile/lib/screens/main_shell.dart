@@ -107,8 +107,18 @@ class _MainShellState extends State<MainShell> {
               width: 64, height: 64,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.accent.withValues(alpha: 0.15),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.accent.withValues(alpha: 0.24),
+                    AppColors.accent.withValues(alpha: 0.08),
+                  ],
+                ),
                 border: Border.all(color: AppColors.accent.withValues(alpha: 0.4), width: 2),
+                boxShadow: [
+                  BoxShadow(color: AppColors.accent.withValues(alpha: 0.2), blurRadius: 18, spreadRadius: -2),
+                ],
               ),
               child: const Icon(Icons.shield_rounded, color: AppColors.accent, size: 30),
             ),
@@ -179,21 +189,40 @@ class _MainShellState extends State<MainShell> {
               leading: Container(
                 width: 34, height: 34,
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(10),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.accent.withValues(alpha: 0.28),
+                      AppColors.accent.withValues(alpha: 0.08),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(11),
                   border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                  boxShadow: [
+                    BoxShadow(color: AppColors.accent.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 2)),
+                  ],
                 ),
                 child: const Center(child: Text('🌊', style: TextStyle(fontSize: 16))),
               ),
               trailing: Row(
                 children: [
                   // Alert level pill
-                  Container(
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                     decoration: BoxDecoration(
-                      color: alertInfo.color.withValues(alpha: 0.15),
+                      gradient: LinearGradient(
+                        colors: [
+                          alertInfo.color.withValues(alpha: 0.22),
+                          alertInfo.color.withValues(alpha: 0.10),
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: alertInfo.color.withValues(alpha: 0.4)),
+                      boxShadow: [
+                        BoxShadow(color: alertInfo.color.withValues(alpha: 0.15), blurRadius: 8),
+                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,

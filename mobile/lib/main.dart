@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import './firebase_options.dart';
 import 'services/accessibility_settings.dart';
@@ -89,14 +90,7 @@ class AgosApp extends StatelessWidget {
       // from a background or terminated state without a BuildContext.
       navigatorKey: navigatorKey,
 
-      theme: ThemeData(
-        scaffoldBackgroundColor: AppColors.bgDeep,
-        colorScheme: const ColorScheme.dark(
-          primary: AppColors.accent,
-          surface: AppColors.bgCard,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AgosTheme.build(),
       routes: {
         // NotificationService pushes this route when the user taps a notification.
         // MainShell handles showing the Alert tab — see note below if you need
@@ -140,8 +134,16 @@ class AppColors {
   static const bgDark    = Color(0xFF0D1F3C);
   static const bgMid     = Color(0xFF112240);
   static const bgCard    = Color(0xFF0F1E38);
+  // A touch lighter than bgCard — for layering a second surface on top of
+  // a card (nested rows, inputs) so depth reads without a harsh border.
+  static const bgCard2   = Color(0xFF15274A);
   static const bgBorder  = Color(0xFF1E3A5F);
   static const accent    = Color(0xFF38BDF8);
+  // Deeper companion to accent, used as the second stop in accent
+  // gradients (buttons, active nav pill, hero glows) so flat accent
+  // fills gain a bit of dimension instead of looking like a solid chip.
+  static const accentDeep = Color(0xFF0EA5E9);
+  static const violet    = Color(0xFF818CF8);
   static const green     = Color(0xFF22C55E);
   static const yellow    = Color(0xFFEAB308);
   static const orange    = Color(0xFFF97316);
@@ -149,4 +151,124 @@ class AppColors {
   static const textPri   = Color(0xFFE2EAF5);
   static const textSec   = Color(0xFF8DA4BE);
   static const textMuted = Color(0xFF4A6080);
+
+  /// Two-stop gradient used for primary accents (buttons, active pills,
+  /// selected nav indicator) — gives flat accent fills a bit of depth.
+  static const accentGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [accent, accentDeep],
+  );
+
+  /// Subtle diagonal sheen laid over cards to break up otherwise flat
+  /// bgCard fills — kept faint enough to read as "glass" rather than a
+  /// visible stripe.
+  static const cardSheen = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [bgCard2, bgCard],
+  );
+}
+
+/// Centralizes AGOS's ThemeData so the look of every screen — typography,
+/// default splash/highlight behavior, slider/switch colors, page
+/// transitions — comes from one place instead of being re-declared
+/// per-widget. Screens still hand-roll most of their own containers
+/// (this app predates a Card/Surface-based layout system), but anything
+/// that *does* read from Theme.of(context) (Text widgets without an
+/// explicit fontFamily, Switch, Slider, TextField cursors, etc.) now
+/// picks up a consistent, more considered look for free.
+class AgosTheme {
+  static ThemeData build() {
+    final base = ThemeData.dark(useMaterial3: true);
+    // Plus Jakarta Sans reads as friendly-but-technical — geometric enough
+    // for the big data-forward numbers (flood %, rainfall mm) while still
+    // warm in body copy. Falls back to the platform default automatically
+    // if the font can't be fetched (e.g. offline first launch), since
+    // google_fonts degrades gracefully.
+    final textTheme = GoogleFonts.plusJakartaSansTextTheme(base.textTheme).apply(
+      bodyColor: AppColors.textPri,
+      displayColor: AppColors.textPri,
+    );
+
+    return base.copyWith(
+      scaffoldBackgroundColor: AppColors.bgDeep,
+      colorScheme: const ColorScheme.dark(
+        primary: AppColors.accent,
+        secondary: AppColors.violet,
+        surface: AppColors.bgCard,
+        error: AppColors.red,
+      ),
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
+      splashFactory: InkSparkle.splashFactory,
+      highlightColor: AppColors.accent.withValues(alpha: 0.06),
+      splashColor: AppColors.accent.withValues(alpha: 0.10),
+      dividerColor: AppColors.bgBorder,
+      dividerTheme: const DividerThemeData(color: AppColors.bgBorder, thickness: 1),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? AppColors.accent : AppColors.textMuted,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? AppColors.accent.withValues(alpha: 0.35)
+              : AppColors.bgBorder,
+        ),
+      ),
+      sliderTheme: SliderThemeData(
+        activeTrackColor: AppColors.accent,
+        inactiveTrackColor: AppColors.bgBorder,
+        thumbColor: AppColors.accent,
+        overlayColor: AppColors.accent.withValues(alpha: 0.15),
+        trackHeight: 3,
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: AppColors.accent,
+        circularTrackColor: AppColors.bgBorder,
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: AppColors.accent,
+        selectionColor: AppColors.accent.withValues(alpha: 0.3),
+        selectionHandleColor: AppColors.accent,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: AppColors.bgCard2,
+        contentTextStyle: const TextStyle(color: AppColors.textPri, fontSize: 13.5),
+        actionTextColor: AppColors.accent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        behavior: SnackBarBehavior.floating,
+      ),
+      // A gentle fade+scale instead of Android's default abrupt slide,
+      // matching the softer, weather-app feel of the rest of the UI.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _FadeThroughTransitionsBuilder(),
+          TargetPlatform.iOS: _FadeThroughTransitionsBuilder(),
+        },
+      ),
+    );
+  }
+}
+
+class _FadeThroughTransitionsBuilder extends PageTransitionsBuilder {
+  const _FadeThroughTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: ScaleTransition(
+        scale: Tween(begin: 0.98, end: 1.0).animate(curved),
+        child: child,
+      ),
+    );
+  }
 }
