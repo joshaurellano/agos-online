@@ -5,6 +5,7 @@
 // toolbar, pill-style bottom navigation) but built entirely from AGOS's own
 // palette (AppColors in main.dart) — no PANaHON colors are used.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import '../main.dart';
 
 /// Curved-bottom gradient header, the AGOS equivalent of PANaHON's blue
@@ -45,7 +46,8 @@ class PanahonHeader extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [AppColors.bgMid, AppColors.bgDark],
+                colors: [AppColors.bgMid, AppColors.bgDark, AppColors.bgDeep],
+                stops: [0.0, 0.6, 1.0],
               ),
             ),
             child: Stack(
@@ -67,13 +69,23 @@ class PanahonHeader extends StatelessWidget {
                     child: Row(
                       children: [
                         if (leading != null) leading!,
-                        if (leading == null)
+        if (leading == null)
                           Container(
                             width: 34, height: 34,
                             decoration: BoxDecoration(
-                              color: AppColors.accent.withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(10),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  AppColors.accent.withValues(alpha: 0.28),
+                                  AppColors.accent.withValues(alpha: 0.08),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(11),
                               border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                              boxShadow: [
+                                BoxShadow(color: AppColors.accent.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 2)),
+                              ],
                             ),
                             child: const Center(
                               child: Text('🌊', style: TextStyle(fontSize: 16)),
@@ -85,16 +97,21 @@ class PanahonHeader extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                appName,
-                                style: const TextStyle(
-                                  color: AppColors.textPri,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 17,
-                                  letterSpacing: -0.3,
+                              ShaderMask(
+                                shaderCallback: (bounds) => const LinearGradient(
+                                  colors: [AppColors.textPri, AppColors.accent],
+                                ).createShader(bounds),
+                                child: Text(
+                                  appName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 17,
+                                    letterSpacing: -0.3,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 tagline,
@@ -169,33 +186,40 @@ class PanahonHeaderIcon extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 34, height: 34,
-          margin: const EdgeInsets.only(left: 8),
-          decoration: BoxDecoration(
-            color: AppColors.bgCard.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.bgBorder),
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Center(child: Icon(icon, size: 17, color: color ?? AppColors.textSec)),
-              if (showDot)
-                Positioned(
-                  top: -2, right: -2,
-                  child: Container(
-                    width: 8, height: 8,
-                    decoration: BoxDecoration(
-                      color: dotColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.bgDark, width: 1.5),
+  Widget build(BuildContext context) => Container(
+        width: 34, height: 34,
+        margin: const EdgeInsets.only(left: 8),
+        decoration: BoxDecoration(
+          color: AppColors.bgCard.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.bgBorder),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            splashColor: AppColors.accent.withValues(alpha: 0.18),
+            highlightColor: AppColors.accent.withValues(alpha: 0.08),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Center(child: Icon(icon, size: 17, color: color ?? AppColors.textSec)),
+                if (showDot)
+                  Positioned(
+                    top: -2, right: -2,
+                    child: Container(
+                      width: 8, height: 8,
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.bgDark, width: 1.5),
+                        boxShadow: [BoxShadow(color: dotColor.withValues(alpha: 0.6), blurRadius: 4)],
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -209,17 +233,25 @@ class PanahonHeroCard extends StatelessWidget {
   const PanahonHeroCard({super.key, required this.child, this.accentColor});
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    final ac = accentColor;
+    return Container(
         decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: (accentColor ?? AppColors.bgBorder).withValues(alpha: accentColor != null ? 0.5 : 1)),
+          gradient: AppColors.cardSheen,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: (ac ?? AppColors.bgBorder).withValues(alpha: ac != null ? 0.5 : 1)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 10)),
+            if (ac != null)
+              BoxShadow(color: ac.withValues(alpha: 0.12), blurRadius: 24, spreadRadius: -4),
           ],
         ),
-        child: child,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: child,
+        ),
       );
+  }
 }
 
 /// Pill-style bottom navigation bar, mirroring PANaHON's docked bottom bar
@@ -248,49 +280,90 @@ class PanahonBottomNav extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: AppColors.bgBorder),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 6)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8)),
           ],
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(items.length, (i) {
-            final selected = i == currentIndex;
-            final item = items[i];
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => onTap(i),
-                behavior: HitTestBehavior.opaque,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: selected ? AppColors.accent.withValues(alpha: 0.14) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        item.icon,
-                        size: 21,
-                        color: selected ? AppColors.accent : AppColors.textMuted,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                          color: selected ? AppColors.accent : AppColors.textMuted,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final slotWidth = constraints.maxWidth / items.length;
+            return Stack(
+              children: [
+                // Sliding pill sits behind the row of icons and eases to the
+                // selected slot, rather than each item toggling its own
+                // background on/off — reads as one continuous motion instead
+                // of a flicker between two static states.
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                  left: slotWidth * currentIndex,
+                  top: 0,
+                  bottom: 0,
+                  width: slotWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            AppColors.accent.withValues(alpha: 0.20),
+                            AppColors.accent.withValues(alpha: 0.09),
+                          ],
                         ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(items.length, (i) {
+                    final selected = i == currentIndex;
+                    final item = items[i];
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (!selected) HapticFeedback.selectionClick();
+                          onTap(i);
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedScale(
+                                duration: const Duration(milliseconds: 280),
+                                curve: Curves.easeOutBack,
+                                scale: selected ? 1.08 : 1.0,
+                                child: Icon(
+                                  item.icon,
+                                  size: 21,
+                                  color: selected ? AppColors.accent : AppColors.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 200),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                                  color: selected ? AppColors.accent : AppColors.textMuted,
+                                ),
+                                child: Text(item.label),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
             );
-          }),
+          },
         ),
       ),
     );
@@ -361,11 +434,25 @@ class FloodHeroBanner extends StatelessWidget {
             colors: gradientColors,
           ),
         ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
-            child: Column(
+        child: Stack(
+          children: [
+            // Two soft, off-canvas glows give the banner a bit of dimension
+            // instead of reading as one flat gradient fill — echoes the
+            // sun/rain glow motif from WeatherBackdrop but baked directly
+            // into the hero so it still shows even before that layer loads.
+            Positioned(
+              right: -60, top: -70,
+              child: _glowCircle(220, Colors.white.withValues(alpha: 0.08)),
+            ),
+            Positioned(
+              left: -50, bottom: -40,
+              child: _glowCircle(160, Colors.white.withValues(alpha: 0.05)),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 4, 18, 30),
+                child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -426,11 +513,27 @@ class FloodHeroBanner extends StatelessWidget {
                   children: [
                     Icon(icon, color: Colors.white, size: 34),
                     const SizedBox(width: 10),
-                    Text(
-                      bigValue,
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 62, fontWeight: FontWeight.w900,
-                          height: 1.0, letterSpacing: -2),
+                    // Crossfades + slides up on change (e.g. when a new
+                    // /predict-flood poll comes in) instead of the number
+                    // just snapping, so a live update reads as "ticking
+                    // over" rather than a jarring flash of new digits.
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 420),
+                      switchInCurve: Curves.easeOutCubic,
+                      transitionBuilder: (child, anim) => FadeTransition(
+                        opacity: anim,
+                        child: SlideTransition(
+                          position: Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(anim),
+                          child: child,
+                        ),
+                      ),
+                      child: Text(
+                        bigValue,
+                        key: ValueKey(bigValue),
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 62, fontWeight: FontWeight.w900,
+                            height: 1.0, letterSpacing: -2),
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.only(top: 12, left: 2),
@@ -462,11 +565,19 @@ class FloodHeroBanner extends StatelessWidget {
                 ],
               ],
             ),
-          ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  Widget _glowCircle(double size, Color color) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      );
 }
 
 class _HeroBottomClipper extends CustomClipper<Path> {
@@ -547,7 +658,12 @@ class SectionPill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: AppColors.accent.withValues(alpha: 0.14),
+            gradient: LinearGradient(
+              colors: [
+                AppColors.accent.withValues(alpha: 0.20),
+                AppColors.accent.withValues(alpha: 0.10),
+              ],
+            ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
           ),
@@ -588,14 +704,14 @@ class PanahonSearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 42,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: AppColors.bgCard.withValues(alpha: 0.96),
-          borderRadius: BorderRadius.circular(21),
+          gradient: AppColors.cardSheen,
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(color: AppColors.bgBorder),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 14, offset: const Offset(0, 4)),
           ],
         ),
         child: Row(
@@ -647,15 +763,17 @@ class MapToolButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = activeColor ?? AppColors.accent;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 38, height: 38,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? color.withValues(alpha: 0.18) : AppColors.bgCard.withValues(alpha: 0.94),
+    return Material(
+      color: active ? color.withValues(alpha: 0.18) : AppColors.bgCard.withValues(alpha: 0.94),
+      child: InkWell(
+        onTap: onTap,
+        splashColor: color.withValues(alpha: 0.25),
+        child: SizedBox(
+          width: 38, height: 38,
+          child: Center(
+            child: child ?? Icon(icon, size: 18, color: active ? color : AppColors.textSec),
+          ),
         ),
-        child: child ?? Icon(icon, size: 18, color: active ? color : AppColors.textSec),
       ),
     );
   }
@@ -671,14 +789,14 @@ class MapToolStack extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.bgBorder),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 14, offset: const Offset(0, 4)),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(14),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
