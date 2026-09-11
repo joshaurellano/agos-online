@@ -1,71 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import './firebase_options.dart';
 import 'services/accessibility_settings.dart';
 import 'services/auth_service.dart';
 import 'services/flood_status_service.dart';
-import 'services/notification_service.dart';
+import 'services/notification_service.dart' show navigatorKey;
+import 'screens/splash_screen.dart';
 import 'screens/main_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  await dotenv.load(fileName: '.env');
-
-  await Supabase.initialize(
-    url:     dotenv.env['SUPABASE_URL']      ?? '',
-    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
-  );
-
-  // AGOS has no login screen — all flood/rainfall/map/evacuation data is
-  // public. The one thing that still needs *some* identity behind it is
-  // incident reporting (RLS on `incident_reports`/`incident-photos` keys
-  // off auth.uid()), so every device silently gets a Supabase anonymous
-  // session instead of a visible sign-in flow. supabase_flutter persists
-  // this session locally, so a given device keeps the same identity (and
-  // can see its own past reports) across restarts without ever seeing a
-  // login form.
-  //
-  // Requires "Allow anonymous sign-ins" to be turned on in the Supabase
-  // project's Auth settings. If it's off (or the call fails for any other
-  // reason), we don't block startup — the resident still gets the full
-  // public dashboard; only submitting a report would fail until this is
-  // enabled server-side.
-  if (Supabase.instance.client.auth.currentUser == null) {
-    try {
-      await Supabase.instance.client.auth.signInAnonymously();
-    } catch (e) {
-      debugPrint('AGOS: anonymous sign-in failed (is it enabled in Supabase Auth settings?): $e');
-    }
-  }
-
-  // Initialize FCM — registers token, sets up background handler,
-  // and subscribes to the flood_alerts topic.
-  await NotificationService.instance.initialize();
-  await NotificationService.instance.subscribeToAlerts();
-
+  // Firebase, .env, Supabase, the anonymous session, and FCM registration
+  // all used to be awaited right here, before runApp() — meaning nothing
+  // rendered but the OS's static launch image until every one of those
+  // finished. That work now happens inside SplashScreen (AgosApp's
+  // `home`), which shows real progress while it runs. The providers below
+  // are still created up front, but ChangeNotifierProvider is lazy by
+  // default: none of them actually construct their service (and touch
+  // Supabase/Firebase) until something in MainShell first reads them,
+  // which can't happen until SplashScreen has already handed off to it.
   runApp(
     MultiProvider(
       providers: [
         // Kept around for optional profile display (see dashboard's
         // greeting), but no longer gates access to the app — see AgosApp
-        // below, whose `home` is MainShell unconditionally.
+        // below, whose `home` is SplashScreen -> MainShell unconditionally.
         ChangeNotifierProvider(create: (_) => AuthService()),
         // Single shared poller for /predict-flood — DashboardScreen and
         // AlertScreen both read from this instead of each running their
-        // own independent timer against the same endpoint. Starts once,
-        // here, so it's already running (and loading any cached last-known
-        // reading) before either screen even mounts.
+        // own independent timer against the same endpoint.
         ChangeNotifierProvider(create: (_) => FloodStatusService()..start()),
         // Text size + high contrast — loaded async (SharedPreferences),
         // defaults (scale 1.0, contrast off) apply instantly so there's
@@ -123,8 +91,11 @@ class AgosApp extends StatelessWidget {
           },
         );
       },
-      // No login gate — AGOS's data is public. Straight into the app.
-      home: const MainShell(),
+      // Splash screen runs the app's startup sequence (Firebase, .env,
+      // Supabase, anonymous session, FCM) and hands off to MainShell —
+      // see screens/splash_screen.dart. AGOS still has no login gate;
+      // the splash is purely a "getting things ready" step.
+      home: const SplashScreen(),
     );
   }
 }
