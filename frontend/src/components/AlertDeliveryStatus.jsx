@@ -12,14 +12,38 @@
 // something from the last RECENT_HOURS to show, and only badges itself when
 // collapsed if something actually needs attention (pending/failed) -- an
 // all-green panel sitting open on every dashboard load is exactly the kind
-// of thing people stop reading. Rows are also deletable so an admin can
-// clear out entries they've already dealt with.
+// of thing people stop reading.
+//
+// Entries are DISMISSIBLE, not deletable -- this used to hard-delete the
+// underlying `alerts` row (cascading to alert_deliveries), but that row is
+// also the public Alert Log's only copy of that alert (see
+// pages/AlertsLogPage.jsx), so removing it here was silently erasing public
+// history too. Dismissal is purely local: the id is stashed in
+// localStorage so a handled entry stays out of *this admin's* view across
+// refreshes, without touching the shared record at all.
 import { useEffect, useState, useCallback } from 'react';
-import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
 import { SectionLabel } from './ui';
 
 const RECENT_HOURS = 24;
+const DISMISSED_KEY = 'agos_dismissed_alert_deliveries';
+
+function loadDismissed() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDismissed(set) {
+  try {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...set]));
+  } catch {
+    // Storage unavailable (private browsing, quota, etc.) -- dismissal just
+    // won't survive a refresh; not worth surfacing an error for.
+  }
+}
 
 const STATUS_STYLE = {
   success: { color: '#22c55e', label: 'Sent' },
@@ -73,7 +97,7 @@ export default function AlertDeliveryStatus({ limit = 5 }) {
   const [deliveries, setDeliveries] = useState({}); // alert_id -> { sms, push }
   const [loading, setLoading]       = useState(true);
   const [expanded, setExpanded]     = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
+  const [dismissed, setDismissed]   = useState(loadDismissed);
 
   const load = useCallback(async () => {
     const since = new Date(Date.now() - RECENT_HOURS * 60 * 60 * 1000).toISOString();
@@ -121,37 +145,21 @@ export default function AlertDeliveryStatus({ limit = 5 }) {
     return () => clearInterval(t);
   }, [load]);
 
-  const handleDelete = async (alert) => {
-    const result = await Swal.fire({
-      title: 'Remove this entry?',
-      html: `<p style="color:#8da4be;font-size:0.85rem">This only clears it from the delivery status list -- SMS/push already sent won't be recalled.</p>`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'Remove',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor: '#1e3a5f',
-      background: '#0d1f3c', color: '#e2eaf5',
+  const handleDismiss = (alert) => {
+    setDismissed(prev => {
+      const next = new Set(prev);
+      next.add(alert.id);
+      saveDismissed(next);
+      return next;
     });
-    if (!result.isConfirmed) return;
-
-    setDeletingId(alert.id);
-    // Deleting the alerts row cascades to alert_deliveries (on delete
-    // cascade) -- one delete clears both.
-    const { error } = await supabase.from('alerts').delete().eq('id', alert.id);
-    setDeletingId(null);
-
-    if (error) {
-      Swal.fire({ title: 'Could not remove', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
-      return;
-    }
-    setAlerts(prev => prev.filter(a => a.id !== alert.id));
   };
 
-  if (loading && alerts.length === 0) return null;
-  if (alerts.length === 0) return null;
+  const visibleAlerts = alerts.filter(a => !dismissed.has(a.id));
 
-  const attentionCount = alerts.filter(a =>
+  if (loading && visibleAlerts.length === 0) return null;
+  if (visibleAlerts.length === 0) return null;
+
+  const attentionCount = visibleAlerts.filter(a =>
     needsAttention(deliveries[a.id]?.push) || needsAttention(deliveries[a.id]?.sms)
   ).length;
 
@@ -178,11 +186,10 @@ export default function AlertDeliveryStatus({ limit = 5 }) {
 
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-          {alerts.map(alert => (
+          {visibleAlerts.map(alert => (
             <div key={alert.id} style={{
               display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10,
               padding: '8px 0', borderBottom: '1px solid var(--blue-border)',
-              opacity: deletingId === alert.id ? 0.5 : 1,
             }}>
               <div style={{ minWidth: 180, flex: '1 1 auto' }}>
                 <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
@@ -196,16 +203,15 @@ export default function AlertDeliveryStatus({ limit = 5 }) {
                 <DeliveryBadge channel="push" delivery={deliveries[alert.id]?.push} />
                 <DeliveryBadge channel="sms"  delivery={deliveries[alert.id]?.sms} />
                 <button
-                  onClick={() => handleDelete(alert)}
-                  disabled={deletingId === alert.id}
-                  title="Remove from this list"
+                  onClick={() => handleDismiss(alert)}
+                  title="Dismiss from this view -- stays in the public Alert Log"
                   style={{
                     background: 'transparent', border: '1px solid var(--blue-border)',
                     borderRadius: 6, color: 'var(--text-muted)', cursor: 'pointer',
                     fontSize: '0.75rem', padding: '5px 8px', lineHeight: 1,
                   }}
                 >
-                  🗑️
+                  ✓ Dismiss
                 </button>
               </div>
             </div>

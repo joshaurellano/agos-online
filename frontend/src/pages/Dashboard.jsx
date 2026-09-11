@@ -439,7 +439,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: alertColor, flexShrink: 0 }} />
             Flood Advisory Bulletin
           </span>
@@ -488,7 +488,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
         <div style={{
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
-          <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
             Dispatch Alert
           </span>
         </div>
@@ -1857,17 +1857,21 @@ export default function Dashboard() {
           or FCM error payloads. */}
       {!!user && !userIsResident && <AlertDeliveryStatus />}
 
-      <CommunityTrustStrip />
+      {/* Community reporting activity is admin/staff-only, same gate as
+          AlertDeliveryStatus above -- residents see their own reports on
+          CommunityReportsPage but don't need the moderation-queue stats. */}
+      {!!user && !userIsResident && <CommunityTrustStrip />}
 
       {/* ── 3. Current Conditions Strip ─────────────────────────── */}
+      {/* Same two cards for every role -- residents used to see Alert
+          Level + Rainfall (Alert Level is already shown above in the
+          Advisory Bulletin, so it was redundant here), while staff/admin
+          saw three cards including a standalone Humidity card. Humidity
+          is real data but a weak flood signal on its own, so it's now
+          folded into the Rainfall card's sub-line instead of taking a
+          whole card. */}
       <ConditionsStrip
-        items={userIsResident ? [
-          {
-            label: 'Alert Level',
-            value: ALERT_LEVELS[currentAlert]?.label ?? currentAlert,
-            color: ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL,
-            sub: 'Barangay Triangulo',
-          },
+        items={[
           {
             label: 'Rainfall Intensity',
             value: '—',
@@ -1875,31 +1879,13 @@ export default function Dashboard() {
             decimals: 1,
             unit: 'mm/hr',
             color: 'var(--accent)',
-            badge: prediction && rainfallMm > 10 ? 'Heavy' : prediction && rainfallMm > 2 ? 'Moderate' : prediction ? 'Light' : null,
+            sub: prediction
+              ? [
+                  rainfallMm > 10 ? 'Heavy' : rainfallMm > 2 ? 'Moderate' : 'Light',
+                  humidityVal !== null ? `${humidityVal}% humidity` : null,
+                ].filter(Boolean).join(' · ')
+              : null,
             noData: !prediction,
-          },
-        ] : [
-          {
-            label: 'Rainfall Intensity',
-            value: '—',
-            numeric: prediction ? rainfallMm : null,
-            decimals: 1,
-            unit: 'mm/hr',
-            color: 'var(--accent)',
-            badge: prediction && rainfallMm > 10 ? 'Heavy' : prediction && rainfallMm > 2 ? 'Moderate' : prediction ? 'Light' : null,
-            noData: !prediction,
-          },
-          {
-            label: 'Humidity',
-            value: '—',
-            numeric: humidityVal !== null ? humidityVal : null,
-            decimals: 0,
-            unit: '%',
-            sub: prediction ? 'Atmospheric moisture' : 'Forecast model',
-            color: !humidityVal ? 'var(--text-muted)'
-              : humidityVal >= 90 ? '#ef4444' : humidityVal >= 80 ? '#f97316' : humidityVal >= 70 ? '#eab308' : '#22c55e',
-            badge: !humidityVal ? null : humidityVal >= 90 ? 'Saturated' : humidityVal >= 80 ? 'High' : 'Normal',
-            noData: !humidityVal,
           },
           {
             label: 'Flood Probability',
