@@ -118,6 +118,29 @@ def _load_samples_from_disk():
         )
 
 
+def reset_samples():
+    """
+    Clears ALL stored PAGASA calibration samples -- both the in-process
+    list and the Supabase-persisted copy -- and returns how many were
+    discarded. Use this when past samples are suspected to be unreliable
+    (e.g. duplicate-inflated from before the dedup guard was added).
+
+    This does NOT touch Open-Meteo, PAGASA, or the weather cache -- it
+    only clears calibration history. Bias correction (apply_calibration())
+    simply stops applying per-field adjustments until new samples bring
+    each field back above CALIBRATION_MIN_SAMPLES.
+    """
+    global _calibration_samples, _samples_loaded_from_disk
+
+    discarded = len(_calibration_samples)
+    _calibration_samples = []
+    _samples_loaded_from_disk = True  # prevent a stale disk reload from repopulating it
+    _persist_samples()
+
+    print(f"🔴 Cleared {discarded} PAGASA calibration sample(s) (manual reset).")
+    return discarded
+
+
 def record_sample(open_meteo_data):
     """
     Attempts to pair the just-fetched Open-Meteo response with a fresh
