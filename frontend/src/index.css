@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -18,7 +18,10 @@
   --yellow:         #eab308;
   --orange:         #f97316;
   --red:            #ef4444;
-  --font-display:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Plus Jakarta Sans carries the same instrument-panel personality as the
+     auth screens into headlines, numerals and card titles; Inter stays for
+     everything read at length (body copy, table cells, form fields). */
+  --font-display:   'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-body:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --radius:         12px;
   --radius-sm:      8px;
@@ -130,10 +133,10 @@ body {
 
 .collapse-header {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; background: transparent; border: none; cursor: pointer;
+  gap: 10px; background: var(--title-band); border: none; cursor: pointer;
   text-align: left; font: inherit; color: inherit; padding: 0;
 }
-.collapse-header:hover .card-title { color: var(--text-primary); }
+.collapse-header:hover .card-title { color: var(--accent2); }
 
 .collapse-body {
   overflow: hidden;
@@ -272,12 +275,87 @@ body {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--accent);
   margin-bottom: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
+/* Small uppercase "eyebrow" label used above/inside cards throughout the
+   app (rendered by the shared SectionLabel component, plus the bespoke
+   card-title headers and header-bar kickers that follow the same visual
+   pattern). Both themes get an accent-tinted chip behind the label so each
+   section pops as a distinct, colored heading rather than blending into
+   the card background — dark mode uses a glowing sky-blue tint, light
+   mode a softer, darker-text version of the same accent. */
+.section-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  background: rgba(56, 189, 248, 0.14);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+}
+
+:root.light .section-label {
+  background: rgba(2, 132, 199, 0.09);
+  color: var(--accent2);
+}
+
+/* Card titles get a full-width colored band across the top of the card,
+   rather than a chip hugging the text — reads like a proper header strip.
+   Only applies when .card-title is a direct child of a default-padded
+   .card (the common case: AnalyticsPage, RainfallPage); card-title
+   instances nested inside their own custom header bar (e.g.
+   CollapsibleSection, the Flood Status Map header) already sit inside a
+   full-width bar, so that wrapper's background is tinted instead — see
+   the --title-band variable below. */
+.card > .card-title {
+  background: rgba(56, 189, 248, 0.12);
+  margin: -20px -20px 16px -20px;
+  padding: 14px 20px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+:root.light .card > .card-title {
+  background: rgba(2, 132, 199, 0.09);
+  color: var(--accent2);
+}
+
+/* Used by bespoke header-bar wrappers (title rows built with inline
+   styles rather than the .card-title class) so they pick up the same
+   accent tint instead of the neutral --blue-mid panel color, in both
+   themes. */
+:root { --title-band: rgba(56, 189, 248, 0.12); }
+:root.light { --title-band: rgba(2, 132, 199, 0.09); }
+
+
+/* Stat card -- used by the dashboard's KPI strip (Conditions Strip). Each
+   cell gets a colored top edge and a faint tint of its own metric color
+   instead of a flat divider, so the strip reads as a row of instruments
+   rather than a plain table. */
+.stat-cell {
+  position: relative;
+  transition: background 0.2s ease;
+}
+.stat-cell::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--stat-color, transparent);
+  opacity: 0.7;
+}
+.stat-cell:hover { background: rgba(255,255,255,0.015); }
+:root.light .stat-cell:hover { background: rgba(15,45,90,0.025); }
 
 /* Buttons */
 .btn {

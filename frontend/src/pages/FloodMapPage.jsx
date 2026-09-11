@@ -200,6 +200,7 @@ export default function FloodMapPage() {
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', flexWrap: 'wrap', gap: 10,
+          background: 'var(--title-band)',
         }}>
           <div>
             <div className="card-title" style={{ marginBottom: 2 }}>

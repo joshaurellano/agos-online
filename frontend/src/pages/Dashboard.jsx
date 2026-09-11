@@ -289,34 +289,41 @@ function StationHeader({ area, activeModel, lastUpdated, engineStatus, feedStatu
     <div style={{
       position: 'relative',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      flexWrap: 'wrap', gap: 10,
-      padding: '10px 2px 14px', marginBottom: 14,
+      flexWrap: 'wrap', gap: 14,
+      padding: '4px 2px 18px', marginBottom: 16,
       borderBottom: '1px solid var(--blue-border)',
     }}>
-      <div>
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.03em',
-          }}
-        >
-          {area.name}, {area.city}, {area.province}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+          background: 'linear-gradient(135deg, var(--accent2), var(--accent))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '1.15rem', boxShadow: '0 4px 16px rgba(14,165,233,0.3)',
+        }}>
+          🌊
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 3, flexWrap: 'wrap' }}>
-          <h1 style={{
-            fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 800,
-            color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0,
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            <h1 style={{
+              fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 800,
+              color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0,
+            }}>
+              Flood Early Warning Dashboard
+            </h1>
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6, marginTop: 2,
+            fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600,
           }}>
-            Flood Early Warning Dashboard
-          </h1>
-          {area.coords && (
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-              {area.coords}
-            </span>
-          )}
+            {area.name}, {area.city}, {area.province}
+            {area.coords && (
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 400 }}>
+                &middot; {area.coords}
+              </span>
+            )}
+          </div>
         </div>
-
       </div>
 
     </div>
@@ -398,8 +405,11 @@ function Sparkline({ data, color, width = 72, height = 22 }) {
 
 // Official advisory bulletin — replaces the old glow-card alert header.
 // Formatted like a PAGASA/PDRRMO bulletin: classification, issuing basis,
-// validity window, and enumerated recommended actions, with the emergency
-// dispatch action attached directly to the bulletin it corresponds to.
+// validity window, and enumerated recommended actions. Now split into two
+// separate cards on the same row: a large Advisory Panel (classification +
+// enlarged risk gauge) and a narrower Dispatch card holding the recommended
+// action and the emergency dispatch control, so the advisory reads like the
+// headline element while dispatch stays a clearly distinct, adjacent action.
 function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, probabilityPct, onSendAlert, canSendAlert }) {
   const { t } = useLanguage();
   const TREND_COPY = {
@@ -411,74 +421,97 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
   const isSevere = currentAlert === 'WARNING' || currentAlert === 'CRITICAL';
 
   return (
-    <div
-      className={`card${isSevere ? ' alert-glow-pulse' : ''}`}
-      style={{
-        padding: 0, overflow: 'hidden', marginBottom: 16,
-        borderLeft: `5px solid ${alertColor}`,
-        boxShadow: `var(--shadow), 0 0 24px ${hexToRgba(alertColor, 0.18)}`,
-        transition: 'box-shadow 0.6s ease, border-color 0.6s ease',
-        '--glow-a': hexToRgba(alertColor, 0.16),
-        '--glow-b': hexToRgba(alertColor, 0.5),
-      }}
-    >
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
-        padding: '10px 20px', background: 'var(--blue-mid)', borderBottom: '1px solid var(--blue-border)',
-      }}>
-        <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-          Flood Advisory Bulletin
-        </span>
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-          Issued {new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} &middot; Next update in ≤30 min
-        </span>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
+
+      {/* ── Advisory Panel (bigger: takes ~2/3 of the row) ─────────── */}
+      <div
+        className={`card${isSevere ? ' alert-glow-pulse' : ''}`}
+        style={{
+          flex: '2 1 420px', minWidth: 320, padding: 0, overflow: 'hidden',
+          borderLeft: `5px solid ${alertColor}`,
+          boxShadow: `var(--shadow), 0 0 24px ${hexToRgba(alertColor, 0.18)}`,
+          transition: 'box-shadow 0.6s ease, border-color 0.6s ease',
+          '--glow-a': hexToRgba(alertColor, 0.16),
+          '--glow-b': hexToRgba(alertColor, 0.5),
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+          padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: alertColor, flexShrink: 0 }} />
+            Flood Advisory Bulletin
+          </span>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+            Issued {new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} &middot; Next update in ≤30 min
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'center', padding: '26px 24px' }}>
+          {typeof probabilityPct === 'number' && (
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <div aria-hidden="true" style={{
+                position: 'absolute', inset: -18, borderRadius: '50%',
+                background: `radial-gradient(circle, ${hexToRgba(alertColor, 0.16)} 0%, transparent 70%)`,
+                pointerEvents: 'none',
+              }} />
+              <RadialGauge value={probabilityPct} color={alertColor} size={168} strokeWidth={14} />
+            </div>
+          )}
+
+          <div style={{ flex: '1 1 260px', minWidth: 220 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.4rem',
+                color: '#fff', background: alertColor,
+                padding: '7px 18px', borderRadius: 7, letterSpacing: '0.04em',
+              }}>
+                {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
+              </span>
+              {trend && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.9rem', fontWeight: 700, color: trend.color }}>
+                  {trend.icon} {trend.label}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '1.05rem', color: 'var(--text-primary)', lineHeight: 1.55 }}>
+              {t(`alertLevel.${currentAlert}.desc`)}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', padding: '18px 20px' }}>
-        {typeof probabilityPct === 'number' && (
-          <RadialGauge value={probabilityPct} color={alertColor} />
-        )}
-
-        <div style={{ flex: '1 1 260px', minWidth: 220 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.95rem',
-              color: '#fff', background: alertColor,
-              padding: '4px 12px', borderRadius: 5, letterSpacing: '0.04em',
-            }}>
-              {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
-            </span>
-            {trend && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 700, color: trend.color }}>
-                {trend.icon} {trend.label}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: '0.86rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-            {t(`alertLevel.${currentAlert}.desc`)}
-          </div>
-        </div>
-
+      {/* ── Dispatch Alert (narrower: recommended action + dispatch button) ─ */}
+      <div className="card" style={{ flex: '1 1 240px', minWidth: 220, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{
-          flex: '1 1 220px', minWidth: 200,
-          borderLeft: '1px solid var(--blue-border)', paddingLeft: 20,
+          padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
-          <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
-            Recommended Action
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            {(currentAlert === 'WARNING' || currentAlert === 'CRITICAL') ? t('evacuateNow') + ' — ' + alertInfo.action : alertInfo.action}
-          </div>
+          <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+            Dispatch Alert
+          </span>
         </div>
 
-        {canSendAlert && (
-          <div style={{ flexShrink: 0 }}>
-            <button className="btn btn-danger" onClick={onSendAlert} style={{ whiteSpace: 'nowrap' }}>
-              🚨 Dispatch Alert
-            </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', flex: 1 }}>
+          <div style={{
+            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
+            borderRadius: 'var(--radius-sm)', padding: '12px 16px',
+          }}>
+            <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+              Recommended Action
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {(currentAlert === 'WARNING' || currentAlert === 'CRITICAL') ? t('evacuateNow') + ' — ' + alertInfo.action : alertInfo.action}
+            </div>
           </div>
-        )}
+
+          {canSendAlert && (
+            <button className="btn btn-danger" onClick={onSendAlert} style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
+              <span aria-hidden="true">🚨</span> Dispatch Alert
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -544,27 +577,48 @@ function CommunityTrustStrip() {
 
   return (
     <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 20, padding: '14px 20px', marginBottom: 16, alignItems: 'center' }}>
-      <div style={{ fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+      <div className="section-label" style={{ marginBottom: 0 }}>
         Community reporting, today
       </div>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-        <div>
-          <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#22c55e' }}>
-            {stats.verifiedTodayCount}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span aria-hidden="true" style={{
+            width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+            background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
+          }}>✓</span>
+          <span>
+            <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#22c55e' }}>
+              {stats.verifiedTodayCount}
+            </span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>verified today</span>
           </span>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>verified today</span>
         </div>
-        <div>
-          <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#eab308' }}>
-            {stats.pendingCount}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span aria-hidden="true" style={{
+            width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+            background: 'rgba(234,179,8,0.14)', border: '1px solid rgba(234,179,8,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
+          }}>⏳</span>
+          <span>
+            <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#eab308' }}>
+              {stats.pendingCount}
+            </span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>awaiting review</span>
           </span>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>awaiting review</span>
         </div>
-        <div>
-          <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--accent)' }}>
-            {avgLabel}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <span aria-hidden="true" style={{
+            width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+            background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
+          }}>⚡</span>
+          <span>
+            <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--accent)' }}>
+              {avgLabel}
+            </span>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>average time to verify</span>
           </span>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginLeft: 6 }}>average time to verify</span>
         </div>
       </div>
     </div>
@@ -583,25 +637,30 @@ function ConditionsStrip({ items }) {
         gridTemplateColumns: `repeat(${items.length}, 1fr)`,
       }}>
         {items.map((it, i) => (
-          <div key={it.label} style={{
-            padding: '14px 18px',
-            borderLeft: i === 0 ? 'none' : '1px solid var(--blue-border)',
-            opacity: it.noData ? 0.55 : 1,
-          }}>
-            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+          <div
+            key={it.label}
+            className="stat-cell"
+            style={{
+              '--stat-color': it.color || 'var(--blue-border)',
+              padding: '16px 18px',
+              borderLeft: i === 0 ? 'none' : '1px solid var(--blue-border)',
+              opacity: it.noData ? 0.55 : 1,
+            }}
+          >
+            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
               {it.label}
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 800, color: it.color || 'var(--text-primary)', lineHeight: 1 }}>
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.55rem', fontWeight: 800, color: it.color || 'var(--text-primary)', lineHeight: 1 }}>
                 {typeof it.numeric === 'number' ? <AnimatedNumber value={it.numeric} decimals={it.decimals ?? 0} /> : it.value}
               </span>
               {it.unit && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{it.unit}</span>}
             </div>
-            <div style={{ fontSize: '0.68rem', color: it.badgeColor || 'var(--text-secondary)', marginTop: 4, fontWeight: it.badge ? 700 : 400 }}>
+            <div style={{ fontSize: '0.68rem', color: it.badgeColor || 'var(--text-secondary)', marginTop: 5, fontWeight: it.badge ? 700 : 400 }}>
               {it.badge || it.sub}
             </div>
             {it.sparkline && it.sparkline.length >= 2 && (
-              <div style={{ marginTop: 6 }}>
+              <div style={{ marginTop: 7 }}>
                 <Sparkline data={it.sparkline} color={it.color || 'var(--accent)'} />
               </div>
             )}
@@ -1730,38 +1789,68 @@ export default function Dashboard() {
   return (
     <div className="fade-in">
 
-      {/* ── 0. Station Masthead ─────────────────────────────────── */}
-      <StationHeader
-        area={TRIANGULO_AREA}
-        activeModel={activeModel}
-        lastUpdated={lastUpdated}
-        engineStatus={modelLoading ? 'checking' : (!modelError && !!prediction) ? 'online' : 'offline'}
-        feedStatus={forecastLoading ? 'checking' : forecast.length > 0 ? 'online' : 'offline'}
-      />
+      {/* ── 0. Station Masthead + Advisory (decorative contour wash) ── */}
+      <div style={{ position: 'relative' }}>
+        <div aria-hidden="true" style={{
+          position: 'absolute', top: -20, left: -24, right: -24, height: 280,
+          pointerEvents: 'none', zIndex: 0, overflow: 'hidden', borderRadius: 16,
+        }}>
+          <svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <radialGradient id="heroWash1" cx="15%" cy="0%" r="70%">
+                <stop offset="0%" stopColor="rgba(56,189,248,0.09)" />
+                <stop offset="100%" stopColor="rgba(56,189,248,0)" />
+              </radialGradient>
+              <radialGradient id="heroWash2" cx="88%" cy="30%" r="60%">
+                <stop offset="0%" stopColor="rgba(14,165,233,0.06)" />
+                <stop offset="100%" stopColor="rgba(14,165,233,0)" />
+              </radialGradient>
+              <pattern id="heroContours" width="110" height="110" patternUnits="userSpaceOnUse">
+                <circle cx="55" cy="55" r="16" fill="none" stroke="rgba(56,189,248,0.06)" strokeWidth="1" />
+                <circle cx="55" cy="55" r="34" fill="none" stroke="rgba(56,189,248,0.045)" strokeWidth="1" />
+                <circle cx="55" cy="55" r="52" fill="none" stroke="rgba(56,189,248,0.03)" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#heroWash1)" />
+            <rect width="100%" height="100%" fill="url(#heroWash2)" />
+            <rect width="100%" height="100%" fill="url(#heroContours)" />
+          </svg>
+        </div>
 
-      {/* ── 1. Offline Banner ──────────────────────────────────── */}
-      {modelError && (
-        <ErrorBanner>
-          <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
-          <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
-          to enable live predictions.
-        </ErrorBanner>
-      )}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <StationHeader
+            area={TRIANGULO_AREA}
+            activeModel={activeModel}
+            lastUpdated={lastUpdated}
+            engineStatus={modelLoading ? 'checking' : (!modelError && !!prediction) ? 'online' : 'offline'}
+            feedStatus={forecastLoading ? 'checking' : forecast.length > 0 ? 'online' : 'offline'}
+          />
 
-      {/* ── 2. Advisory Bulletin ──────────────────────────────── */}
-      {/* canSendAlert requires an authenticated, non-resident user — not
-          just "not a resident". isResident(null) is false, so on its own
-          `!userIsResident` would be true for a logged-out visitor too, now
-          that this page is public. Dispatch must stay gated on `user`. */}
-      <AdvisoryBulletin
-        alertInfo={alertInfo}
-        alertColor={alertColor}
-        currentAlert={currentAlert}
-        recentTrend={recentTrend}
-        probabilityPct={prediction ? prediction.probability * 100 : null}
-        onSendAlert={handleEvacuationAlert}
-        canSendAlert={!!user && !userIsResident}
-      />
+          {/* ── 1. Offline Banner ──────────────────────────────────── */}
+          {modelError && (
+            <ErrorBanner>
+              <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
+              <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
+              to enable live predictions.
+            </ErrorBanner>
+          )}
+
+          {/* ── 2. Advisory Bulletin ──────────────────────────────── */}
+          {/* canSendAlert requires an authenticated, non-resident user — not
+              just "not a resident". isResident(null) is false, so on its own
+              `!userIsResident` would be true for a logged-out visitor too, now
+              that this page is public. Dispatch must stay gated on `user`. */}
+          <AdvisoryBulletin
+            alertInfo={alertInfo}
+            alertColor={alertColor}
+            currentAlert={currentAlert}
+            recentTrend={recentTrend}
+            probabilityPct={prediction ? prediction.probability * 100 : null}
+            onSendAlert={handleEvacuationAlert}
+            canSendAlert={!!user && !userIsResident}
+          />
+        </div>
+      </div>
 
       {/* Delivery status is admin/staff-only, same gate as the send-alert
           button itself -- residents don't need to see SMS provider errors
@@ -1832,13 +1921,20 @@ export default function Dashboard() {
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-          padding: '14px 18px', borderBottom: '1px solid var(--blue-border)',
+          padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
         }}>
           <div>
-            <div className="card-title" style={{ marginBottom: 2 }}>
-              🗺 Flood Status Map — Barangay Triangulo
+            <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
+              <span aria-hidden="true" style={{
+                width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
+              }}>🗺</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                Flood Status Map — Barangay Triangulo
+              </span>
             </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 31 }}>
               Boundary overlay, color-coded to current alert classification. Tap a pin to view a resident report.
             </div>
           </div>
