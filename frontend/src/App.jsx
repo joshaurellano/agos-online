@@ -13,6 +13,7 @@ import FloodMapPage from './pages/FloodMapPage';
 import ReportsPage from './pages/ReportsPage';
 import CommunityReportsPage from './pages/CommunityReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import AlertsLogPage from './pages/AlertsLogPage';
 
 import MainLayout from './components/MainLayout';
 import AdminRoute from './components/AdminRoute';
@@ -41,6 +42,7 @@ function App() {
                 <Route path="/rainfall"      element={<RainfallPage />} />
                 <Route path="/evacuation-map" element={<FloodMapPage />} />
                 <Route path="/analytics"     element={<AnalyticsPage />} />
+                <Route path="/alerts-log"    element={<AlertsLogPage />} />
 
                 <Route path="/reports" element={
                   <ResidentRoute>

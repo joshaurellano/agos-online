@@ -382,9 +382,11 @@ export default function RegisterPage() {
 
         <div className="reg-wrapper">
 
-          <Link to={isResidentMode ? '/dashboard' : '/login'} className="reg-back">
-            <FaArrowLeft size={11} /> {isResidentMode ? 'Back to dashboard' : 'Back to sign in'}
-          </Link>
+          {isResidentMode && (
+            <Link to="/dashboard" className="reg-back">
+              <FaArrowLeft size={11} /> Back to dashboard
+            </Link>
+          )}
 
           <div className="reg-header">
             <div className="reg-ring">
@@ -426,7 +428,7 @@ export default function RegisterPage() {
                       <Link to="/dashboard" style={{ color: '#38bdf8' }}>go to dashboard</Link>.
                     </>
                   ) : (
-                    <>You can now <Link to="/login" style={{ color: '#38bdf8' }}>sign in</Link>.</>
+                    'Account created.'
                   )}
                 </p>
               </div>
@@ -647,9 +649,6 @@ export default function RegisterPage() {
                     : <><FaCheckCircle size={13} /> Register</>}
                 </button>
 
-                <p className="reg-footer">
-                  Already have an account? <Link to="/login">Sign in</Link>
-                </p>
               </form>
             )}
           </div>
