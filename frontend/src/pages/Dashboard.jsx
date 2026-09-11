@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { SectionLabel, ErrorBanner } from '../components/ui';
 import Swal from 'sweetalert2';
-import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup, CircleMarker as LeafletCircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -13,7 +13,6 @@ import {
   REPORT_STATUS_COLORS,
   reportTimeAgo,
   findNearbyDuplicates,
-  haversineMeters,
 } from '../lib/incidentReports';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -742,31 +741,6 @@ function BasemapSwitcher({ basemap, onChange }) {
   );
 }
 
-// Groups verified Flood-category reports into simple proximity clusters
-// (greedy, radius-based — same distance helper used for duplicate
-// detection) so the map can show "this spot has flooded before" as a
-// density read, the way Google Flood Hub's inundation-history layer works
-// off past events rather than only the live forecast. This is a
-// client-side approximation from whatever verified reports the public
-// query already returns; a production version would query a longer,
-// date-scoped history from the backend rather than the current
-// pending+verified snapshot.
-const HISTORY_CLUSTER_RADIUS_METERS = 60;
-
-function clusterFloodHistory(reports) {
-  const floodReports = reports.filter(r => r.category === 'Flood' && r.status === 'verified');
-  const clusters = [];
-  for (const r of floodReports) {
-    const existing = clusters.find(c => haversineMeters(c.lat, c.lng, r.latitude, r.longitude) <= HISTORY_CLUSTER_RADIUS_METERS);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      clusters.push({ lat: r.latitude, lng: r.longitude, count: 1 });
-    }
-  }
-  return clusters;
-}
-
 // Small checkbox panel for toggling map overlays on/off — lets a visitor
 // declutter the map (hide the boundary tint, hide report pins) without
 // needing a full GIS-style layer list.
@@ -805,13 +779,11 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   const [reports, setReports] = useState([]);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showReports, setShowReports] = useState(true);
-  const [showHistory, setShowHistory] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
   // Leaflet wants [lat, lng] arrays, not {lat, lng} objects
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
-  const historyClusters = useMemo(() => clusterFloodHistory(reports), [reports]);
 
   // Resident-submitted incident reports, as map pins. Only pending +
   // verified are shown — rejected reports are moderation history, not
@@ -879,22 +851,6 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
             </LeafletTooltip>
           </LeafletPolygon>
         )}
-
-        {showHistory && historyClusters.map((c, i) => (
-          <LeafletCircleMarker
-            key={`history-${i}`}
-            center={[c.lat, c.lng]}
-            radius={6 + Math.min(c.count, 6) * 2}
-            pathOptions={{
-              color: '#a855f7', weight: 1, fillColor: '#a855f7',
-              fillOpacity: Math.min(0.15 + c.count * 0.08, 0.55),
-            }}
-          >
-            <LeafletTooltip>
-              {c.count} verified flood report{c.count > 1 ? 's' : ''} recorded near here
-            </LeafletTooltip>
-          </LeafletCircleMarker>
-        ))}
 
         <MarkerClusterGroup chunkedLoading maxClusterRadius={55} iconCreateFunction={createReportClusterIcon}>
           {showReports && reports.map(report => {
@@ -998,12 +954,10 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
         layers={[
           { key: 'boundary', label: 'Boundary', visible: showBoundary },
           { key: 'reports', label: 'Reports', visible: showReports },
-          { key: 'history', label: 'Flood history', visible: showHistory },
         ]}
         onToggle={(key) => {
           if (key === 'boundary') setShowBoundary(v => !v);
-          else if (key === 'reports') setShowReports(v => !v);
-          else setShowHistory(v => !v);
+          else setShowReports(v => !v);
         }}
       />
     </div>

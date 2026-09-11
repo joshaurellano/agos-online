@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
+import trianguloFloodHazard from '../data/trianguloFloodHazard.json';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
 import MinuteForecastStrip from './MinuteForecastStrip';
@@ -18,6 +19,16 @@ const ROAD_WEIGHT = {
 
 const BOUNDARY_COLOR = '#38bdf8';
 const WATER_COLOR = '#1e88e5';
+
+// 25-yr rainfall return period hazard zones, clipped to the barangay
+// boundary. Extruded a little per class (not real depth data -- just a
+// legibility cue) so Low/Medium/High read distinctly at a glance in 3D.
+const HAZARD_HEIGHT = ['match', ['get', 'hazard_class'], 1, 1.5, 2, 3, 3, 4.5, 1.5];
+const HAZARD_LEGEND = [
+  { level: 'Low', color: '#3b82f6' },
+  { level: 'Medium', color: '#f59e0b' },
+  { level: 'High', color: '#ef4444' },
+];
 
 // Uniform across the whole boundary (not per-street/per-building) -- same
 // as every other severity cue in this app: it's an intensity signal from
@@ -117,8 +128,11 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
   const [rainDebugPreset, setRainDebugPreset] = useState(null); // dev-only override, see RainDebugControls
+  const [showHazard, setShowHazard] = useState(true);
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
+  const showHazardRef = useRef(showHazard);
+  showHazardRef.current = showHazard;
 
   // Adds/re-adds all custom sources and layers. Called on first load AND
   // after every setStyle() call, since switching styles wipes any custom
@@ -162,6 +176,28 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
           'fill-extrusion-height': water.height,
           'fill-extrusion-base': 0,
           'fill-extrusion-opacity': water.opacity,
+        },
+      });
+    }
+
+    // 25-yr flood hazard overlay -- own toggle, independent of the live
+    // alert-driven water slab above. Added after the water slab / before
+    // the boundary outline so the dashed boundary still renders crisply
+    // on top of it.
+    if (!map.getSource('triangulo-flood-hazard')) {
+      map.addSource('triangulo-flood-hazard', { type: 'geojson', data: trianguloFloodHazard });
+    }
+    if (!map.getLayer('triangulo-flood-hazard-fill')) {
+      map.addLayer({
+        id: 'triangulo-flood-hazard-fill',
+        type: 'fill-extrusion',
+        source: 'triangulo-flood-hazard',
+        layout: { visibility: showHazardRef.current ? 'visible' : 'none' },
+        paint: {
+          'fill-extrusion-color': ['get', 'color'],
+          'fill-extrusion-height': HAZARD_HEIGHT,
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.55,
         },
       });
     }
@@ -277,6 +313,20 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     else map.once('load', applyAlertState);
   }, [currentAlert, alertColors]);
 
+  // Toggle the flood hazard overlay's visibility without touching any
+  // other layer.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const applyHazardVisibility = () => {
+      if (map.getLayer('triangulo-flood-hazard-fill')) {
+        map.setLayoutProperty('triangulo-flood-hazard-fill', 'visibility', showHazard ? 'visible' : 'none');
+      }
+    };
+    if (map.isStyleLoaded()) applyHazardVisibility();
+    else map.once('load', applyHazardVisibility);
+  }, [showHazard]);
+
   // Handle basemap style switching -- setStyle() wipes custom layers, so
   // they're re-added (and re-lit) once the new style finishes loading.
   const handleStyleChange = (key) => {
@@ -366,6 +416,39 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
               <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600 }}>
                 {effectiveCondition}
               </span>
+            </div>
+          )}
+          <div
+            title="25-yr rainfall return period flood hazard"
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              gap: 12, marginTop: 2, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>🌊 Hazard</span>
+            <button
+              onClick={() => setShowHazard(v => !v)}
+              style={{
+                width: 26, height: 14, borderRadius: 7, flexShrink: 0,
+                background: showHazard ? 'var(--accent, #0ea5e9)' : 'rgba(255,255,255,0.18)',
+                position: 'relative', border: 'none', cursor: 'pointer', padding: 0,
+                transition: 'background 0.2s',
+              }}
+            >
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 2, left: showHazard ? 14 : 2, transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
+          {showHazard && (
+            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+              {HAZARD_LEGEND.map(({ level, color }) => (
+                <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.58rem', color: '#8da4be' }}>{level}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
