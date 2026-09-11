@@ -138,6 +138,21 @@ def record_sample(open_meteo_data):
         print(f"⚠️ Skipping PAGASA calibration sample: {err}")
         return
 
+    # Guard against duplicate samples: PAGASA's AWS table only updates on
+    # its own schedule, so calling this endpoint/function more often than
+    # that (rapid manual refreshes, an overly-frequent cron, etc.) would
+    # otherwise pair the SAME PAGASA reading against the SAME cached
+    # Open-Meteo data more than once -- inflating total_samples without
+    # adding any real, distinct observations behind the bias estimate.
+    if _calibration_samples:
+        last_observed_at = _calibration_samples[-1].get("pagasa_observed_at")
+        if last_observed_at is not None and last_observed_at == pagasa["observed_at"]:
+            print(
+                "🟡 Skipping PAGASA calibration sample: station reading "
+                f"unchanged since last sample (observed_at={last_observed_at})."
+            )
+            return
+
     current = open_meteo_data.get("current", {}) or {}
 
     # Pair PAGASA's temperature against the Open-Meteo hourly temperature

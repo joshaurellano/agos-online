@@ -31,7 +31,7 @@ from fastapi import APIRouter, Header, HTTPException
 
 from app.weather.client import refresh_weather_from_openmeteo, fetch_weather, WeatherUnavailableError
 from app.weather.cache import get_cache_status
-from app.weather.calibration import get_calibration_status, record_sample
+from app.weather.calibration import get_calibration_status, record_sample, reset_samples
 
 router = APIRouter()
 
@@ -137,13 +137,62 @@ def cron_sample_calibration(x_cron_secret: str | None = Header(default=None)):
         status, message = "ok", "Recorded a new PAGASA calibration sample."
     else:
         status, message = "skipped", (
-            "No new sample recorded -- PAGASA's AWS table was unreachable, "
-            "stale, or PAGASA_CALIBRATION_ENABLED is off. Existing samples "
-            "are unaffected."
+            "No new sample recorded -- either PAGASA's AWS table was "
+            "unreachable/stale, PAGASA_CALIBRATION_ENABLED is off, or the "
+            "station reading hasn't changed since the last recorded sample "
+            "(duplicate reading, deliberately not double-counted). Existing "
+            "samples are unaffected."
         )
 
     return {
         "status": status,
         "message": message,
+        "pagasa_calibration": get_calibration_status(),
+    }
+
+
+@router.get("/api/cron/reset-calibration")
+def cron_reset_calibration(
+    confirm: str | None = None,
+    x_cron_secret: str | None = Header(default=None),
+):
+    """
+    DESTRUCTIVE: wipes all stored PAGASA calibration samples (in-process
+    AND the Supabase-persisted copy), resetting total_samples back to 0.
+
+    Does NOT touch Open-Meteo, the weather cache, or PAGASA -- only
+    calibration history. Bias correction just stops applying per-field
+    adjustments until enough new samples come back in.
+
+    Requires ?confirm=yes on the query string so a stray browser refresh
+    or bookmark can't wipe samples by accident. If CRON_SECRET is set in
+    the environment, the X-Cron-Secret header is also required, same as
+    the other endpoints in this file.
+
+    Example:
+        GET /api/cron/reset-calibration?confirm=yes
+    """
+
+    if CRON_SECRET and x_cron_secret != CRON_SECRET:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or incorrect X-Cron-Secret header.",
+        )
+
+    if confirm != "yes":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Refusing to reset without confirmation. Retry with "
+                "?confirm=yes to permanently discard all stored PAGASA "
+                "calibration samples."
+            ),
+        )
+
+    discarded = reset_samples()
+
+    return {
+        "status": "ok",
+        "message": f"Discarded {discarded} stored calibration sample(s).",
         "pagasa_calibration": get_calibration_status(),
     }
