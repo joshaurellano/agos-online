@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { Form, Button, Spinner, InputGroup } from 'react-bootstrap';
+import { Spinner } from 'react-bootstrap';
 
-import { FaEyeSlash, FaEye, FaUser, FaPhone, FaAt, FaLock, FaUserShield, FaHome, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+import { FaEyeSlash, FaEye, FaUser, FaPhone, FaAt, FaLock, FaUserShield, FaHome, FaCheckCircle, FaExclamationTriangle, FaArrowLeft } from 'react-icons/fa';
 
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
-import { SectionLabel } from '../components/ui';
 import { detectPhoneNetwork, NETWORK_INFO } from '../lib/phoneNetwork';
 
 // Simple heuristic strength meter -- purely a UX nudge, does not change or
 // loosen the actual validation rule (still 8+ chars, enforced in handleSubmit).
 function getPasswordStrength(pw) {
-  if (!pw) return { label: '', pct: 0, color: 'var(--blue-border)' };
+  if (!pw) return { label: '', pct: 0, color: 'rgba(100,160,220,0.3)' };
   let score = 0;
   if (pw.length >= 8) score++;
   if (/[A-Za-z]/.test(pw) && /[0-9]/.test(pw)) score++;
@@ -23,6 +22,213 @@ function getPasswordStrength(pw) {
   if (score === 3) return { label: 'Good', pct: 80, color: '#38bdf8' };
   return { label: 'Strong', pct: 100, color: '#22c55e' };
 }
+
+const styles = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap');
+
+  .reg-root {
+    min-height: 100vh;
+    background: #050d1a;
+    display: flex;
+    justify-content: center;
+    padding: 56px 24px 64px;
+    position: relative;
+    overflow-x: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* Contour-line motif -- echoes a topographic/flood-extent map rather than
+     a generic grid, tying the auth chrome back to the subject matter. */
+  .reg-contours {
+    position: absolute;
+    inset: 0;
+    opacity: 0.5;
+    background-image:
+      repeating-radial-gradient(circle at 12% 18%, transparent 0, transparent 34px, rgba(56,189,248,0.05) 35px, rgba(56,189,248,0.05) 36px),
+      repeating-radial-gradient(circle at 88% 82%, transparent 0, transparent 46px, rgba(14,165,233,0.045) 47px, rgba(14,165,233,0.045) 48px);
+    pointer-events: none;
+  }
+
+  .reg-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(90px);
+    pointer-events: none;
+  }
+  .reg-orb-1 {
+    width: 520px; height: 520px;
+    background: radial-gradient(circle, rgba(0,160,255,0.11) 0%, transparent 70%);
+    top: -180px; right: -140px;
+    animation: reg-orb-float 9s ease-in-out infinite;
+  }
+  .reg-orb-2 {
+    width: 380px; height: 380px;
+    background: radial-gradient(circle, rgba(34,197,94,0.06) 0%, transparent 70%);
+    bottom: -120px; left: -100px;
+    animation: reg-orb-float 11s ease-in-out infinite reverse;
+  }
+  @keyframes reg-orb-float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-22px); }
+  }
+
+  .reg-wrapper {
+    width: 100%;
+    max-width: 480px;
+    position: relative;
+    z-index: 1;
+    animation: reg-fade-up 0.5s ease both;
+  }
+  @keyframes reg-fade-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .reg-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: rgba(148,195,240,0.55); font-size: 0.78rem; font-weight: 600;
+    text-decoration: none; margin-bottom: 22px; transition: color 0.2s ease;
+  }
+  .reg-back:hover { color: #38bdf8; }
+
+  .reg-header { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
+
+  .reg-ring {
+    width: 54px; height: 54px; flex-shrink: 0; position: relative;
+  }
+  .reg-ring svg { width: 100%; height: 100%; animation: reg-spin 14s linear infinite; }
+  @keyframes reg-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .reg-ring-inner {
+    position: absolute; inset: 7px; border-radius: 50%;
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 1.05rem;
+    box-shadow: 0 0 20px rgba(14,165,233,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+
+  .reg-title {
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    font-size: 1.5rem; font-weight: 800; line-height: 1.15;
+    margin-bottom: 3px;
+    background: linear-gradient(135deg, #e0f2fe 0%, #38bdf8 60%, #0ea5e9 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .reg-subtitle { font-size: 0.82rem; color: rgba(148,195,240,0.55); letter-spacing: 0.01em; }
+
+  .reg-card {
+    background: rgba(8, 22, 42, 0.78);
+    border: 1px solid rgba(0, 160, 255, 0.15);
+    border-radius: 20px;
+    padding: 32px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.03) inset, 0 32px 64px rgba(0,0,0,0.4);
+    position: relative;
+    overflow: hidden;
+  }
+  .reg-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(14,165,233,0.5), transparent);
+  }
+
+  .reg-section {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.66rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+    color: rgba(120, 175, 220, 0.65);
+    margin: 26px 0 16px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 130, 210, 0.18);
+  }
+  .reg-section:first-child { margin-top: 0; }
+
+  .reg-field { margin-bottom: 18px; }
+
+  .reg-label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.7rem; font-weight: 600; color: rgba(140, 185, 225, 0.75);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;
+  }
+
+  .reg-input-wrap { position: relative; display: flex; align-items: center; }
+  .reg-input-icon { position: absolute; left: 14px; color: rgba(100, 160, 220, 0.4); display: flex; pointer-events: none; }
+
+  .reg-input, .reg-select {
+    width: 100%;
+    padding: 12px 16px 12px 40px;
+    background: rgba(0, 30, 60, 0.6);
+    border: 1px solid rgba(0, 120, 200, 0.2);
+    border-radius: 10px;
+    color: #e0f2fe;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.92rem;
+    outline: none;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+  }
+  .reg-select { cursor: pointer; }
+  .reg-input::placeholder { color: rgba(100, 160, 220, 0.32); }
+  .reg-input:focus, .reg-select:focus {
+    border-color: rgba(14, 165, 233, 0.5);
+    background: rgba(0, 40, 80, 0.7);
+    box-shadow: 0 0 0 3px rgba(14,165,233,0.08);
+  }
+  .reg-input-pw { padding-right: 46px; }
+  .reg-input-valid { border-color: rgba(34,197,94,0.55) !important; }
+  .reg-input-invalid { border-color: rgba(239,68,68,0.5) !important; }
+
+  .reg-eye-btn {
+    position: absolute; right: 14px; background: none; border: none; cursor: pointer;
+    color: rgba(100, 160, 220, 0.5); padding: 0; display: flex; transition: color 0.2s;
+  }
+  .reg-eye-btn:hover { color: rgba(14, 165, 233, 0.9); }
+
+  .reg-hint { font-size: 0.71rem; color: rgba(120, 165, 205, 0.55); margin-top: 6px; display: block; }
+  .reg-hint.warn { color: #f0ad4e; }
+
+  .reg-network-badge {
+    margin-top: 9px; padding: 8px 11px; border-radius: 8px;
+    font-size: 0.72rem; line-height: 1.4; display: flex; align-items: flex-start; gap: 7px;
+  }
+
+  .reg-strength-track { height: 4px; border-radius: 2px; background: rgba(0, 40, 80, 0.6); overflow: hidden; margin-top: 9px; }
+  .reg-strength-fill { height: 100%; border-radius: 2px; transition: width 0.25s ease, background 0.25s ease; }
+  .reg-strength-row { display: flex; justify-content: space-between; margin-top: 5px; }
+
+  .reg-match { font-size: 0.72rem; margin-top: 7px; display: flex; align-items: center; gap: 5px; }
+
+  .reg-checkbox-row { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; }
+  .reg-checkbox-row input[type="checkbox"] { margin-top: 3px; width: 15px; height: 15px; accent-color: #0ea5e9; cursor: pointer; flex-shrink: 0; }
+  .reg-checkbox-row span { font-size: 0.78rem; color: rgba(180, 210, 235, 0.75); line-height: 1.45; }
+
+  .reg-error {
+    background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 10px; padding: 10px 14px; margin: 4px 0 18px;
+    color: #fca5a5; font-size: 0.83rem; display: flex; align-items: center; gap: 8px;
+  }
+
+  .reg-btn {
+    width: 100%; padding: 14px; margin-top: 4px;
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    border: none; border-radius: 10px; color: #fff;
+    font-family: 'Inter', sans-serif; font-size: 0.94rem; font-weight: 700; letter-spacing: 0.03em;
+    cursor: pointer; transition: all 0.2s ease;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: 0 4px 24px rgba(14,165,233,0.25);
+  }
+  .reg-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 32px rgba(14,165,233,0.35); }
+  .reg-btn:active:not(:disabled) { transform: translateY(0); }
+  .reg-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .reg-footer { text-align: center; margin-top: 20px; font-size: 0.78rem; color: rgba(148,195,240,0.5); }
+  .reg-footer a { color: #38bdf8; font-weight: 600; text-decoration: none; }
+  .reg-footer a:hover { text-decoration: underline; }
+
+  .reg-success-icon {
+    width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 18px;
+    background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.7rem; color: #22c55e;
+  }
+`;
 
 export default function RegisterPage() {
   const { createUser, error, clearError, user } = useAuth();
@@ -162,362 +368,293 @@ export default function RegisterPage() {
     }
   };
 
-  const inputStyle = {
-    padding: '12px 14px',
-    background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-    borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)',
-    fontFamily: 'var(--font-body)', fontSize: '0.95rem',
-    outline: 'none', transition: 'border-color 0.2s',
-  };
-
-  const labelStyle = {
-    display: 'flex', alignItems: 'center', gap: 6,
-    fontSize: '0.8rem', fontWeight: 600,
-    color: 'var(--text-secondary)', marginBottom: '6px',
-    letterSpacing: '0.05em',
-  };
-
   const phoneValid = /^09\d{9}$/.test(form.phone);
   const strength = getPasswordStrength(form.password);
   const passwordsMatch = form.confirmPassword.length > 0 && form.password === form.confirmPassword;
 
   return (
-    <div style={{
-      minHeight: '100vh', background: 'var(--blue-deep)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '24px', position: 'relative', overflow: 'hidden',
-    }}>
+    <>
+      <style>{styles}</style>
+      <div className="reg-root">
+        <div className="reg-contours" />
+        <div className="reg-orb reg-orb-1" />
+        <div className="reg-orb reg-orb-2" />
 
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'radial-gradient(ellipse at 30% 50%, rgba(14,165,233,0.07) 0%, transparent 60%), radial-gradient(ellipse at 70% 20%, rgba(56,189,248,0.05) 0%, transparent 50%)',
-        pointerEvents: 'none',
-      }} />
+        <div className="reg-wrapper">
 
-      <div className="fade-in" style={{ width: '100%', maxWidth: '440px' }}>
+          <Link to={isResidentMode ? '/dashboard' : '/login'} className="reg-back">
+            <FaArrowLeft size={11} /> {isResidentMode ? 'Back to dashboard' : 'Back to sign in'}
+          </Link>
 
-        {/* ── Header with mode icon ─────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '24px' }}>
-          <div style={{
-            width: 42, height: 42, borderRadius: 10, flexShrink: 0,
-            background: isResidentMode ? 'rgba(56,189,248,0.12)' : 'rgba(14,165,233,0.12)',
-            border: `1px solid ${isResidentMode ? 'rgba(56,189,248,0.3)' : 'rgba(14,165,233,0.3)'}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '1.1rem', color: 'var(--accent)',
-          }}>
-            {isResidentMode ? <FaHome /> : <FaUserShield />}
-          </div>
-          <div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
-              {isResidentMode ? 'Add Resident' : 'Create Account'}
-            </h1>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0' }}>
-              {isResidentMode ? 'Register a resident for Barangay Triangulo': ''}
-            </p>
-          </div>
-        </div>
-
-        <div className="card" style={{ padding: '32px' }}>
-
-          {success ? (
-            <div style={{ textAlign: 'center', padding: '16px 0' }}>
-              <div style={{
-                width: 56, height: 56, borderRadius: '50%', margin: '0 auto 16px',
-                background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.6rem', color: '#22c55e',
-              }}>
-                <FaCheckCircle />
+          <div className="reg-header">
+            <div className="reg-ring">
+              <svg viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="27" cy="27" r="25.5" stroke="url(#regRingGrad)" strokeWidth="1.5" strokeDasharray="5 4" />
+                <defs>
+                  <linearGradient id="regRingGrad" x1="0" y1="0" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.8" />
+                    <stop offset="50%" stopColor="#0284c7" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.8" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div className="reg-ring-inner">
+                {isResidentMode ? <FaHome /> : <FaUserShield />}
               </div>
-              <p style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '1rem' }}>
-                {isResidentMode ? 'Resident registered!' : 'Account created!'}
-              </p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '8px' }}>
-                {isResidentMode ? (
-                  <>
-                    <Link to="/add-resident" onClick={() => setSuccess(false)} style={{ color: 'var(--accent)' }}>Register another</Link>
-                    {' '}or{' '}
-                    <Link to="/dashboard" style={{ color: 'var(--accent)' }}>Go to Dashboard</Link>.
-                  </>
-                ) : (
-                  <>You can now <Link to="/login" style={{ color: 'var(--accent)' }}>sign in</Link>.</>
-                )}
+            </div>
+            <div>
+              <h1 className="reg-title">{isResidentMode ? 'Add Resident' : 'Create Account'}</h1>
+              <p className="reg-subtitle">
+                {isResidentMode ? 'Register a resident of Barangay Triangulo for flood alerts' : 'AGOS staff & admin account'}
               </p>
             </div>
-          ) : isResidentMode ? (
+          </div>
 
-            /* ── Resident mode: name + phone only, no account ─────────── */
-            <Form onSubmit={handleResidentSubmit}>
+          <div className="reg-card">
 
-              <SectionLabel>👤 Resident Information</SectionLabel>
-
-              <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}><FaUser size={11} /> Full Name</Form.Label>
-                <Form.Control
-                  name="name" type="text" value={residentForm.name}
-                  onChange={e => setResidentForm({ ...residentForm, name: e.target.value })}
-                  placeholder="e.g. Maria Santos"
-                  required style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                />
+            {success ? (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <div className="reg-success-icon"><FaCheckCircle /></div>
+                <p style={{ color: '#e0f2fe', fontWeight: 700, fontSize: '1rem', marginBottom: 8 }}>
+                  {isResidentMode ? 'Resident registered!' : 'Account created!'}
+                </p>
+                <p style={{ color: 'rgba(148,195,240,0.6)', fontSize: '0.85rem' }}>
+                  {isResidentMode ? (
+                    <>
+                      <Link to="/add-resident" onClick={() => setSuccess(false)} style={{ color: '#38bdf8' }}>Register another</Link>
+                      {' '}or{' '}
+                      <Link to="/dashboard" style={{ color: '#38bdf8' }}>go to dashboard</Link>.
+                    </>
+                  ) : (
+                    <>You can now <Link to="/login" style={{ color: '#38bdf8' }}>sign in</Link>.</>
+                  )}
+                </p>
               </div>
 
-              <div style={{ marginBottom: needsSmsAck ? '14px' : '24px' }}>
-                <Form.Label style={labelStyle}><FaPhone size={11} /> Phone Number</Form.Label>
-                <InputGroup>
-                  <Form.Control
-                    name="phone" type="tel" value={residentForm.phone}
-                    onChange={handleResidentPhoneChange} placeholder="e.g. 09123456789"
-                    required pattern="^09\d{9}$" maxLength={11}
-                    style={{
-                      ...inputStyle,
-                      borderColor: residentForm.phone.length > 0
-                        ? (residentPhoneValid ? '#22c55e60' : 'var(--blue-border)')
-                        : 'var(--blue-border)',
-                    }}
-                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = residentForm.phone.length > 0 && residentPhoneValid ? '#22c55e60' : 'var(--blue-border)'}
-                  />
-                </InputGroup>
-                <Form.Text style={{
-                  color: residentForm.phone.length > 0 && !residentPhoneValid ? '#f0ad4e' : 'var(--text-muted)',
-                  fontSize: '0.72rem', display: 'block', marginTop: '5px',
-                }}>
-                  {residentForm.phone.length > 0 && !residentPhoneValid
-                    ? 'Format: 09 followed by 9 digits (11 digits total)'
-                    : '11-digit PH mobile number, starts with 09'}
-                </Form.Text>
+            ) : isResidentMode ? (
 
-                {residentPhoneValid && residentNetwork && (
-                  <div style={{
-                    marginTop: '8px', padding: '8px 10px', borderRadius: 6,
-                    background: `${NETWORK_INFO[residentNetwork.network].color}18`,
-                    border: `1px solid ${NETWORK_INFO[residentNetwork.network].color}40`,
-                    fontSize: '0.72rem', color: NETWORK_INFO[residentNetwork.network].color,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}>
-                    {residentNetwork.deliverable ? <FaCheckCircle size={11} /> : <FaExclamationTriangle size={11} />}
-                    {residentNetwork.deliverable
-                      ? `${NETWORK_INFO[residentNetwork.network].label} — SMS alerts should reach this number.`
-                      : `Likely ${NETWORK_INFO[residentNetwork.network].label} — our SMS provider may not be able to deliver alerts to this number. This is a heuristic guess based on the number's prefix (number portability can make it wrong), not a guarantee either way.`}
-                  </div>
-                )}
-              </div>
+              /* ── Resident mode: name + phone only, no account ─────────── */
+              <form onSubmit={handleResidentSubmit}>
 
-              {needsSmsAck && (
-                <div style={{ marginBottom: '24px' }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                <div className="reg-section"><FaUser size={10} /> Resident information</div>
+
+                <div className="reg-field">
+                  <label className="reg-label"><FaUser size={11} /> Full name</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaUser size={13} /></span>
                     <input
-                      type="checkbox" checked={smsAck}
-                      onChange={e => setSmsAck(e.target.checked)}
-                      style={{ marginTop: 3 }}
+                      className="reg-input"
+                      name="name" type="text" value={residentForm.name}
+                      onChange={e => setResidentForm({ ...residentForm, name: e.target.value })}
+                      placeholder="e.g. Maria Santos"
+                      required
                     />
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                      I understand this number may not receive SMS alerts, and will let this resident know to install the AGOS app for push notifications instead.
-                    </span>
-                  </label>
+                  </div>
                 </div>
-              )}
 
-              {(error || localError) && (
-                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: '16px', color: '#fca5a5', fontSize: '0.85rem' }}>
-                  ⚠️ {error || localError}
-                </div>
-              )}
+                <div className="reg-field">
+                  <label className="reg-label"><FaPhone size={11} /> Phone number</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaPhone size={13} /></span>
+                    <input
+                      className={`reg-input ${residentForm.phone.length > 0 ? (residentPhoneValid ? 'reg-input-valid' : '') : ''}`}
+                      name="phone" type="tel" value={residentForm.phone}
+                      onChange={handleResidentPhoneChange} placeholder="e.g. 09123456789"
+                      required pattern="^09\d{9}$" maxLength={11}
+                    />
+                  </div>
+                  <span className={`reg-hint ${residentForm.phone.length > 0 && !residentPhoneValid ? 'warn' : ''}`}>
+                    {residentForm.phone.length > 0 && !residentPhoneValid
+                      ? 'Format: 09 followed by 9 digits (11 digits total)'
+                      : '11-digit PH mobile number, starts with 09'}
+                  </span>
 
-              <Button type="submit" className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '13px', fontSize: '1rem' }}
-                disabled={loading || !residentPhoneValid || (needsSmsAck && !smsAck)}>
-                {loading
-                  ? <><Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" /> Loading ...</>
-                  : '🏘️ Register Resident'}
-              </Button>
-            </Form>
-
-          ) : (
-
-            /* ── Staff/admin mode: full account with credentials ──────── */
-            <Form onSubmit={handleSubmit}>
-
-              {/* ── Personal Information ─────────────────────────────── */}
-              <SectionLabel>👤 Personal Information</SectionLabel>
-
-              <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}><FaUser size={11} /> Full Name</Form.Label>
-                <Form.Control
-                  name="name" type="text" value={form.name}
-                  onChange={handleChange} placeholder="e.g. Maria Santos"
-                  required style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                />
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <Form.Label style={labelStyle}><FaPhone size={11} /> Phone Number</Form.Label>
-                <InputGroup>
-                  <Form.Control
-                    name="phone" type="tel" value={form.phone}
-                    onChange={handleChange} placeholder="e.g. 09123456789"
-                    required pattern="^09\d{9}$" maxLength={11}
-                    style={{
-                      ...inputStyle,
-                      borderColor: form.phone.length > 0
-                        ? (phoneValid ? '#22c55e60' : 'var(--blue-border)')
-                        : 'var(--blue-border)',
-                    }}
-                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = form.phone.length > 0 && phoneValid ? '#22c55e60' : 'var(--blue-border)'}
-                  />
-                </InputGroup>
-                <Form.Text style={{
-                  color: form.phone.length > 0 && !phoneValid ? '#f0ad4e' : 'var(--text-muted)',
-                  fontSize: '0.72rem', display: 'block', marginTop: '5px',
-                }}>
-                  {form.phone.length > 0 && !phoneValid
-                    ? 'Format: 09 followed by 9 digits (11 digits total)'
-                    : '11-digit PH mobile number, starts with 09'}
-                </Form.Text>
-              </div>
-
-              {/* ── Account Security ─────────────────────────────────── */}
-              <SectionLabel>🔒 Account Authentication</SectionLabel>
-
-              <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}><FaAt size={11} /> Username</Form.Label>
-                <Form.Control
-                  name="username" type="text" value={form.username}
-                  onChange={handleChange} placeholder="e.g. maria_santos"
-                  required style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <Form.Label style={labelStyle}><FaLock size={11} /> Password</Form.Label>
-                <InputGroup>
-                  <Form.Control
-                    name="password" type={showPassword ? "text" : "password"} value={form.password}
-                    onChange={handleChange} placeholder="••••••••"
-                    required
-                    style={{ ...inputStyle, borderRight: 'none', borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)' }}
-                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                  />
-                  <InputGroup.Text style={{
-                    background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-                    borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
-                    color: 'var(--text-secondary)', cursor: 'pointer', borderLeft: 'none',
-                  }}>
-                    {showPassword
-                      ? <FaEye onClick={() => setShowPassword(p => !p)} />
-                      : <FaEyeSlash onClick={() => setShowPassword(p => !p)} />}
-                  </InputGroup.Text>
-                </InputGroup>
-
-                {form.password.length > 0 && (
-                  <div style={{ marginTop: '8px' }}>
-                    <div style={{ height: 4, background: 'var(--blue-border)', borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', width: `${strength.pct}%`, background: strength.color,
-                        borderRadius: 2, transition: 'width 0.25s ease, background 0.25s ease',
-                      }} />
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                      <span style={{ fontSize: '0.68rem', color: strength.color, fontWeight: 600 }}>
-                        {strength.label}
-                      </span>
-                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                        Min. 8 characters, letters + numbers
+                  {residentPhoneValid && residentNetwork && (
+                    <div
+                      className="reg-network-badge"
+                      style={{
+                        background: `${NETWORK_INFO[residentNetwork.network].color}18`,
+                        border: `1px solid ${NETWORK_INFO[residentNetwork.network].color}40`,
+                        color: NETWORK_INFO[residentNetwork.network].color,
+                      }}
+                    >
+                      {residentNetwork.deliverable ? <FaCheckCircle size={11} style={{ marginTop: 2, flexShrink: 0 }} /> : <FaExclamationTriangle size={11} style={{ marginTop: 2, flexShrink: 0 }} />}
+                      <span>
+                        {residentNetwork.deliverable
+                          ? `${NETWORK_INFO[residentNetwork.network].label} — SMS alerts should reach this number.`
+                          : `Likely ${NETWORK_INFO[residentNetwork.network].label} — our SMS provider may not be able to deliver alerts to this number. This is a heuristic guess based on the number's prefix (number portability can make it wrong), not a guarantee either way.`}
                       </span>
                     </div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <Form.Label style={labelStyle}><FaLock size={11} /> Confirm Password</Form.Label>
-                <InputGroup>
-                  <Form.Control
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={form.confirmPassword}
-                    onChange={handleChange} placeholder="••••••••"
-                    required
-                    style={{
-                      ...inputStyle, borderRight: 'none', borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)',
-                      borderColor: form.confirmPassword.length > 0
-                        ? (passwordsMatch ? '#22c55e60' : '#ef444460')
-                        : 'var(--blue-border)',
-                    }}
-                    onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                    onBlur={e => e.target.style.borderColor = form.confirmPassword.length > 0
-                      ? (passwordsMatch ? '#22c55e60' : '#ef444460') : 'var(--blue-border)'}
-                  />
-                  <InputGroup.Text
-                    onClick={() => setShowConfirmPassword(p => !p)}
-                    style={{
-                      background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-                      borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
-                      color: 'var(--text-secondary)', cursor: 'pointer', borderLeft: 'none',
-                    }}
-                  >
-                    {showConfirmPassword ? <FaEye /> : <FaEyeSlash />}
-                  </InputGroup.Text>
-                </InputGroup>
-                {form.confirmPassword.length > 0 && (
-                  <div style={{
-                    fontSize: '0.72rem', marginTop: '5px',
-                    color: passwordsMatch ? '#22c55e' : '#f87171',
-                    display: 'flex', alignItems: 'center', gap: 5,
-                  }}>
-                    {passwordsMatch ? <><FaCheckCircle size={10} /> Passwords match</> : 'Passwords do not match'}
-                  </div>
-                )}
-              </div>
-
-              {/* Role — staff/admin mode only */}
-              <SectionLabel>🛡️ Role &amp; Access</SectionLabel>
-              <div style={{ marginBottom: '24px' }}>
-                <Form.Label style={labelStyle}><FaUserShield size={11} /> Role</Form.Label>
-                <Form.Select
-                  name="role_id" value={form.role_id}
-                  onChange={handleChange} required
-                  style={{ ...inputStyle, cursor: 'pointer' }}
-                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                  onBlur={e => e.target.style.borderColor = 'var(--blue-border)'}
-                >
-                  <option value="">Select a role...</option>
-                  {roles.filter(r => r.role_id !== 7).map(r => (
-                    <option key={r.role_id} value={r.role_id}>{r.role_desc}</option>
-                  ))}
-                </Form.Select>
-              </div>
-
-              {(error || localError) && (
-                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', marginBottom: '16px', color: '#fca5a5', fontSize: '0.85rem' }}>
-                  ⚠️ {error || localError}
+                  )}
                 </div>
-              )}
 
-              <Button type="submit" className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '13px', fontSize: '1rem' }}
-                disabled={loading}>
-                {loading
-                  ? <><Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" /> Loading ...</>
-                  : '✅ Register'}
-              </Button>
+                {needsSmsAck && (
+                  <div className="reg-field">
+                    <label className="reg-checkbox-row">
+                      <input
+                        type="checkbox" checked={smsAck}
+                        onChange={e => setSmsAck(e.target.checked)}
+                      />
+                      <span>
+                        I understand this number may not receive SMS alerts, and will let this resident know to install the AGOS app for push notifications instead.
+                      </span>
+                    </label>
+                  </div>
+                )}
 
-              <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Already have an account? <Link to="/login" style={{ color: 'var(--accent)' }}>Sign in</Link>
-              </p>
+                {(error || localError) && (
+                  <div className="reg-error"><FaExclamationTriangle size={13} /> {error || localError}</div>
+                )}
 
-            </Form>
-          )}
+                <button type="submit" className="reg-btn"
+                  disabled={loading || !residentPhoneValid || (needsSmsAck && !smsAck)}>
+                  {loading
+                    ? <><Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" /> Registering...</>
+                    : <><FaHome size={13} /> Register resident</>}
+                </button>
+              </form>
+
+            ) : (
+
+              /* ── Staff/admin mode: full account with credentials ──────── */
+              <form onSubmit={handleSubmit}>
+
+                <div className="reg-section"><FaUser size={10} /> Personal information</div>
+
+                <div className="reg-field">
+                  <label className="reg-label"><FaUser size={11} /> Full name</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaUser size={13} /></span>
+                    <input
+                      className="reg-input"
+                      name="name" type="text" value={form.name}
+                      onChange={handleChange} placeholder="e.g. Maria Santos"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="reg-field">
+                  <label className="reg-label"><FaPhone size={11} /> Phone number</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaPhone size={13} /></span>
+                    <input
+                      className={`reg-input ${form.phone.length > 0 ? (phoneValid ? 'reg-input-valid' : '') : ''}`}
+                      name="phone" type="tel" value={form.phone}
+                      onChange={handleChange} placeholder="e.g. 09123456789"
+                      required pattern="^09\d{9}$" maxLength={11}
+                    />
+                  </div>
+                  <span className={`reg-hint ${form.phone.length > 0 && !phoneValid ? 'warn' : ''}`}>
+                    {form.phone.length > 0 && !phoneValid
+                      ? 'Format: 09 followed by 9 digits (11 digits total)'
+                      : '11-digit PH mobile number, starts with 09'}
+                  </span>
+                </div>
+
+                <div className="reg-section"><FaLock size={10} /> Account authentication</div>
+
+                <div className="reg-field">
+                  <label className="reg-label"><FaAt size={11} /> Username</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaAt size={13} /></span>
+                    <input
+                      className="reg-input"
+                      name="username" type="text" value={form.username}
+                      onChange={handleChange} placeholder="e.g. maria_santos"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="reg-field">
+                  <label className="reg-label"><FaLock size={11} /> Password</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaLock size={13} /></span>
+                    <input
+                      className="reg-input reg-input-pw"
+                      name="password" type={showPassword ? 'text' : 'password'} value={form.password}
+                      onChange={handleChange} placeholder="••••••••"
+                      required
+                    />
+                    <button type="button" className="reg-eye-btn" onClick={() => setShowPassword(p => !p)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                      {showPassword ? <FaEye size={14} /> : <FaEyeSlash size={14} />}
+                    </button>
+                  </div>
+
+                  {form.password.length > 0 && (
+                    <>
+                      <div className="reg-strength-track">
+                        <div className="reg-strength-fill" style={{ width: `${strength.pct}%`, background: strength.color }} />
+                      </div>
+                      <div className="reg-strength-row">
+                        <span style={{ fontSize: '0.68rem', color: strength.color, fontWeight: 700 }}>{strength.label}</span>
+                        <span style={{ fontSize: '0.68rem', color: 'rgba(120,165,205,0.55)' }}>Min. 8 characters, letters + numbers</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="reg-field">
+                  <label className="reg-label"><FaLock size={11} /> Confirm password</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaLock size={13} /></span>
+                    <input
+                      className={`reg-input reg-input-pw ${form.confirmPassword.length > 0 ? (passwordsMatch ? 'reg-input-valid' : 'reg-input-invalid') : ''}`}
+                      name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} value={form.confirmPassword}
+                      onChange={handleChange} placeholder="••••••••"
+                      required
+                    />
+                    <button type="button" className="reg-eye-btn" onClick={() => setShowConfirmPassword(p => !p)}
+                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
+                      {showConfirmPassword ? <FaEye size={14} /> : <FaEyeSlash size={14} />}
+                    </button>
+                  </div>
+                  {form.confirmPassword.length > 0 && (
+                    <div className="reg-match" style={{ color: passwordsMatch ? '#22c55e' : '#f87171' }}>
+                      {passwordsMatch ? <><FaCheckCircle size={10} /> Passwords match</> : 'Passwords do not match'}
+                    </div>
+                  )}
+                </div>
+
+                <div className="reg-section"><FaUserShield size={10} /> Role &amp; access</div>
+
+                <div className="reg-field">
+                  <label className="reg-label"><FaUserShield size={11} /> Role</label>
+                  <div className="reg-input-wrap">
+                    <span className="reg-input-icon"><FaUserShield size={13} /></span>
+                    <select
+                      className="reg-select reg-input"
+                      name="role_id" value={form.role_id}
+                      onChange={handleChange} required
+                    >
+                      <option value="">Select a role...</option>
+                      {roles.filter(r => r.role_id !== 7).map(r => (
+                        <option key={r.role_id} value={r.role_id}>{r.role_desc}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {(error || localError) && (
+                  <div className="reg-error"><FaExclamationTriangle size={13} /> {error || localError}</div>
+                )}
+
+                <button type="submit" className="reg-btn" disabled={loading}>
+                  {loading
+                    ? <><Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" /> Creating account...</>
+                    : <><FaCheckCircle size={13} /> Register</>}
+                </button>
+
+                <p className="reg-footer">
+                  Already have an account? <Link to="/login">Sign in</Link>
+                </p>
+              </form>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -40,26 +40,6 @@ export const ALERT_LEVELS = {
   },
 };
 
-export const generateWaterLevelData = () => {
-  const hours = [];
-  const now = new Date();
-  for (let i = 23; i >= 0; i--) {
-    const time = new Date(now - i * 60 * 60 * 1000);
-    const baseLevel = 1.8;
-    const variance = Math.sin((23 - i) * 0.4) * 0.6 + Math.random() * 0.3;
-    hours.push({
-      time: time.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }),
-      level: parseFloat((baseLevel + variance).toFixed(2)),
-      threshold: 3.5,
-      critical: 4.5,
-    });
-  }
-  // Spike recent hours to show warning
-  hours[22].level = 3.1;
-  hours[23].level = 3.4;
-  return hours;
-};
-
 export const generateRainfallData = () => {
   const data = [];
   const now = new Date();

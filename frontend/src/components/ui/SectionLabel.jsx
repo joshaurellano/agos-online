@@ -9,13 +9,7 @@
 // pages can't silently drift apart again.
 export default function SectionLabel({ children }) {
   return (
-    <div style={{
-      fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.18em',
-      textTransform: 'uppercase', color: 'var(--text-muted)',
-      marginBottom: 10, paddingBottom: 6,
-      borderBottom: '1px solid var(--blue-border)',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
+    <div className="section-label">
       {children}
     </div>
   );
