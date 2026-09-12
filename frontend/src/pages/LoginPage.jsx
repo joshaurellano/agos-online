@@ -450,7 +450,7 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" />
-                    Authenticating...
+                    Signing In...
                   </>
                 ) : (
                   <>🔐 Sign In</>
@@ -459,10 +459,6 @@ export default function LoginPage() {
             </form>
           </div>
 
-          <p className="agos-footer">
-            AGOS v1.0 <span className="agos-divider">·</span> Capstone Prototype
-            <span className="agos-divider">·</span> Data from PAGASA / DOST-ASTI
-          </p>
         </div>
       </div>
     </>
