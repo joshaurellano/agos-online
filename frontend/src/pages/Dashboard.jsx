@@ -34,6 +34,7 @@ import RainOverlay from '../components/RainOverlay';
 import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
 import WeatherForecast from '../components/WeatherForecast';
 import AlertDeliveryStatus from '../components/AlertDeliveryStatus';
+import ModelTransparencyPanel from '../components/ModelTransparencyPanel';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -292,7 +293,7 @@ function StationHeader({ area, activeModel, lastUpdated }) {
         <div className="hero-brand">
           <div className="hero-brand-icon" aria-hidden="true">🌊</div>
           <div>
-            <div className="hero-eyebrow">Barangay-Level Flood Early Warning</div>
+            <div className="hero-eyebrow">Barangay Flood Forecasting and Early Warning System</div>
             <h1 className="hero-title">Triangulo Flood Watch</h1>
             <div className="hero-location">
               {area.name}, {area.city}, {area.province}
@@ -307,7 +308,6 @@ function StationHeader({ area, activeModel, lastUpdated }) {
         <div className="hero-status-col">
           <div className="hero-synced">
             Synced {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-            {activeModel && <> &middot; Engine: {activeModel.fullLabel ?? activeModel.label}</>}
           </div>
         </div>
       </div>
@@ -1443,7 +1443,7 @@ function FloodForecast14Day() {
         <div>
           <SectionLabel>📅 Flood Forecast</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
-            Tap a day for drivers · <span style={{ color: activeModel.color, fontWeight: 700 }}>{activeModel.label}</span> engine
+            Tap a day for drivers
           </div>
         </div>
         <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
@@ -1934,7 +1934,6 @@ export default function Dashboard() {
       <div style={{ marginBottom: 18 }}>
         <FloodForecast14Day />
       </div>
-      
 
       {/* ── 7. GRU Flood Probability Chart ───────────────────── */}
       {/* Trend chart is staff/admin/resident-only — kept out of the public
@@ -1945,7 +1944,7 @@ export default function Dashboard() {
 
       {/* ── 8. Weather Forecast ───────────── */}
       <div style={{ marginBottom: 18 }}>
-        <CollapsibleSection title="⛅ Weather Forecast — Barangay Triangulo" defaultOpen={true}>
+        <CollapsibleSection title="⛅ Weather Forecast" defaultOpen={true}>
           <WeatherForecast
             hourly={forecast}
             daily={dailyForecast}
@@ -1958,7 +1957,10 @@ export default function Dashboard() {
         </CollapsibleSection>
       </div>
 
-      {/* ── 9. Standing Disclaimer ───────────────────────────────── */}
+      {/* ── 9. Model Transparency ───────────────────── */}
+      <ModelTransparencyPanel area={TRIANGULO_AREA} weatherCache={forecastCache} />
+
+      {/* ── 10. Standing Disclaimer ───────────────────────────────── */}
       <DisclaimerFooter />
 
     </div>

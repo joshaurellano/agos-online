@@ -516,7 +516,7 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14, marginBottom: 14 }}>
         <div>
           {fieldLabel('Affected Location / Zone', true)}
-          <input type="text" placeholder="e.g. Purok 3, near Naga River" value={form.location} onChange={e => set('location', e.target.value)} style={inputStyle('location')} />
+          <input type="text" placeholder="e.g. Zone 3, near Naga River" value={form.location} onChange={e => set('location', e.target.value)} style={inputStyle('location')} />
           {errMsg('location')}
         </div>
         <div>
@@ -567,7 +567,7 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
 
       <div style={{ marginBottom: 14 }}>
         {fieldLabel('Infrastructure Damage')}
-        <input type="text" placeholder="e.g. Damaged road at Purok 4, flooded school grounds" value={form.infrastructure_damage} onChange={e => set('infrastructure_damage', e.target.value)} style={inputStyle('infrastructure_damage')} />
+        <input type="text" placeholder="e.g. Damaged road at Zone 4, flooded school grounds" value={form.infrastructure_damage} onChange={e => set('infrastructure_damage', e.target.value)} style={inputStyle('infrastructure_damage')} />
       </div>
 
       {/* ── Response Data ── */}

@@ -12,7 +12,7 @@ const PAGE_TITLES = {
   '/evacuation-map':  'Evacuation Map',
   '/reports':         'Flood Incident Reports',
   '/community-reports': 'Resident Reports',
-  '/analytics':       'ML Analytics',
+  '/analytics':       'Data Analytics',
   '/register':        'Register Page',
   '/add-resident':    'Add Resident',
 };

@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import Swal from 'sweetalert2';
 import { supabase } from './supabaseClient';
 import { useDataSource } from '../hooks/useDataSource';
 import { logger } from './logger';
@@ -96,7 +98,12 @@ async function saveSnapshot(data) {
   else logger.debug('💾 Snapshot saved to Supabase');
 }
 
-let lastDispatchedAlertKey = null;
+// Tracks the last alert key we dispatched, per data-source, so switching
+// between live and mock (or, in future, calling this hook for more than
+// one model at once) can't cause one query's alert transition to suppress
+// or spuriously trigger another's. Keyed rather than a single module-level
+// value for exactly that reason.
+const lastDispatchedAlertKeyByKey = new Map();
 
 // ── Day-1 prediction (KPI cards, alerts, snapshot logging) ──────────────
 // modelKey selects which trained algorithm ('gru' | 'lstm' | 'cnn') the
@@ -104,14 +111,13 @@ let lastDispatchedAlertKey = null;
 // to 'gru' to match the backend's own DEFAULT_MODEL_KEY.
 export function useModelPrediction(modelKey = 'gru') {
   const { apiBaseUrl, isMock } = useDataSource();
-  const [prediction, setPrediction] = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
+  const sourceTag = isMock ? 'mock' : 'live';
+  const queryKey = ['prediction', sourceTag, modelKey];
 
-  const fetchLatest = useCallback(async () => {
-    try {
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => {
       const data = await fetchModelJson(apiBaseUrl, `/api/predict-flood/${modelKey}`, !isMock);
-      if (data.status !== 'success') throw new Error(data.message || 'Prediction unavailable');
 
       const probability = data.probability ?? 0;
       // Alert level now comes straight from the backend (/api/predict-flood),
@@ -120,7 +126,7 @@ export function useModelPrediction(modelKey = 'gru') {
       // cause the frontend's alert to disagree with the backend's.
       const alertKey = data.alert_level ?? probabilityToAlertKey(probability);
 
-      const normalized = {
+      return {
         alert_level:        alertKey,
         probability,
         status:             data.status ?? null,
@@ -137,39 +143,72 @@ export function useModelPrediction(modelKey = 'gru') {
           // instead, since that's the endpoint that actually returns it.
         },
       };
+    },
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
-      logger.debug('🌐 Live prediction from API:', normalized);
-      setPrediction(normalized);
-      setError(null);
+  // Side effects — auto-alert dispatch + snapshot logging — run whenever a
+  // fresh prediction comes back, mirroring the old fetchLatest() behavior.
+  //
+  // isMock guards both real calls: dispatchAutoAlert() writes a row to the
+  // real `alerts` table, which the on-alert-change DB webhook turns into
+  // actual SMS/push notifications to residents, and which AlertsLogPage
+  // reads back out as PUBLIC alert history. Without this guard, an admin
+  // flipping to "Mock Data" mid-demo could broadcast a real false alarm,
+  // and leave a fake entry in residents' alert history, the moment the
+  // mock data's alert level differs from the last live one. Snapshot
+  // logging is skipped for the same reason: mock readings have no business
+  // in the real flood_snapshots history.
+  //
+  // Mock mode isn't left silent, though — a level change still surfaces as
+  // a clearly-labeled local toast, so testing/demoing the threshold logic
+  // itself doesn't require guessing whether it fired.
+  const dispatchKey = queryKey.join(':');
+  useEffect(() => {
+    if (!query.data) return;
+    logger.debug('🌐 Live prediction from API:', query.data);
 
-      const currentKey = normalized.alert_level;
-      if (lastDispatchedAlertKey !== null && lastDispatchedAlertKey !== currentKey) {
-        dispatchAutoAlert(currentKey).catch(err =>
-          logger.error('Alert dispatch failed:', err.message)
-        );
+    const currentKey = query.data.alert_level;
+    const lastKey = lastDispatchedAlertKeyByKey.get(dispatchKey) ?? null;
+    const changed = lastKey !== null && lastKey !== currentKey;
+    lastDispatchedAlertKeyByKey.set(dispatchKey, currentKey);
+
+    if (isMock) {
+      if (changed) {
+        Swal.fire({
+          title: '🧪 Simulated alert (mock data)',
+          text: ALERT_MESSAGES[currentKey]?.() ?? `Alert level changed to ${currentKey}`,
+          icon: 'info',
+          background: '#0d1f3c', color: '#e2eaf5',
+          confirmButtonColor: '#0ea5e9',
+          timer: 6000, timerProgressBar: true,
+          footer: 'No SMS/push was sent and nothing was written to the alert log — mock data never touches either.',
+        });
       }
-      lastDispatchedAlertKey = currentKey;
-
-      saveSnapshot(normalized).catch(err =>
-        logger.warn('Snapshot save error:', err.message)
-      );
-
-    } catch (err) {
-      logger.error('❌ API fetch error:', err.message);
-      setError(err.message || 'Could not load prediction');
-    } finally {
-      setLoading(false);
+      return;
     }
-  }, [apiBaseUrl, isMock, modelKey]);
+
+    if (changed) {
+      dispatchAutoAlert(currentKey).catch(err =>
+        logger.error('Alert dispatch failed:', err.message)
+      );
+    }
+
+    saveSnapshot(query.data).catch(err =>
+      logger.warn('Snapshot save error:', err.message)
+    );
+  }, [query.data, isMock, dispatchKey]);
 
   useEffect(() => {
-    setLoading(true);
-    fetchLatest();
-    const id = setInterval(fetchLatest, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [fetchLatest]);
+    if (query.error) logger.error('❌ API fetch error:', query.error.message);
+  }, [query.error]);
 
-  return { prediction, loading, error, refetch: fetchLatest };
+  return {
+    prediction: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    refetch: query.refetch,
+  };
 }
 
 // ── 14-day forecast (single source of truth = the selected model) ───────
@@ -177,35 +216,27 @@ export function useModelPrediction(modelKey = 'gru') {
 // backend runs. Defaults to 'gru' to match the backend's DEFAULT_MODEL_KEY.
 export function useFloodForecast14Day(modelKey = 'gru') {
   const { apiBaseUrl, isMock } = useDataSource();
-  const [forecast14, setForecast14] = useState([]);
-  const [meta14, setMeta14]         = useState(null);
-  const [loading14, setLoading14]   = useState(true);
-  const [error14, setError14]       = useState(null);
 
-  const fetchForecast14 = useCallback(async () => {
-    try {
+  const query = useQuery({
+    queryKey: ['forecast14', isMock ? 'mock' : 'live', modelKey],
+    queryFn: async () => {
       const data = await fetchModelJson(apiBaseUrl, `/api/forecast-flood/${modelKey}`, !isMock);
-      if (data.status !== 'success') throw new Error(data.message || 'Forecast unavailable');
-
-      setForecast14(data.forecast ?? []);
-      setMeta14(data.meta ?? null);
-      setError14(null);
-    } catch (err) {
-      logger.error('14-day forecast fetch error:', err.message);
-      setError14(err.message || 'Could not load 14-day forecast');
-    } finally {
-      setLoading14(false);
-    }
-  }, [apiBaseUrl, isMock, modelKey]);
+      return { forecast: data.forecast ?? [], meta: data.meta ?? null };
+    },
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
   useEffect(() => {
-    setLoading14(true);
-    fetchForecast14();
-    const id = setInterval(fetchForecast14, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [fetchForecast14]);
+    if (query.error) logger.error('14-day forecast fetch error:', query.error.message);
+  }, [query.error]);
 
-  return { forecast14, meta14, loading14, error14, refetch14: fetchForecast14 };
+  return {
+    forecast14: query.data?.forecast ?? [],
+    meta14: query.data?.meta ?? null,
+    loading14: query.isLoading,
+    error14: query.error?.message ?? null,
+    refetch14: query.refetch,
+  };
 }
 
 // ── All 3 algorithms side by side (AnalyticsPage benchmark panel) ───────
@@ -216,40 +247,32 @@ export function useFloodForecast14Day(modelKey = 'gru') {
 // is simulated or offset-approximated on the frontend.
 export function useModelComparison() {
   const { apiBaseUrl, isMock } = useDataSource();
-  const [perModel, setPerModel]             = useState({});
-  const [comparisonDays, setComparisonDays] = useState([]);
-  const [modelsCompared, setModelsCompared] = useState([]);
-  const [defaultModel, setDefaultModel]     = useState('gru');
-  const [loadingCompare, setLoadingCompare] = useState(true);
-  const [errorCompare, setErrorCompare]     = useState(null);
 
-  const fetchComparison = useCallback(async () => {
-    try {
+  const query = useQuery({
+    queryKey: ['forecastCompare', isMock ? 'mock' : 'live'],
+    queryFn: async () => {
       const data = await fetchModelJson(apiBaseUrl, '/api/forecast-flood/compare', !isMock);
-      if (data.status !== 'success') throw new Error(data.message || 'Comparison unavailable');
-
-      setPerModel(data.per_model ?? {});
-      setComparisonDays(data.comparison ?? []);
-      setModelsCompared(data.models_compared ?? []);
-      setDefaultModel(data.default_model ?? 'gru');
-      setErrorCompare(null);
-    } catch (err) {
-      logger.error('Model comparison fetch error:', err.message);
-      setErrorCompare(err.message || 'Could not load model comparison');
-    } finally {
-      setLoadingCompare(false);
-    }
-  }, [apiBaseUrl, isMock]);
+      return {
+        perModel:       data.per_model ?? {},
+        comparisonDays: data.comparison ?? [],
+        modelsCompared: data.models_compared ?? [],
+        defaultModel:   data.default_model ?? 'gru',
+      };
+    },
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
   useEffect(() => {
-    setLoadingCompare(true);
-    fetchComparison();
-    const id = setInterval(fetchComparison, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [fetchComparison]);
+    if (query.error) logger.error('Model comparison fetch error:', query.error.message);
+  }, [query.error]);
 
   return {
-    perModel, comparisonDays, modelsCompared, defaultModel,
-    loadingCompare, errorCompare, refetchCompare: fetchComparison,
+    perModel:       query.data?.perModel ?? {},
+    comparisonDays: query.data?.comparisonDays ?? [],
+    modelsCompared: query.data?.modelsCompared ?? [],
+    defaultModel:   query.data?.defaultModel ?? 'gru',
+    loadingCompare: query.isLoading,
+    errorCompare:   query.error?.message ?? null,
+    refetchCompare: query.refetch,
   };
 }
