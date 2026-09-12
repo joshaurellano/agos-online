@@ -49,7 +49,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
         {/* Logo */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--blue-border)' }}>
           <div className="d-flex align-items-center gap-2">
-            <span style={{ fontSize: '1.6rem' }}>🌊</span>
+            <span style={{ fontSize: '1.6rem' }}></span>
             <div>
               <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.3rem', color: 'var(--accent)', letterSpacing: '-0.02em' }}>AGOS</div>
               <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.2 }}>Flood Early Warning<br />Barangay Triangulo</div>

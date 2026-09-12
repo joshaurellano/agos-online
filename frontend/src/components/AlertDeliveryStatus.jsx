@@ -52,7 +52,7 @@ const STATUS_STYLE = {
   pending: { color: '#8da4be', label: 'Pending…' },
 };
 
-const CHANNEL_LABEL = { sms: '📱 SMS', push: '🔔 Push' };
+const CHANNEL_LABEL = { sms: 'SMS', push: 'Push' };
 
 function deliveryDetailText(channel, status, detail) {
   if (status === 'pending') return 'Waiting for dispatch confirmation';
@@ -169,7 +169,7 @@ export default function AlertDeliveryStatus({ limit = 5 }) {
         onClick={() => setExpanded(e => !e)}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
       >
-        <SectionLabel>📨 Recent Alert Delivery Status</SectionLabel>
+        <SectionLabel>Recent Alert Delivery Status</SectionLabel>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {attentionCount > 0 && (
             <span style={{

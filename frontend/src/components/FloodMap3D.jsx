@@ -390,20 +390,20 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>🌧 Rainfall</span>
+            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>Rainfall</span>
             <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600 }}>
               {effectiveRainfallMm != null ? `${effectiveRainfallMm.toFixed(1)} mm/hr` : '—'}
             </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>🌀 Wind Signal</span>
+            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>Wind Signal</span>
             <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600 }}>
               {windSignal != null ? `#${windSignal}` : '—'}
             </span>
           </div>
           {windDirectionDeg != null && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>🧭 Wind Dir</span>
+              <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>Wind Dir</span>
               <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <WindDirectionArrow deg={windDirectionDeg} size={13} />
                 {degToCardinal(windDirectionDeg)} · {Math.round(windDirectionDeg)}°
@@ -412,7 +412,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
           )}
           {effectiveCondition && (
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>☁ Condition</span>
+              <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>Condition</span>
               <span style={{ fontSize: '0.7rem', color: '#e2eaf5', fontWeight: 600 }}>
                 {effectiveCondition}
               </span>
@@ -425,7 +425,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
               gap: 12, marginTop: 2, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>🌊 Hazard</span>
+            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>Hazard</span>
             <button
               onClick={() => setShowHazard(v => !v)}
               style={{

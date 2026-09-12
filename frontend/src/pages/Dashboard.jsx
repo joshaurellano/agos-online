@@ -55,7 +55,7 @@ const ALERT_COLORS = {
 // pins on the other map (those are colored by center type, not status).
 function createReportIcon(report) {
   const color = REPORT_STATUS_COLORS[report.status] ?? '#8da4be';
-  const emoji = REPORT_CATEGORY_ICON[report.category] ?? '📍';
+  const emoji = REPORT_CATEGORY_ICON[report.category] ?? '';
   const html = `
     <div style="
       width: 28px; height: 28px; border-radius: 50% 50% 50% 0;
@@ -277,21 +277,14 @@ function StationHeader({ area, activeModel, lastUpdated }) {
               <stop offset="0%" stopColor="rgba(14,165,233,0.11)" />
               <stop offset="100%" stopColor="rgba(14,165,233,0)" />
             </radialGradient>
-            <pattern id="heroContours" width="110" height="110" patternUnits="userSpaceOnUse">
-              <circle cx="55" cy="55" r="16" fill="none" stroke="rgba(56,189,248,0.09)" strokeWidth="1" />
-              <circle cx="55" cy="55" r="34" fill="none" stroke="rgba(56,189,248,0.065)" strokeWidth="1" />
-              <circle cx="55" cy="55" r="52" fill="none" stroke="rgba(56,189,248,0.045)" strokeWidth="1" />
-            </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#heroWash1)" />
           <rect width="100%" height="100%" fill="url(#heroWash2)" />
-          <rect width="100%" height="100%" fill="url(#heroContours)" />
         </svg>
       </div>
 
       <div className="hero-masthead-row">
         <div className="hero-brand">
-          <div className="hero-brand-icon" aria-hidden="true">🌊</div>
           <div>
             <div className="hero-eyebrow">Barangay Flood Forecasting and Early Warning System</div>
             <h1 className="hero-title">Triangulo Flood Watch</h1>
@@ -425,7 +418,6 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: alertColor, flexShrink: 0 }} />
             Flood Advisory Bulletin
           </span>
           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
@@ -493,7 +485,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
 
           {canSendAlert && (
             <button className="btn btn-danger" onClick={onSendAlert} style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
-              <span aria-hidden="true">🚨</span> Dispatch Alert
+              <span aria-hidden="true"></span> Dispatch Alert
             </button>
           )}
         </div>
@@ -605,7 +597,7 @@ function CommunityTrustStrip() {
             width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
             background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.35)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
-          }}>⚡</span>
+          }}></span>
           <span>
             <span className="numeric" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--accent)' }}>
               {avgLabel}
@@ -859,7 +851,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
                 <LeafletPopup>
                   <div style={{ minWidth: 210, maxWidth: 250, padding: '4px 2px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <span style={{ fontSize: '1rem' }}>{REPORT_CATEGORY_ICON[report.category] ?? '📍'}</span>
+                      <span style={{ fontSize: '1rem' }}>{REPORT_CATEGORY_ICON[report.category] ?? ''}</span>
                       <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{report.category}</span>
                       <span style={{
                         marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 700,
@@ -887,7 +879,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
 
                     {report.location_label && (
                       <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: 2 }}>
-                        📍 {report.location_label}
+                        {report.location_label}
                       </div>
                     )}
                     <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: duplicates.length > 0 ? 4 : 8 }}>
@@ -896,7 +888,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
 
                     {duplicates.length > 0 && (
                       <div style={{ fontSize: '0.68rem', color: '#f97316', marginBottom: 8 }}>
-                        ⚠️ {duplicates.length} similar report{duplicates.length > 1 ? 's' : ''} nearby
+                        {duplicates.length} similar report{duplicates.length > 1 ? 's' : ''} nearby
                       </div>
                     )}
 
@@ -913,7 +905,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
                           borderRadius: 5, padding: '6px 0',
                         }}
                       >
-                        {report.status === 'pending' ? '✅ Review & Moderate →' : 'View in Reports →'}
+                        {report.status === 'pending' ? 'Review & Moderate →' : 'View in Reports →'}
                       </button>
                     )}
                   </div>
@@ -1023,15 +1015,15 @@ function PredictionInputTable({ prediction }) {
   if (!prediction) return null;
   const m = prediction.live_metrics;
   const rows = [
-    { label: 'Rainfall',          value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`, icon: '🌧', note: 'Primary flood driver' },
-    { label: 'Humidity',          value: `${m.humidity ?? '—'}%`,                      icon: '💨', note: 'Atmospheric moisture' },
-    { label: 'Wind Signal',       value: `Signal #${m.wind_signal ?? '—'}`,     icon: '🌀', note: 'PAGASA classification' },
-    { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '🤖', note: 'GRU output confidence' },
-    { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '🚦', note: 'Model classification' },
+    { label: 'Rainfall',          value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`, icon: '', note: 'Primary flood driver' },
+    { label: 'Humidity',          value: `${m.humidity ?? '—'}%`,                      icon: '', note: 'Atmospheric moisture' },
+    { label: 'Wind Signal',       value: `Signal #${m.wind_signal ?? '—'}`,     icon: '', note: 'PAGASA classification' },
+    { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '', note: 'GRU output confidence' },
+    { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '', note: 'Model classification' },
   ];
   return (
     <div className="card">
-      <SectionLabel>📊 Prediction Input Summary</SectionLabel>
+      <SectionLabel>Prediction Input Summary</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
         {rows.map(({ label, value, icon, note }, i) => (
           <div key={label} style={{
@@ -1154,7 +1146,7 @@ function FloodForecastChart() {
           <span style={{ fontWeight: 800, color, fontSize: '0.9rem' }}>{val}%</span>
         </div>
         <div style={{ marginTop: 6, fontSize: '0.65rem', color: getRiskColor(val), opacity: 0.85 }}>
-          {val >= 75 ? '⛔ Critical risk' : val >= 50 ? '⚠ High risk' : val >= 25 ? '📢 Elevated risk' : '✅ Low risk'}
+          {val >= 75 ? 'Critical risk' : val >= 50 ? 'High risk' : val >= 25 ? 'Elevated risk' : 'Low risk'}
         </div>
       </div>
     );
@@ -1166,7 +1158,7 @@ function FloodForecastChart() {
     <div className="card" style={{ marginBottom: 18 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <SectionLabel>🤖Flood Probability Trend</SectionLabel>
+          <SectionLabel>Flood Probability Trend</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
             {lastFetched && (
               <span style={{ marginLeft: 8, color: '#4a6080' }}>
@@ -1206,7 +1198,7 @@ function FloodForecastChart() {
           border: '1px solid var(--blue-border)',
         }}>
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-            <div style={{ fontSize: '1.5rem', marginBottom: 8, opacity: 0.4 }}>⚠️</div>
+            <div style={{ fontSize: '1.5rem', marginBottom: 8, opacity: 0.4 }}></div>
             No snapshots yet — model must run at least once
           </div>
         </div>
@@ -1231,10 +1223,10 @@ function FloodForecastChart() {
                   Current Flood Probability
                 </div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                  {latestRisk >= 75 ? '⛔ Immediate action may be required'
-                    : latestRisk >= 50 ? '⚠ High risk — monitor closely'
-                    : latestRisk >= 25 ? '📢 Elevated — stay alert'
-                    : '✅ Low risk — conditions normal'}
+                  {latestRisk >= 75 ? 'Immediate action may be required'
+                    : latestRisk >= 50 ? 'High risk — monitor closely'
+                    : latestRisk >= 25 ? 'Elevated — stay alert'
+                    : 'Low risk — conditions normal'}
                 </div>
               </div>
             </div>
@@ -1337,12 +1329,12 @@ function DriverModal({ day, onClose }) {
   const riskColor = pct >= 75 ? '#ef4444' : pct >= 50 ? '#f97316' : pct >= 25 ? '#eab308' : '#22c55e';
 
   const drivers = [
-    { label: 'Rainfall',          value: day.rainfall_mm != null ? `${day.rainfall_mm} mm` : '—',            icon: '🌧' },
-    { label: 'Wind Speed (max)',  value: day.wind_speed_max_kph != null ? `${day.wind_speed_max_kph} kph` : '—', icon: '🌀' },
-    { label: 'Soil Moisture',     value: day.soil_moisture_vwc != null ? `${(day.soil_moisture_vwc * 100).toFixed(1)}% VWC` : '—', icon: '🌱' },
-    { label: 'Sea-Level Pressure',value: day.pressure_msl_hpa != null ? `${day.pressure_msl_hpa} hPa` : '—', icon: '📉' },
-    { label: 'Surface Pressure',  value: day.surface_pressure_hpa != null ? `${day.surface_pressure_hpa} hPa` : '—', icon: '📊' },
-    { label: 'Wind Gusts',        value: day.wind_gusts_kph != null ? `${day.wind_gusts_kph} kph` : '—',      icon: '💨' },
+    { label: 'Rainfall',          value: day.rainfall_mm != null ? `${day.rainfall_mm} mm` : '—',            icon: '' },
+    { label: 'Wind Speed (max)',  value: day.wind_speed_max_kph != null ? `${day.wind_speed_max_kph} kph` : '—', icon: '' },
+    { label: 'Soil Moisture',     value: day.soil_moisture_vwc != null ? `${(day.soil_moisture_vwc * 100).toFixed(1)}% VWC` : '—', icon: '' },
+    { label: 'Sea-Level Pressure',value: day.pressure_msl_hpa != null ? `${day.pressure_msl_hpa} hPa` : '—', icon: '' },
+    { label: 'Surface Pressure',  value: day.surface_pressure_hpa != null ? `${day.surface_pressure_hpa} hPa` : '—', icon: '' },
+    { label: 'Wind Gusts',        value: day.wind_gusts_kph != null ? `${day.wind_gusts_kph} kph` : '—',      icon: '' },
   ];
 
   return (
@@ -1441,7 +1433,7 @@ function FloodForecast14Day() {
     <div className="card">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <SectionLabel>📅 Flood Forecast</SectionLabel>
+          <SectionLabel>Flood Forecast</SectionLabel>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
             Tap a day for drivers
           </div>
@@ -1473,7 +1465,7 @@ function FloodForecast14Day() {
           border: '1px solid var(--blue-border)', color: 'var(--text-muted)',
           fontSize: '0.82rem', textAlign: 'center',
         }}>
-          ⚠️ Forecast unavailable — model backend offline
+          Forecast unavailable — model backend offline
         </div>
       ) : (
         <>
@@ -1592,7 +1584,7 @@ export default function Dashboard() {
     const current = prediction.alert_level;
     if (prevAlertDisplay.current !== null && prevAlertDisplay.current !== current) {
       Swal.fire({
-        title: '⚠️ Alert Level Changed',
+        title: 'Alert Level Changed',
         html: `<p style="color:#8da4be">Flood alert has changed from <strong style="color:#e2eaf5">${prevAlertDisplay.current}</strong> → <strong style="color:${ALERT_COLORS[current]}">${current}</strong>.</p><p style="color:#8da4be;margin-top:8px;font-size:0.85rem">A notification will be sent to registered users.</p>`,
         icon: current === 'NORMAL' ? 'success' : 'warning',
         background: '#0d1f3c', color: '#e2eaf5',
@@ -1645,15 +1637,15 @@ export default function Dashboard() {
   const weatherCondition = forecast?.[0]?.condition ?? null;
 
   const EVACUATION_PRESETS = [
-    { label: '🟡 Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated. Stay alert and prepare your emergency go-bags.' },
-    { label: '🟠 Warning',  type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
-    { label: '🔴 Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent. EVACUATE NOW to designated evacuation centers.' },
-    { label: '✍️ Custom',   type: null,       msg: '' },
+    { label: 'Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated. Stay alert and prepare your emergency go-bags.' },
+    { label: 'Warning',  type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
+    { label: 'Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent. EVACUATE NOW to designated evacuation centers.' },
+    { label: 'Custom',   type: null,       msg: '' },
   ];
 
   const handleEvacuationAlert = () => {
     Swal.fire({
-      title: '🚨 Send Emergency Alert',
+      title: 'Send Emergency Alert',
       html: `
         <div style="text-align:left">
           <label style="display:block;font-size:0.75rem;color:#8da4be;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">Select Message</label>
@@ -1681,9 +1673,9 @@ export default function Dashboard() {
           <div id="swal-type-row" style="display:none;margin-top:12px">
             <label style="display:block;font-size:0.75rem;color:#8da4be;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Severity for this message</label>
             <select id="swal-type" style="width:100%;padding:10px;background:#152a4a;border:1px solid #1e3a5f;border-radius:8px;color:#e2eaf5;font-size:0.82rem;box-sizing:border-box">
-              <option value="ADVISORY">🟡 Advisory</option>
-              <option value="WARNING">🟠 Warning</option>
-              <option value="CRITICAL">🔴 Critical</option>
+              <option value="ADVISORY">Advisory</option>
+              <option value="WARNING">Warning</option>
+              <option value="CRITICAL">Critical</option>
             </select>
           </div>
         </div>
@@ -1691,7 +1683,7 @@ export default function Dashboard() {
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       cancelButtonColor: '#1e3a5f',
-      confirmButtonText: '🚨 Send Alert Now',
+      confirmButtonText: 'Send Alert Now',
       cancelButtonText: 'Cancel',
       background: '#0d1f3c', color: '#e2eaf5',
       preConfirm: () => {
@@ -1712,7 +1704,7 @@ export default function Dashboard() {
 
       const { error } = await supabase.from('alerts').insert({ type: alertType, message, sent_by: sentBy });
       if (error) {
-        Swal.fire({ title: '⚠️ Failed to Save', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
+        Swal.fire({ title: 'Failed to Save', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
 
@@ -1722,11 +1714,11 @@ export default function Dashboard() {
       // both notifications twice).
 
       Swal.fire({
-        title: '✅ Alert Queued',
+        title: 'Alert Queued',
         html: `<p style="color:#8da4be;margin-bottom:12px">Evacuation alert saved and dispatch triggered.</p>
           <div style="background:#112240;border-radius:8px;padding:12px;text-align:left;font-size:0.85rem">
-            <div style="color:#8da4be;margin-bottom:4px">📱 SMS dispatch to all residents in progress</div>
-            <div style="color:#8da4be;margin-top:4px">🔔 Push notification dispatch in progress</div>
+            <div style="color:#8da4be;margin-bottom:4px">SMS dispatch to all residents in progress</div>
+            <div style="color:#8da4be;margin-top:4px">Push notification dispatch in progress</div>
             <div style="color:#0ea5e9;margin-top:8px;font-size:0.75rem">Check the delivery status panel below in a few seconds to confirm both went through.</div>
           </div>`,
         icon: 'success', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9',
@@ -1829,16 +1821,11 @@ export default function Dashboard() {
         }}>
           <div>
             <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
-              <span aria-hidden="true" style={{
-                width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.35)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
-              }}>🗺</span>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
                 Flood Status Map — Barangay Triangulo
               </span>
             </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 31 }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
               Boundary overlay, color-coded to current alert classification. Tap a pin to view a resident report.
             </div>
           </div>
@@ -1923,7 +1910,7 @@ export default function Dashboard() {
 
       {/* ── 5. Alert Classification Reference ───────────────────── */}
       <CollapsibleSection
-        title="🚦 Alert Classification Reference"
+        title="Alert Classification Reference"
         subtitle="How probability thresholds map to alert levels and recommended actions"
         defaultOpen={false}
       >
@@ -1944,7 +1931,7 @@ export default function Dashboard() {
 
       {/* ── 8. Weather Forecast ───────────── */}
       <div style={{ marginBottom: 18 }}>
-        <CollapsibleSection title="⛅ Weather Forecast" defaultOpen={true}>
+        <CollapsibleSection title="Weather Forecast" defaultOpen={true}>
           <WeatherForecast
             hourly={forecast}
             daily={dailyForecast}

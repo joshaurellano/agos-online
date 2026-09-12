@@ -6,34 +6,34 @@ import {
 // ─── WMO weather-code → icon/label map ─────────────────────────────────────
 // https://open-meteo.com/en/docs (WMO Weather interpretation codes)
 const WMO_ICONS = {
-  0:  { day: '☀️', night: '🌙' },
-  1:  { day: '🌤️', night: '🌙' },
-  2:  { day: '⛅',  night: '☁️' },
-  3:  { day: '☁️',  night: '☁️' },
-  45: { day: '🌫️', night: '🌫️' },
-  48: { day: '🌫️', night: '🌫️' },
-  51: { day: '🌦️', night: '🌦️' },
-  53: { day: '🌦️', night: '🌦️' },
-  55: { day: '🌧️', night: '🌧️' },
-  56: { day: '🌧️', night: '🌧️' },
-  57: { day: '🌧️', night: '🌧️' },
-  61: { day: '🌧️', night: '🌧️' },
-  63: { day: '🌧️', night: '🌧️' },
-  65: { day: '🌧️', night: '🌧️' },
-  66: { day: '🌧️', night: '🌧️' },
-  67: { day: '🌧️', night: '🌧️' },
-  71: { day: '🌨️', night: '🌨️' },
-  73: { day: '🌨️', night: '🌨️' },
-  75: { day: '❄️',  night: '❄️' },
-  77: { day: '❄️',  night: '❄️' },
-  80: { day: '🌦️', night: '🌦️' },
-  81: { day: '🌧️', night: '🌧️' },
-  82: { day: '⛈️', night: '⛈️' },
-  85: { day: '🌨️', night: '🌨️' },
-  86: { day: '❄️',  night: '❄️' },
-  95: { day: '⛈️', night: '⛈️' },
-  96: { day: '⛈️', night: '⛈️' },
-  99: { day: '⛈️', night: '⛈️' },
+  0:  { day: '', night: '' },
+  1:  { day: '', night: '' },
+  2:  { day: '',  night: '' },
+  3:  { day: '',  night: '' },
+  45: { day: '', night: '' },
+  48: { day: '', night: '' },
+  51: { day: '', night: '' },
+  53: { day: '', night: '' },
+  55: { day: '', night: '' },
+  56: { day: '', night: '' },
+  57: { day: '', night: '' },
+  61: { day: '', night: '' },
+  63: { day: '', night: '' },
+  65: { day: '', night: '' },
+  66: { day: '', night: '' },
+  67: { day: '', night: '' },
+  71: { day: '', night: '' },
+  73: { day: '', night: '' },
+  75: { day: '',  night: '' },
+  77: { day: '',  night: '' },
+  80: { day: '', night: '' },
+  81: { day: '', night: '' },
+  82: { day: '', night: '' },
+  85: { day: '', night: '' },
+  86: { day: '',  night: '' },
+  95: { day: '', night: '' },
+  96: { day: '', night: '' },
+  99: { day: '', night: '' },
 };
 
 function weatherIcon(code, isDay = true) {
@@ -150,7 +150,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
         background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)',
         border: '1px solid var(--blue-border)',
       }}>
-        ⚠️ Forecast feed unavailable — model backend offline
+        Forecast feed unavailable — model backend offline
       </div>
     );
   }
@@ -232,20 +232,20 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
           </div>
 
           <div className="weather-stat-grid" style={{ padding: '0 14px 14px' }}>
-            <Stat icon="💨" label="Wind" value={
+            <Stat icon="" label="Wind" value={
               heroRecord ? `${heroRecord.wind_speed_kph ?? '—'} km/h` : selectedDay?.wind_speed_max_kph != null ? `${selectedDay.wind_speed_max_kph} km/h` : '—'
             } />
-            <Stat icon="🌬" label="Wind Gusts" value={
+            <Stat icon="" label="Wind Gusts" value={
               heroRecord?.wind_gusts_kph != null ? `${heroRecord.wind_gusts_kph} km/h` : selectedDay?.wind_gusts_max_kph != null ? `${selectedDay.wind_gusts_max_kph} km/h` : '—'
             } />
-            <Stat icon="💧" label="Humidity" value={heroRecord?.humidity != null ? `${heroRecord.humidity}%` : '—'} />
-            <Stat icon="👁" label="Visibility" value={heroRecord?.visibility_km != null ? `${heroRecord.visibility_km} km` : '—'} />
-            <Stat icon="🧭" label="Pressure" value={
+            <Stat icon="" label="Humidity" value={heroRecord?.humidity != null ? `${heroRecord.humidity}%` : '—'} />
+            <Stat icon="" label="Visibility" value={heroRecord?.visibility_km != null ? `${heroRecord.visibility_km} km` : '—'} />
+            <Stat icon="" label="Pressure" value={
               heroRecord?.pressure_msl_hpa != null ? `${heroRecord.pressure_msl_hpa} hPa` : selectedDay?.pressure_msl_hpa != null ? `${selectedDay.pressure_msl_hpa} hPa` : '—'
             } />
-            <Stat icon="☀️" label="UV Index" value={heroRecord?.uv_index ?? '—'} />
-            <Stat icon="🌡" label="Dew Point" value={heroRecord?.dew_point_c != null ? `${heroRecord.dew_point_c}°C` : '—'} />
-            <Stat icon="🌱" label="Soil Moisture" value={
+            <Stat icon="" label="UV Index" value={heroRecord?.uv_index ?? '—'} />
+            <Stat icon="" label="Dew Point" value={heroRecord?.dew_point_c != null ? `${heroRecord.dew_point_c}°C` : '—'} />
+            <Stat icon="" label="Soil Moisture" value={
               heroRecord?.soil_moisture_vwc != null
                 ? `${(heroRecord.soil_moisture_vwc * 100).toFixed(1)}%`
                 : selectedDay?.soil_moisture_vwc != null ? `${(selectedDay.soil_moisture_vwc * 100).toFixed(1)}%` : '—'
@@ -355,7 +355,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>mm</span>
                 {o.pct != null && (
                   <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                    ☔ {o.pct}% chance
+                    {o.pct}% chance
                   </span>
                 )}
               </div>
@@ -391,9 +391,9 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
               {weatherCache.status === 'fresh'
                 ? '● Live'
                 : weatherCache.status === 'unavailable'
-                ? '✕ Unavailable'
+                ? 'Unavailable'
                 : weatherCache.significantly_stale
-                ? '⚠ Stale cache'
+                ? 'Stale cache'
                 : '◐ Fallback data'}
               {weatherCache.age_minutes != null && ` · ${Math.round(weatherCache.age_minutes)}m old`}
             </span>

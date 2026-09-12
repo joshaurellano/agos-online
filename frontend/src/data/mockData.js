@@ -121,13 +121,13 @@ export const HISTORICAL_FLOODS = [
 ];
 
 export const WEATHER_FORECAST = [
-  { time: '6H', condition: 'Heavy Rain', icon: '⛈', temp: '24°C', rain_chance: 85, wind: '45 km/h' },
-  { time: '12H', condition: 'Moderate Rain', icon: '🌧', temp: '23°C', rain_chance: 70, wind: '35 km/h' },
-  { time: '18H', condition: 'Light Rain', icon: '🌦', temp: '24°C', rain_chance: 55, wind: '25 km/h' },
-  { time: '24H', condition: 'Cloudy', icon: '☁️', temp: '25°C', rain_chance: 30, wind: '20 km/h' },
-  { time: '36H', condition: 'Partly Cloudy', icon: '⛅', temp: '26°C', rain_chance: 20, wind: '18 km/h' },
-  { time: '48H', condition: 'Sunny', icon: '☀️', temp: '28°C', rain_chance: 10, wind: '15 km/h' },
-  { time: '72H', condition: 'Partly Cloudy', icon: '⛅', temp: '27°C', rain_chance: 25, wind: '20 km/h' },
+  { time: '6H', condition: 'Heavy Rain', icon: '', temp: '24°C', rain_chance: 85, wind: '45 km/h' },
+  { time: '12H', condition: 'Moderate Rain', icon: '', temp: '23°C', rain_chance: 70, wind: '35 km/h' },
+  { time: '18H', condition: 'Light Rain', icon: '', temp: '24°C', rain_chance: 55, wind: '25 km/h' },
+  { time: '24H', condition: 'Cloudy', icon: '', temp: '25°C', rain_chance: 30, wind: '20 km/h' },
+  { time: '36H', condition: 'Partly Cloudy', icon: '', temp: '26°C', rain_chance: 20, wind: '18 km/h' },
+  { time: '48H', condition: 'Sunny', icon: '', temp: '28°C', rain_chance: 10, wind: '15 km/h' },
+  { time: '72H', condition: 'Partly Cloudy', icon: '', temp: '27°C', rain_chance: 25, wind: '20 km/h' },
 ];
 
 export const DATA_SOURCES = [

@@ -193,12 +193,12 @@ function StatSummary({ reports }) {
   })();
 
   const items = [
-    { label: 'Total Reports',       value: total,                                         color: 'var(--accent)', icon: '📋' },
-    { label: 'Open Incidents',      value: open,                                          color: '#ef4444',       icon: '🔴' },
-    { label: 'Critical Events',     value: critical,                                      color: '#f97316',       icon: '⚠️' },
-    { label: 'Households Affected', value: totalHH.toLocaleString(),                      color: '#eab308',       icon: '🏠' },
-    { label: 'Displaced Persons',   value: totalDisplaced.toLocaleString(),               color: '#f97316',       icon: '🚶' },
-    { label: 'Est. Damage (PHP)',    value: totalDamage > 0 ? `₱${(totalDamage/1000).toFixed(0)}K` : '—', color: '#ef4444', icon: '💸' },
+    { label: 'Total Reports',       value: total,                                         color: 'var(--accent)', icon: '' },
+    { label: 'Open Incidents',      value: open,                                          color: '#ef4444',       icon: '' },
+    { label: 'Critical Events',     value: critical,                                      color: '#f97316',       icon: '' },
+    { label: 'Households Affected', value: totalHH.toLocaleString(),                      color: '#eab308',       icon: '' },
+    { label: 'Displaced Persons',   value: totalDisplaced.toLocaleString(),               color: '#f97316',       icon: '' },
+    { label: 'Est. Damage (PHP)',    value: totalDamage > 0 ? `₱${(totalDamage/1000).toFixed(0)}K` : '—', color: '#ef4444', icon: '' },
     { label: 'Avg. Response',       value: avgResponse !== null ? `${avgResponse} min` : '—', color: '#22c55e', icon: '⏱' },
   ];
 
@@ -287,7 +287,7 @@ function ReportCard({ report, onStatusChange, canEdit }) {
 
           {/* Environmental metrics */}
           <div style={{ marginTop: 14, marginBottom: 6 }}>
-            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>🌊 Environmental Data</div>
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Environmental Data</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
               <MetricCell label="Water Level"           value={report.water_level        ? `${report.water_level}m`             : '—'} />
               <MetricCell label="Rainfall at Event"     value={report.rainfall_mm_at_event ? `${report.rainfall_mm_at_event} mm` : '—'} />
@@ -298,7 +298,7 @@ function ReportCard({ report, onStatusChange, canEdit }) {
 
           {/* Impact metrics */}
           <div style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>🏠 Impact Data</div>
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Impact Data</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
               <MetricCell label="Households Affected" value={report.affected_hh         ? report.affected_hh.toLocaleString()     : '—'} />
               <MetricCell label="Displaced Persons"   value={report.displaced_persons   ? report.displaced_persons.toLocaleString() : '—'} />
@@ -310,7 +310,7 @@ function ReportCard({ report, onStatusChange, canEdit }) {
 
           {/* Response metrics */}
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>🚑 Response Data</div>
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Response Data</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
               <MetricCell label="Evacuation Center Used" value={report.evacuation_center_used ?? '—'} />
               <MetricCell label="Response Time"          value={report.response_time_minutes  ? `${report.response_time_minutes} min` : '—'} />
@@ -474,17 +474,17 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
-      <SectionLabel>📝 File Flood Incident Report</SectionLabel>
+      <SectionLabel>File Flood Incident Report</SectionLabel>
 
       {form.source_incident_report_id && (
         <div style={{ padding: '9px 12px', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.25)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 14 }}>
-          📥 Prefilled from a verified resident report — review and complete the fields below before submitting.
+          Prefilled from a verified resident report — review and complete the fields below before submitting.
         </div>
       )}
 
       {errors._global && (
         <div style={{ padding: '9px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: '0.8rem', color: '#f87171', marginBottom: 14 }}>
-          ⚠ {errors._global}
+          {errors._global}
         </div>
       )}
 
@@ -528,7 +528,7 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
       </div>
 
       {/* ── Environmental Data ── */}
-      {formSection('🌊 Environmental Data')}
+      {formSection('Environmental Data')}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
         <div>
           {fieldLabel('Max Water Level (m)')}
@@ -545,7 +545,7 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
       </div>
 
       {/* ── Impact Data ── */}
-      {formSection('🏠 Impact Data')}
+      {formSection('Impact Data')}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 14 }}>
         <div>
           {fieldLabel('Households Affected')}
@@ -571,7 +571,7 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
       </div>
 
       {/* ── Response Data ── */}
-      {formSection('🚑 Response Data')}
+      {formSection('Response Data')}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14, marginBottom: 14 }}>
         <div>
           {fieldLabel('Evacuation Center Used')}
@@ -586,7 +586,7 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
       </div>
 
       {/* ── Narrative ── */}
-      {formSection('📄 Narrative')}
+      {formSection('Narrative')}
       <div style={{ marginBottom: 14 }}>
         {fieldLabel('Incident Description', true)}
         <textarea
@@ -639,7 +639,7 @@ function ReportForm({ user, onSubmitted, onCancel, initialValues }) {
             disabled={saving}
             style={{ fontSize: '0.82rem', padding: '8px 20px', opacity: saving ? 0.7 : 1 }}
           >
-            {saving ? '⏳ Saving...' : '✅ Submit Report'}
+            {saving ? '⏳ Saving...' : 'Submit Report'}
           </button>
         </div>
       </div>
@@ -687,9 +687,9 @@ function ModelAccuracyPanel({ reports }) {
     m === 'under-1'    ? '#f97316' : '#ef4444';
 
   const matchLabel = (m) =>
-    m === 'exact'      ? '✅ Exact match' :
-    m === 'over'       ? '🟡 Over-predicted' :
-    m === 'under-1'    ? '🟠 Under by 1 level' : '🔴 Significant miss';
+    m === 'exact'      ? 'Exact match' :
+    m === 'over'       ? 'Over-predicted' :
+    m === 'under-1'    ? 'Under by 1 level' : 'Significant miss';
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
@@ -698,7 +698,7 @@ function ModelAccuracyPanel({ reports }) {
         textTransform: 'uppercase', color: 'var(--text-muted)',
         marginBottom: 10, paddingBottom: 6, borderBottom: '1px solid var(--blue-border)',
       }}>
-        🤖 AGOS Model Accuracy — Predicted vs. Actual Alert Level
+        AGOS Model Accuracy — Predicted vs. Actual Alert Level
       </div>
 
       {/* Summary stats */}
@@ -725,7 +725,7 @@ function ModelAccuracyPanel({ reports }) {
         background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)',
         borderRadius: 6, fontSize: '0.72rem', color: 'var(--text-muted)',
       }}>
-        ℹ️ Accuracy is computed by comparing <strong style={{ color: 'var(--text-secondary)' }}>AGOS Model Alert Level</strong> (what the system predicted at time of incident) against the <strong style={{ color: 'var(--text-secondary)' }}>Actual Severity</strong> recorded by the reporting officer. Only reports with both fields filled are included.
+        ℹAccuracy is computed by comparing <strong style={{ color: 'var(--text-secondary)' }}>AGOS Model Alert Level</strong> (what the system predicted at time of incident) against the <strong style={{ color: 'var(--text-secondary)' }}>Actual Severity</strong> recorded by the reporting officer. Only reports with both fields filled are included.
       </div>
 
       {/* Per-record comparison table */}
@@ -890,7 +890,7 @@ export default function HistoricalPage() {
                 disabled={exporting || filtered.length === 0}
                 style={{ fontSize: '0.78rem', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 5 }}
               >
-                📥 Export CSV
+                Export CSV
                 {filtered.length !== reports.length && (
                   <span style={{ fontSize: '0.65rem', background: 'var(--accent)', color: '#fff', borderRadius: 3, padding: '1px 5px', marginLeft: 2 }}>
                     {filtered.length}
@@ -903,7 +903,7 @@ export default function HistoricalPage() {
                 disabled={exporting || filtered.length === 0}
                 style={{ fontSize: '0.78rem', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 5 }}
               >
-                📥 Export JSON
+                Export JSON
                 {filtered.length !== reports.length && (
                   <span style={{ fontSize: '0.65rem', background: 'var(--accent)', color: '#fff', borderRadius: 3, padding: '1px 5px', marginLeft: 2 }}>
                     {filtered.length}
@@ -929,7 +929,7 @@ export default function HistoricalPage() {
           borderLeft: '3px solid #22c55e', borderRadius: 'var(--radius-sm)',
           fontSize: '0.82rem', color: '#4ade80',
         }}>
-          ✅ {successMsg}
+          {successMsg}
         </div>
       )}
 
@@ -1021,7 +1021,7 @@ export default function HistoricalPage() {
           background: 'rgba(56,189,248,0.05)', border: '1px solid rgba(56,189,248,0.15)',
           borderRadius: 'var(--radius-sm)', fontSize: '0.72rem', color: 'var(--text-muted)',
         }}>
-          <span>📊</span>
+          <span></span>
           <span>
             Export respects active filters — only {filtered.length === reports.length ? 'all' : `${filtered.length} filtered`} record{filtered.length !== 1 ? 's' : ''} will be included.
             CSV is suitable for Excel / Google Sheets analysis; JSON for programmatic use.
@@ -1031,7 +1031,7 @@ export default function HistoricalPage() {
 
       {/* ── Report List ───────────────────────────────────────────── */}
       <div className="card">
-        <SectionLabel>🌊 Incident Records</SectionLabel>
+        <SectionLabel>Incident Records</SectionLabel>
 
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1045,7 +1045,7 @@ export default function HistoricalPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: 8, opacity: 0.3 }}>📭</div>
+            <div style={{ fontSize: '2rem', marginBottom: 8, opacity: 0.3 }}></div>
             <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 600 }}>
               {reports.length === 0 ? 'No reports filed yet.' : 'No records match the selected filters.'}
             </div>

@@ -6,13 +6,13 @@
 // source (see ReportsPage.jsx / AnalyticsPage.jsx comments).
 
 export const REPORT_CATEGORY_ICON = {
-  Flood:               '🌊',
-  Fire:                '🔥',
-  Landslide:           '⛰️',
-  'Road Accident':     '🚗',
-  'Power Outage':      '💡',
-  'Medical Emergency': '🚑',
-  Other:               '📍',
+  Flood:               '',
+  Fire:                '',
+  Landslide:           '',
+  'Road Accident':     '',
+  'Power Outage':      '',
+  'Medical Emergency': '',
+  Other:               '',
 };
 
 export const REPORT_STATUS_COLORS = {

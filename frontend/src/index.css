@@ -390,12 +390,6 @@ body {
   flex-wrap: wrap; gap: 20px;
 }
 .hero-brand { display: flex; align-items: flex-start; gap: 16px; }
-.hero-brand-icon {
-  width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0;
-  background: linear-gradient(135deg, var(--accent2), var(--accent));
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.5rem; box-shadow: 0 6px 20px rgba(14,165,233,0.35);
-}
 .hero-eyebrow {
   font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--accent); margin-bottom: 5px;
@@ -473,24 +467,37 @@ body {
 
 /* Theme toggle button */
 .theme-toggle {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
   border: 1px solid var(--blue-border);
   background: var(--blue-card);
-  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  transition: all 0.2s ease;
+  padding: 2px;
+  transition: background 0.2s ease, border-color 0.2s ease;
   flex-shrink: 0;
 }
 .theme-toggle:hover {
-  background: var(--blue-border);
-  color: var(--text-primary);
-  transform: rotate(20deg);
+  border-color: var(--accent);
+}
+.theme-toggle[aria-checked="true"] {
+  background: linear-gradient(135deg, var(--accent2), var(--accent));
+  border-color: transparent;
+}
+.theme-toggle-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  transition: transform 0.2s ease;
+  transform: translateX(0);
+}
+.theme-toggle[aria-checked="true"] .theme-toggle-knob {
+  transform: translateX(20px);
+  background: #fff;
 }
 
 /* Badge */

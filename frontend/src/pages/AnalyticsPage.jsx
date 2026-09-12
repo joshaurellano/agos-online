@@ -109,7 +109,7 @@ export default function AnalyticsPage() {
       <div style={{ marginBottom: '20px', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
         <div className="card">
           <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span>📈 14-Day Predictive Alert Curve</span>
+            <span>14-Day Predictive Alert Curve</span>
             <span style={{
               fontSize: '0.7rem', fontWeight: 700, padding: '3px 9px', borderRadius: 999,
               background: `${activeModel.color}22`, color: activeModel.color,
@@ -155,7 +155,7 @@ export default function AnalyticsPage() {
           </div>
           <div style={{ background: 'var(--blue-mid)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue-border)' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 600 }}>
-              📋 Recommended LGU Action Plan
+              Recommended LGU Action Plan
             </div>
             <div style={{ fontSize: '1rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>{selectedAlert.action}</div>
           </div>
@@ -166,7 +166,7 @@ export default function AnalyticsPage() {
           currently expose live per-request SHAP values */}
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>🔍 Explainable AI: Global Feature Importance (SHAP)</span>
+          <span>Explainable AI: Global Feature Importance (SHAP)</span>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal', textTransform: 'none' }}>Illustrative — from training-time analysis</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2.5fr', gap: '20px', alignItems: 'center', marginTop: '16px' }}>
@@ -178,7 +178,7 @@ export default function AnalyticsPage() {
               It proves mathematically that the AI does not rely on sudden rainfall alone. The highest driving factors are <strong>24-hour Cumulative Rainfall</strong> and the <strong>Antecedent Precipitation Index (API)</strong>.
             </p>
             <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(251,191,36,0.05)', borderLeft: '3px solid var(--accent)', borderRadius: '4px', fontSize: '0.75rem' }}>
-              💡 <strong>Insight:</strong> Flooding is heavily driven by prolonged soil saturation rather than brief downpours.
+              <strong>Insight:</strong> Flooding is heavily driven by prolonged soil saturation rather than brief downpours.
             </div>
           </div>
           <div style={{ height: 320, width: '100%' }}>
@@ -209,7 +209,7 @@ export default function AnalyticsPage() {
           Topbar switcher uses). */}
       <div className="card" style={{ marginBottom: '20px' }}>
         <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <span>🧠 Multi-Algorithm Comparison</span>
+          <span>Multi-Algorithm Comparison</span>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>
             {loadingCompare ? 'Loading live comparison…' : 'Live reliability & day-1 probability, same input windows'}
           </span>
@@ -272,8 +272,8 @@ export default function AnalyticsPage() {
         {!loadingCompare && comparisonDays.length > 0 && (
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--blue-border)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
             {comparisonDays[0].models_agree
-              ? '✅ All algorithms agree on tomorrow\u2019s alert level.'
-              : '⚠️ Algorithms disagree on tomorrow\u2019s alert level — spread of '
+              ? 'All algorithms agree on tomorrow\u2019s alert level.'
+              : 'Algorithms disagree on tomorrow\u2019s alert level — spread of '
                 + `${Math.round(comparisonDays[0].spread * 100)} percentage points. Ensemble mean: `
                 + `${Math.round(comparisonDays[0].ensemble_mean_probability * 100)}% (${comparisonDays[0].ensemble_alert_level}).`}
           </div>
