@@ -16,7 +16,7 @@ export default function ErrorBanner({ children, role = 'alert' }) {
         padding: '9px 14px', marginBottom: 14, fontSize: '0.8rem', color: '#f87171',
       }}
     >
-      <span aria-hidden="true" style={{ flexShrink: 0 }}>⚠</span>
+      <span aria-hidden="true" style={{ flexShrink: 0 }}></span>
       <span>{children}</span>
     </div>
   );

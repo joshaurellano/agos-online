@@ -389,7 +389,7 @@ export default function LoginPage() {
                   </linearGradient>
                 </defs>
               </svg>
-              <div className="agos-logo-inner">🌊</div>
+              <div className="agos-logo-inner"></div>
             </div>
 
             <h1 className="agos-title">AGOS</h1>
@@ -442,7 +442,7 @@ export default function LoginPage() {
 
               {error && (
                 <div className="agos-error">
-                  <span>⚠️</span> {error}
+                  <span></span> {error}
                 </div>
               )}
 
@@ -453,7 +453,7 @@ export default function LoginPage() {
                     Signing In...
                   </>
                 ) : (
-                  <>🔐 Sign In</>
+                  <>Sign In</>
                 )}
               </button>
             </form>

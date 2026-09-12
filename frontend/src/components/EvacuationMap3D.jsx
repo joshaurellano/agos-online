@@ -47,7 +47,7 @@ function buildPopupHTML(center) {
   return `
     <div style="min-width:200px; padding:4px 2px; font-family:inherit;">
       <div style="font-weight:700; font-size:0.9rem; margin-bottom:4px;">
-        🏫 ${center.name}
+        ${center.name}
       </div>
       <div style="
         display:inline-block; font-size:0.65rem; font-weight:700;
@@ -58,7 +58,7 @@ function buildPopupHTML(center) {
         ${center.type}
       </div>
       <div style="font-size:0.75rem; color:#333; line-height:1.4; margin-top:2px;">
-        📍 ${center.address}
+        ${center.address}
       </div>
       <div style="font-size:0.72rem; color:#666; font-family:monospace; margin-top:6px;">
         ${center.position.lat.toFixed(4)}, ${center.position.lng.toFixed(4)}

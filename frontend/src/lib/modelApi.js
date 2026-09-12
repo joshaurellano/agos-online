@@ -26,7 +26,7 @@ async function fetchModelJson(apiBaseUrl, path, allowFallback) {
     return data;
   } catch (err) {
     if (!allowFallback) throw err;
-    logger.warn(`⚠️ Primary model API unreachable/erroring (${apiBaseUrl}${path}): ${err.message} — trying backup`);
+    logger.warn(`Primary model API unreachable/erroring (${apiBaseUrl}${path}): ${err.message} — trying backup`);
     const res = await fetch(`${BACKUP_MODEL_BASE_URL}${path}`);
     if (!res.ok) throw new Error(`Backup API error: ${res.status}`);
     const data = await res.json();
@@ -66,7 +66,7 @@ async function dispatchAutoAlert(alertKey) {
   const message = ALERT_MESSAGES[alertKey]?.();
   if (!message) return;
 
-  logger.debug(`📲 Alert level changed to ${alertKey} — dispatching alert...`);
+  logger.debug(`Alert level changed to ${alertKey} — dispatching alert...`);
 
   // SMS + push are dispatched automatically by the on-alert-change DB
   // webhook whenever a row lands in `alerts` — do not call send-alert /
@@ -95,7 +95,7 @@ async function saveSnapshot(data) {
   });
 
   if (error) logger.warn('Snapshot save failed:', error.message);
-  else logger.debug('💾 Snapshot saved to Supabase');
+  else logger.debug('Snapshot saved to Supabase');
 }
 
 // Tracks the last alert key we dispatched, per data-source, so switching
@@ -166,7 +166,7 @@ export function useModelPrediction(modelKey = 'gru') {
   const dispatchKey = queryKey.join(':');
   useEffect(() => {
     if (!query.data) return;
-    logger.debug('🌐 Live prediction from API:', query.data);
+    logger.debug('Live prediction from API:', query.data);
 
     const currentKey = query.data.alert_level;
     const lastKey = lastDispatchedAlertKeyByKey.get(dispatchKey) ?? null;
@@ -176,7 +176,7 @@ export function useModelPrediction(modelKey = 'gru') {
     if (isMock) {
       if (changed) {
         Swal.fire({
-          title: '🧪 Simulated alert (mock data)',
+          title: 'Simulated alert (mock data)',
           text: ALERT_MESSAGES[currentKey]?.() ?? `Alert level changed to ${currentKey}`,
           icon: 'info',
           background: '#0d1f3c', color: '#e2eaf5',
@@ -200,7 +200,7 @@ export function useModelPrediction(modelKey = 'gru') {
   }, [query.data, isMock, dispatchKey]);
 
   useEffect(() => {
-    if (query.error) logger.error('❌ API fetch error:', query.error.message);
+    if (query.error) logger.error('API fetch error:', query.error.message);
   }, [query.error]);
 
   return {

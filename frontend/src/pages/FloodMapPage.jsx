@@ -144,7 +144,7 @@ function EvacuationCenterCard({ center }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '1.1rem',
         }}>
-          🏫
+          
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
@@ -204,7 +204,7 @@ export default function FloodMapPage() {
         }}>
           <div>
             <div className="card-title" style={{ marginBottom: 2 }}>
-              🚨 Evacuation Route Map — Barangay Triangulo
+              Evacuation Route Map — Barangay Triangulo
             </div>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
               Tap a marker for details
@@ -263,7 +263,7 @@ export default function FloodMapPage() {
                 <Popup>
                   <div style={{ minWidth: 200, padding: '4px 2px' }}>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 4 }}>
-                      🏫 {center.name}
+                      {center.name}
                     </div>
                     <div style={{
                       display: 'inline-block', fontSize: '0.65rem', fontWeight: 700,
@@ -274,7 +274,7 @@ export default function FloodMapPage() {
                       {center.type}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#333', lineHeight: 1.4, marginTop: 2 }}>
-                      📍 {center.address}
+                      {center.address}
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 6 }}>
                       {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
@@ -289,7 +289,7 @@ export default function FloodMapPage() {
         )}
       </div>
 
-      <SectionLabel>📍 Evacuation Center Details</SectionLabel>
+      <SectionLabel>Evacuation Center Details</SectionLabel>
       <div className="grid-2">
         {EVACUATION_CENTERS.map(center => (
           <EvacuationCenterCard key={center.id} center={center} />

@@ -30,7 +30,7 @@ const TYPE_COLORS = {
   CRITICAL: '#ef4444',
 };
 
-const CHANNEL_LABEL = { sms: '📱 SMS', push: '🔔 Push' };
+const CHANNEL_LABEL = { sms: 'SMS', push: 'Push' };
 
 function deliveryDetailText(channel, status, detail) {
   if (status === 'pending') return 'Waiting for dispatch confirmation';
@@ -173,7 +173,7 @@ export default function AlertLog() {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="card-title" style={{ justifyContent: 'space-between' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>📨 Alert Log</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>Alert Log</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {attentionCount > 0 && (
             <span style={{
@@ -253,7 +253,7 @@ export default function AlertLog() {
                           fontSize: '0.75rem', padding: '5px 8px', lineHeight: 1,
                         }}
                       >
-                        🗑️
+                        
                       </button>
                     </td>
                   </tr>

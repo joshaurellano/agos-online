@@ -149,11 +149,13 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
         {/* Dark / Light toggle */}
         <button
           className="theme-toggle"
+          role="switch"
+          aria-checked={theme === 'dark'}
           onClick={toggleTheme}
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
-          {theme === 'dark' ? '☀️' : '🌙'}
+          <span className="theme-toggle-knob" aria-hidden="true" />
         </button>
 
         {/* Clock */}
@@ -184,7 +186,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
               whiteSpace: 'nowrap',
             }}
           >
-            👤 Staff / Admin Sign In
+            Staff / Admin Sign In
           </button>
         )}
       </div>

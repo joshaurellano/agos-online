@@ -42,31 +42,31 @@ function freshnessBadge(weatherCache) {
 
 const STEPS = [
   {
-    icon: '🛰️',
+    icon: '',
     title: 'Open-Meteo Forecast API',
     body: (area) =>
       `Live hourly/daily rainfall, humidity, wind, pressure & soil moisture for ${area.name} (${area.coords}).`,
   },
   {
-    icon: '🧮',
+    icon: '',
     title: 'Feature Engineering',
     body: () =>
       `Rolling rainfall sums (3h/6h/12h/24h/7d), a 5-day Antecedent Precipitation Index, wind→typhoon-signal mapping, and seasonal month sin/cos encoding.`,
   },
   {
-    icon: '📏',
+    icon: '',
     title: 'Scaling',
     body: () =>
       `Every feature is normalized with the same scaler fit at training time, so live inputs match the ranges the model was trained on.`,
   },
   {
-    icon: '🧠',
+    icon: '',
     title: (activeModel) => `${activeModel.fullLabel} Model`,
     body: () =>
       `An encoder reads the past window; a decoder — driven by Open-Meteo's actual future forecast, not a blind extrapolation — outputs a 14-day flood-probability curve.`,
   },
   {
-    icon: '🚦',
+    icon: '',
     title: 'Alert Bucketing',
     body: () =>
       `Day-1 probability is mapped to NORMAL / ADVISORY / WARNING / CRITICAL using fixed thresholds — 25% / 50% / 75% — the same ones used in the Alert Level Reference.`,
@@ -97,7 +97,7 @@ export default function ModelTransparencyPanel({ area, weatherCache }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-            🛰️ How This Prediction Works — Model Transparency
+            How This Prediction Works — Model Transparency
           </div>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 3 }}>
             The pipeline behind the {activeModel.fullLabel} forecast, end to end

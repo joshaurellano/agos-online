@@ -1,5 +1,5 @@
 // Small uppercase heading used above cards/panels throughout the app
-// (e.g. "🖥 SYSTEM STATUS", "📊 PREDICTION INPUT SUMMARY").
+// (e.g. "SYSTEM STATUS", "PREDICTION INPUT SUMMARY").
 //
 // This used to be copy-pasted as a local `function SectionLabel(...)` inside
 // Dashboard.jsx, FloodMapPage.jsx, RainfallPage.jsx, RegistrationPage.jsx,

@@ -22,15 +22,15 @@ export default function QuickActionsBar() {
 
   const actions = staffView
     ? [
-        { label: t('reportWhatYouSee'), icon: '📝', to: '/reports',            primary: true },
-        { label: 'Resident reports',    icon: '📣', to: '/community-reports' },
-        { label: t('nav.evacuationMap'),icon: '🧭', to: '/evacuation-map' },
-        { label: t('nav.status'),       icon: '📊', to: '/dashboard' },
+        { label: t('reportWhatYouSee'), icon: '', to: '/reports',            primary: true },
+        { label: 'Resident reports',    icon: '', to: '/community-reports' },
+        { label: t('nav.evacuationMap'),icon: '', to: '/evacuation-map' },
+        { label: t('nav.status'),       icon: '', to: '/dashboard' },
       ]
     : [
-        { label: t('nav.status'),          icon: '📊', to: '/dashboard',      primary: true },
-        { label: t('findEvacuationRoute'), icon: '🧭', to: '/evacuation-map' },
-        { label: t('nav.rainfall'),        icon: '🌧', to: '/rainfall' },
+        { label: t('nav.status'),          icon: '', to: '/dashboard',      primary: true },
+        { label: t('findEvacuationRoute'), icon: '', to: '/evacuation-map' },
+        { label: t('nav.rainfall'),        icon: '', to: '/rainfall' },
       ];
 
   return (

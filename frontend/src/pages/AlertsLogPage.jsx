@@ -59,7 +59,7 @@ export default function AlertsLogPage() {
   return (
     <div className="fade-in">
       <div className="card-title" style={{ marginBottom: 4 }}>
-        📜 Public Alert Log
+        Public Alert Log
       </div>
       <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 16, maxWidth: 640 }}>
         A public record of every flood advisory, warning, and critical alert dispatched for Barangay Triangulo.
@@ -70,7 +70,7 @@ export default function AlertsLogPage() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-          <SectionLabel>🚨 Dispatched Alerts</SectionLabel>
+          <SectionLabel>Dispatched Alerts</SectionLabel>
           <select
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
