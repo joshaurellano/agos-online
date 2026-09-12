@@ -364,61 +364,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
         </div>
       )}
 
-      {(generatedAt || weatherCache || pagasaCalibration) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 10 }}>
-          {generatedAt && (
-            <span>
-              Source: Open-Meteo{pagasaCalibrationApplied(pagasaCalibration) ? ' (PAGASA-calibrated)' : ''} · synced {new Date(generatedAt).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Manila' })}
-            </span>
-          )}
-
-          {weatherCache && weatherCache.status && (
-            <span
-              title={
-                weatherCache.last_successful_fetch
-                  ? `Last successful fetch: ${new Date(weatherCache.last_successful_fetch).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`
-                  : undefined
-              }
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '1px 8px', borderRadius: 4,
-                background: weatherCache.status === 'fresh' ? 'rgba(34,197,94,0.12)' : weatherCache.significantly_stale ? 'rgba(239,68,68,0.12)' : 'rgba(234,179,8,0.12)',
-                border: `1px solid ${weatherCache.status === 'fresh' ? 'rgba(34,197,94,0.35)' : weatherCache.significantly_stale ? 'rgba(239,68,68,0.35)' : 'rgba(234,179,8,0.35)'}`,
-                color: weatherCache.status === 'fresh' ? '#22c55e' : weatherCache.significantly_stale ? '#ef4444' : '#eab308',
-                fontWeight: 700,
-              }}
-            >
-              {weatherCache.status === 'fresh'
-                ? '● Live'
-                : weatherCache.status === 'unavailable'
-                ? 'Unavailable'
-                : weatherCache.significantly_stale
-                ? 'Stale cache'
-                : '◐ Fallback data'}
-              {weatherCache.age_minutes != null && ` · ${Math.round(weatherCache.age_minutes)}m old`}
-            </span>
-          )}
-
-          {pagasaCalibration && pagasaCalibration.enabled && (
-            <span
-              title={pagasaCalibrationTooltip(pagasaCalibration)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '1px 8px', borderRadius: 4,
-                background: pagasaCalibrationApplied(pagasaCalibration) ? 'rgba(34,197,94,0.12)' : 'rgba(148,163,184,0.14)',
-                border: `1px solid ${pagasaCalibrationApplied(pagasaCalibration) ? 'rgba(34,197,94,0.35)' : 'rgba(148,163,184,0.35)'}`,
-                color: pagasaCalibrationApplied(pagasaCalibration) ? '#22c55e' : 'var(--text-muted)',
-                fontWeight: 700,
-                cursor: 'default',
-              }}
-            >
-              {pagasaCalibrationApplied(pagasaCalibration)
-                ? `✓ PAGASA-calibrated (${pagasaCalibration.reference_station?.name ?? 'Pili AWS'})`
-                : `PAGASA calibration warming up · ${pagasaCalibration.total_samples ?? 0}/${pagasaCalibration.min_samples_required ?? '—'} samples`}
-            </span>
-          )}
-        </div>
-      )}
+   
     </div>
   );
 }
