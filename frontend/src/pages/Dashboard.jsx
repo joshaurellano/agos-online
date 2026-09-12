@@ -288,10 +288,6 @@ function StationHeader({ area, activeModel, lastUpdated }) {
           <div>
             <div className="hero-eyebrow">Barangay Flood Forecasting and Early Warning System</div>
             <h1 className="hero-title">Triangulo Flood Watch</h1>
-            <div className="hero-location">
-              {area.name}, {area.city}, {area.province}
-              {area.coords && <span className="hero-coords"> &middot; {area.coords}</span>}
-            </div>
           </div>
         </div>
 
@@ -421,7 +417,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
             Flood Advisory Bulletin
           </span>
           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-            Issued {new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} &middot; Next update in ≤30 min
+            Issued {new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
 
@@ -670,7 +666,7 @@ function DisclaimerFooter() {
         <span>
           Forecasts are model-generated (no physical water-level sensor) and intended for situational awareness only
         </span>
-        <span style={{ whiteSpace: 'nowrap' }}>Sources: Open-Meteo · GloFAS · flood_snapshots</span>
+        <span style={{ whiteSpace: 'nowrap' }}>Sources: Open-Meteo</span>
       </div>
       <div>{t('disclaimer')}</div>
     </div>
@@ -1018,7 +1014,7 @@ function PredictionInputTable({ prediction }) {
     { label: 'Rainfall',          value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`, icon: '', note: 'Primary flood driver' },
     { label: 'Humidity',          value: `${m.humidity ?? '—'}%`,                      icon: '', note: 'Atmospheric moisture' },
     { label: 'Wind Signal',       value: `Signal #${m.wind_signal ?? '—'}`,     icon: '', note: 'PAGASA classification' },
-    { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '', note: 'GRU output confidence' },
+    { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '', note: 'Model output confidence' },
     { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '', note: 'Model classification' },
   ];
   return (
@@ -1314,7 +1310,6 @@ function FloodForecastChart() {
       )}
 
       <div style={{ marginTop: 10, fontSize: '0.62rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-        <span>Source: flood_snapshots · GRU model output · Poll: 30s · Realtime subscription active</span>
         <span>No physical sensor · For situational awareness only</span>
       </div>
     </div>
@@ -1519,7 +1514,7 @@ function FloodForecast14Day() {
             marginTop: 12, paddingTop: 8, borderTop: '1px solid var(--blue-border)',
             fontSize: '0.62rem', color: 'var(--text-muted)', lineHeight: 1.5,
           }}>
-            {meta14?.note ?? 'Confidence decreases further into the forecast horizon.'}
+            Most reliable until the day after tomorrow - then the prediction gradually dips the longer out the forecast runs. The latter few days of any prediction be taken as a trend, not a figure.
           </div>
         </>
       )}

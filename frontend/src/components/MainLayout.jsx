@@ -7,12 +7,12 @@ import { useModelPrediction } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
 
 const PAGE_TITLES = {
-  '/dashboard':       'Dashboard Overview',
+  '/dashboard':       'Dashboard',
   '/rainfall':        'Rainfall Accumulation',
   '/evacuation-map':  'Evacuation Map',
   '/reports':         'Flood Incident Reports',
   '/community-reports': 'Resident Reports',
-  '/analytics':       'Data Analytics',
+  '/analytics':       'ML Analytics',
   '/register':        'Register Page',
   '/add-resident':    'Add Resident',
 };
