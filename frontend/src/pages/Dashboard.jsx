@@ -257,74 +257,60 @@ function CollapsibleSection({ title, subtitle, defaultOpen = true, children, cla
 // strip on gauge pages like NOAA's National Water Prediction Service and
 // Google Flood Hub, where the "where/when/what engine" context sits above
 // the fold, separate from the alert itself.
-function StationHeader({ area, activeModel, lastUpdated, engineStatus, feedStatus }) {
-
-  const STATUS_STYLE = {
-    online:   { color: '#22c55e', label: 'ONLINE' },
-    offline:  { color: '#ef4444', label: 'OFFLINE' },
-    checking: { color: '#eab308', label: 'CHECKING' },
-  };
-
-  const StatusPill = ({ label, status }) => {
-    const s = STATUS_STYLE[status] ?? STATUS_STYLE.checking;
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.04em',
-        padding: '5px 10px', borderRadius: 6,
-        background: `${s.color}14`, border: `1px solid ${s.color}40`, color: s.color,
-      }}>
-        <span style={{
-          width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0,
-          boxShadow: status === 'online' ? `0 0 5px ${s.color}90` : 'none',
-          animation: status === 'checking' ? 'pulse-ring 1.4s ease-out infinite' : 'none',
-        }} />
-        {label}: {s.label}
-      </div>
-    );
-  };
+function StationHeader({ area, activeModel, lastUpdated }) {
 
   return (
-    <div style={{
-      position: 'relative',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      flexWrap: 'wrap', gap: 14,
-      padding: '4px 2px 18px', marginBottom: 16,
-      borderBottom: '1px solid var(--blue-border)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 11, flexShrink: 0,
-          background: 'linear-gradient(135deg, var(--accent2), var(--accent))',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1.15rem', boxShadow: '0 4px 16px rgba(14,165,233,0.3)',
-        }}>
-          🌊
+    <div className="hero-masthead">
+      {/* Decorative contour wash — a literal topographic-map motif (this is
+          a hazard map, after all) rather than a generic gradient blob. Lives
+          inside the hero now instead of floating absolutely behind the
+          sections below it, so it can't bleed into unrelated content. */}
+      <div className="hero-masthead-pattern" aria-hidden="true">
+        <svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <radialGradient id="heroWash1" cx="12%" cy="8%" r="80%">
+              <stop offset="0%" stopColor="rgba(56,189,248,0.16)" />
+              <stop offset="100%" stopColor="rgba(56,189,248,0)" />
+            </radialGradient>
+            <radialGradient id="heroWash2" cx="92%" cy="18%" r="65%">
+              <stop offset="0%" stopColor="rgba(14,165,233,0.11)" />
+              <stop offset="100%" stopColor="rgba(14,165,233,0)" />
+            </radialGradient>
+            <pattern id="heroContours" width="110" height="110" patternUnits="userSpaceOnUse">
+              <circle cx="55" cy="55" r="16" fill="none" stroke="rgba(56,189,248,0.09)" strokeWidth="1" />
+              <circle cx="55" cy="55" r="34" fill="none" stroke="rgba(56,189,248,0.065)" strokeWidth="1" />
+              <circle cx="55" cy="55" r="52" fill="none" stroke="rgba(56,189,248,0.045)" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#heroWash1)" />
+          <rect width="100%" height="100%" fill="url(#heroWash2)" />
+          <rect width="100%" height="100%" fill="url(#heroContours)" />
+        </svg>
+      </div>
+
+      <div className="hero-masthead-row">
+        <div className="hero-brand">
+          <div className="hero-brand-icon" aria-hidden="true">🌊</div>
+          <div>
+            <div className="hero-eyebrow">Barangay-Level Flood Early Warning</div>
+            <h1 className="hero-title">Triangulo Flood Watch</h1>
+            <div className="hero-location">
+              {area.name}, {area.city}, {area.province}
+              {area.coords && <span className="hero-coords"> &middot; {area.coords}</span>}
+            </div>
+          </div>
         </div>
 
-        <div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <h1 style={{
-              fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 800,
-              color: 'var(--text-primary)', letterSpacing: '-0.01em', margin: 0,
-            }}>
-              Flood Early Warning Dashboard
-            </h1>
-          </div>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6, marginTop: 2,
-            fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600,
-          }}>
-            {area.name}, {area.city}, {area.province}
-            {area.coords && (
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 400 }}>
-                &middot; {area.coords}
-              </span>
-            )}
+        {/* Live status — was computed on every render but never actually
+            shown; surfacing it here gives the hero a genuine "is this
+            system alive right now" signal instead of just branding. */}
+        <div className="hero-status-col">
+          <div className="hero-synced">
+            Synced {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+            {activeModel && <> &middot; Engine: {activeModel.fullLabel ?? activeModel.label}</>}
           </div>
         </div>
       </div>
-
     </div>
   );
 }
@@ -434,7 +420,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           '--glow-b': hexToRgba(alertColor, 0.5),
         }}
       >
-        <div style={{
+        <div className="title-band-bar" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
@@ -484,7 +470,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
 
       {/* ── Dispatch Alert (narrower: recommended action + dispatch button) ─ */}
       <div className="card" style={{ flex: '1 1 240px', minWidth: 220, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{
+        <div className="title-band-bar" style={{
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
           <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
@@ -573,6 +559,14 @@ function CommunityTrustStrip() {
   const avgLabel = stats.avgMinutes == null ? '—'
     : stats.avgMinutes < 60 ? `${stats.avgMinutes}m`
     : `${(stats.avgMinutes / 60).toFixed(1)}h`;
+
+  // Only worth a staff member's attention when there's actually something
+  // to review — an empty queue doesn't need its own strip on the
+  // dashboard. Returning null here (rather than conditioning where this
+  // is rendered) keeps the realtime subscription above alive, so the
+  // strip can appear the moment a new report comes in without waiting
+  // for a page reload.
+  if (stats.pendingCount === 0) return null;
 
   return (
     <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 20, padding: '14px 20px', marginBottom: 16, alignItems: 'center' }}>
@@ -1743,67 +1737,37 @@ export default function Dashboard() {
   return (
     <div className="fade-in">
 
-      {/* ── 0. Station Masthead + Advisory (decorative contour wash) ── */}
-      <div style={{ position: 'relative' }}>
-        <div aria-hidden="true" style={{
-          position: 'absolute', top: -20, left: -24, right: -24, height: 280,
-          pointerEvents: 'none', zIndex: 0, overflow: 'hidden', borderRadius: 16,
-        }}>
-          <svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
-            <defs>
-              <radialGradient id="heroWash1" cx="15%" cy="0%" r="70%">
-                <stop offset="0%" stopColor="rgba(56,189,248,0.09)" />
-                <stop offset="100%" stopColor="rgba(56,189,248,0)" />
-              </radialGradient>
-              <radialGradient id="heroWash2" cx="88%" cy="30%" r="60%">
-                <stop offset="0%" stopColor="rgba(14,165,233,0.06)" />
-                <stop offset="100%" stopColor="rgba(14,165,233,0)" />
-              </radialGradient>
-              <pattern id="heroContours" width="110" height="110" patternUnits="userSpaceOnUse">
-                <circle cx="55" cy="55" r="16" fill="none" stroke="rgba(56,189,248,0.06)" strokeWidth="1" />
-                <circle cx="55" cy="55" r="34" fill="none" stroke="rgba(56,189,248,0.045)" strokeWidth="1" />
-                <circle cx="55" cy="55" r="52" fill="none" stroke="rgba(56,189,248,0.03)" strokeWidth="1" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#heroWash1)" />
-            <rect width="100%" height="100%" fill="url(#heroWash2)" />
-            <rect width="100%" height="100%" fill="url(#heroContours)" />
-          </svg>
-        </div>
+      {/* ── 0. Station Masthead + Advisory ── */}
+      <div>
+        <StationHeader
+          area={TRIANGULO_AREA}
+          activeModel={activeModel}
+          lastUpdated={lastUpdated}
+        />
 
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <StationHeader
-            area={TRIANGULO_AREA}
-            activeModel={activeModel}
-            lastUpdated={lastUpdated}
-            engineStatus={modelLoading ? 'checking' : (!modelError && !!prediction) ? 'online' : 'offline'}
-            feedStatus={forecastLoading ? 'checking' : forecast.length > 0 ? 'online' : 'offline'}
-          />
+        {/* ── 1. Offline Banner ──────────────────────────────────── */}
+        {modelError && (
+          <ErrorBanner>
+            <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
+            <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
+            to enable live predictions.
+          </ErrorBanner>
+        )}
 
-          {/* ── 1. Offline Banner ──────────────────────────────────── */}
-          {modelError && (
-            <ErrorBanner>
-              <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
-              <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
-              to enable live predictions.
-            </ErrorBanner>
-          )}
-
-          {/* ── 2. Advisory Bulletin ──────────────────────────────── */}
-          {/* canSendAlert requires an authenticated, non-resident user — not
-              just "not a resident". isResident(null) is false, so on its own
-              `!userIsResident` would be true for a logged-out visitor too, now
-              that this page is public. Dispatch must stay gated on `user`. */}
-          <AdvisoryBulletin
-            alertInfo={alertInfo}
-            alertColor={alertColor}
-            currentAlert={currentAlert}
-            recentTrend={recentTrend}
-            probabilityPct={prediction ? prediction.probability * 100 : null}
-            onSendAlert={handleEvacuationAlert}
-            canSendAlert={!!user && !userIsResident}
-          />
-        </div>
+        {/* ── 2. Advisory Bulletin ──────────────────────────────── */}
+        {/* canSendAlert requires an authenticated, non-resident user — not
+            just "not a resident". isResident(null) is false, so on its own
+            `!userIsResident` would be true for a logged-out visitor too, now
+            that this page is public. Dispatch must stay gated on `user`. */}
+        <AdvisoryBulletin
+          alertInfo={alertInfo}
+          alertColor={alertColor}
+          currentAlert={currentAlert}
+          recentTrend={recentTrend}
+          probabilityPct={prediction ? prediction.probability * 100 : null}
+          onSendAlert={handleEvacuationAlert}
+          canSendAlert={!!user && !userIsResident}
+        />
       </div>
 
       {/* Delivery status is admin/staff-only, same gate as the send-alert
@@ -1859,7 +1823,7 @@ export default function Dashboard() {
 
       {/* ── 4. Flood Status Map ──────────────────────────────────── */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{
+        <div className="title-band-bar" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
           padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
         }}>
@@ -1890,7 +1854,7 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-          <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+          <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
             {['2d', '3d'].map(v => (
               <button key={v} className="toggle-pill" onClick={() => setMapView(v)} style={{
                 padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
