@@ -2,17 +2,24 @@
 Bias-correct Open-Meteo weather data against PAGASA's Pili AWS station.
 
 WHAT THIS DOES:
-Every time app.weather.client.fetch_weather() performs a genuine live
-Open-Meteo call, it also asks this module to record a "sample": the
-Open-Meteo values for right now, paired with whatever PAGASA's Pili AWS
-was reading at (about) the same moment. Those samples accumulate over
-time (bounded to CALIBRATION_MAX_SAMPLES, persisted so they survive a
-restart). From them we compute a rolling per-field bias: the median
-difference between what PAGASA measured and what Open-Meteo said, for
-each field both sources report. That bias is then added to every
-Open-Meteo value of the same field -- current, hourly, and daily alike
--- before the data is cached and handed to feature engineering / the
-model.
+Every time a sample is recorded (via a live Open-Meteo refresh, or the
+dedicated /api/cron/sample-calibration endpoint), this module pairs
+Open-Meteo's value for the ACTUAL current hour -- looked up from the
+already-cached hourly array by real wall-clock time, not whatever hour
+happened to be "current" whenever Open-Meteo was last actually fetched
+-- against whatever PAGASA's Pili AWS was reading at (about) the same
+real moment. This same-moment pairing matters because calibration
+samples are taken far more often (every ~15 min) than Open-Meteo is
+re-fetched (every ~3 hours): naively using the cached response's own
+stale "current" block would compare two different points in the day's
+diurnal cycle rather than two sources measuring the same moment. Those
+samples accumulate over time (bounded to CALIBRATION_MAX_SAMPLES,
+persisted so they survive a restart). From them we compute a rolling
+per-field bias: the median difference between what PAGASA measured and
+what Open-Meteo said, for each field both sources report. That bias is
+then added to every Open-Meteo value of the same field -- current,
+hourly, and daily alike -- before the data is cached and handed to
+feature engineering / the model.
 
 PRECIPITATION (opt-in, off by default -- see PAGASA_CALIBRATE_PRECIPITATION
 in app.config.settings):
@@ -40,6 +47,8 @@ WHAT THIS DELIBERATELY DOES NOT DO:
 import copy
 import statistics
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.config.settings import (
     PAGASA_CALIBRATION_ENABLED,
@@ -55,6 +64,13 @@ from app.weather.pagasa_client import fetch_pagasa_station, PagasaUnavailableErr
 from app.weather.supabase_store import kv_get, kv_set
 
 CALIBRATION_SAMPLES_KEY = "pagasa_calibration_samples"
+
+# Open-Meteo requests are made with timezone=Asia/Manila (see client.py),
+# so its hourly timestamps are already local time, unsuffixed
+# (e.g. "2026-09-12T07:00"). To find "the hourly row for right now" we
+# need real wall-clock time in that same zone -- NOT the cached
+# response's own (possibly hours-stale) current.time.
+_MANILA_TZ = ZoneInfo("Asia/Manila")
 
 # Open-Meteo field -> PAGASA field, for the variables both sources report
 # and that are safe to additively bias-correct with the general
@@ -176,21 +192,21 @@ def record_sample(open_meteo_data):
             )
             return
 
-    current = open_meteo_data.get("current", {}) or {}
-
-    # Pair PAGASA's temperature against the Open-Meteo hourly temperature
-    # for the current hour, since Open-Meteo's "current" block doesn't
-    # include a raw temperature_2m field (only apparent_temperature).
-    open_meteo_temp = _current_hour_value(open_meteo_data, "temperature_2m")
-
+    # Pair PAGASA against Open-Meteo's hourly value for the ACTUAL current
+    # hour (real wall-clock time), not the cached response's frozen
+    # "current" block -- see _current_hour_value()'s docstring for why.
+    # This applies to every field, not just temperature: the "current"
+    # block reflects whenever Open-Meteo was last actually fetched (up to
+    # CACHE_TTL_SECONDS old), while calibration samples are taken much
+    # more often than that.
     sample = {
         "recorded_at": time.time(),
         "open_meteo": {
-            "temperature_2m": open_meteo_temp,
-            "relative_humidity_2m": current.get("relative_humidity_2m"),
-            "wind_speed_10m": current.get("wind_speed_10m"),
-            "surface_pressure": current.get("surface_pressure"),
-            "precipitation": current.get("precipitation"),
+            "temperature_2m": _current_hour_value(open_meteo_data, "temperature_2m"),
+            "relative_humidity_2m": _current_hour_value(open_meteo_data, "relative_humidity_2m"),
+            "wind_speed_10m": _current_hour_value(open_meteo_data, "wind_speed_10m"),
+            "surface_pressure": _current_hour_value(open_meteo_data, "surface_pressure"),
+            "precipitation": _current_hour_value(open_meteo_data, "precipitation"),
         },
         "pagasa": {
             "temperature_2m": pagasa["temperature_c"],
@@ -218,15 +234,26 @@ def record_sample(open_meteo_data):
 
 def _current_hour_value(data, hourly_field):
     """
-    Looks up the hourly array value whose timestamp matches
-    data['current']['time'] (to the hour), or None.
+    Looks up the hourly array value whose timestamp matches the ACTUAL
+    current hour (real wall-clock time in Asia/Manila, matching
+    Open-Meteo's timezone=Asia/Manila request param) -- NOT the cached
+    response's own 'current.time', which reflects whenever the last live
+    Open-Meteo fetch happened and can be up to CACHE_TTL_SECONDS stale.
+
+    This matters because calibration samples are recorded far more often
+    (every ~15 min, via the sample-calibration cron) than Open-Meteo is
+    actually re-fetched (every ~3 hours). Anchoring to the cached data's
+    own timestamp would silently pair PAGASA's live reading against
+    whatever hour Open-Meteo happened to be fetched at -- comparing two
+    different points in the day's diurnal cycle, not two sources
+    measuring the same moment.
+
+    Returns None if the current hour isn't present in the cached hourly
+    array (e.g. cached data is old enough that "now" has rolled past the
+    forecast window it covers).
     """
 
-    current_time = data.get("current", {}).get("time", "")
-    if not current_time:
-        return None
-
-    prefix = current_time[:13]
+    prefix = datetime.now(_MANILA_TZ).strftime("%Y-%m-%dT%H")
 
     hourly_time = data.get("hourly", {}).get("time", [])
     hourly_vals = data.get("hourly", {}).get(hourly_field, [])
