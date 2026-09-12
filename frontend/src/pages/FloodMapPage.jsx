@@ -197,7 +197,7 @@ export default function FloodMapPage() {
   return (
     <div className="fade-in">
       <div className="card" style={{ marginBottom: 18, padding: 0, overflow: 'hidden' }}>
-        <div style={{
+        <div className="title-band-bar" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', flexWrap: 'wrap', gap: 10,
           background: 'var(--title-band)',
@@ -214,7 +214,7 @@ export default function FloodMapPage() {
             <LegendItem color="#ef4444" label="Primary Evacuation Center" />
             <LegendItem color="#3b82f6" label="School Evacuation Center" />
             <LegendItem color="#38bdf8" label="Barangay Boundary" shape="line" />
-            <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+            <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
               {['2d', '3d'].map(v => (
                 <button key={v} onClick={() => setMapView(v)} style={{
                   padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,

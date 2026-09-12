@@ -13,7 +13,7 @@
   --accent2:        #0ea5e9;
   --text-primary:   #e2eaf5;
   --text-secondary: #8da4be;
-  --text-muted:     #4a6080;
+  --text-muted:     #7c93b8;
   --green:          #22c55e;
   --yellow:         #eab308;
   --orange:         #f97316;
@@ -49,7 +49,7 @@
   --accent2:        #0369a1;
   --text-primary:   #14283f;   /* softened off-black so long text isn't harsh */
   --text-secondary: #40597a;
-  --text-muted:     #6e88a3;
+  --text-muted:     #5c7699;
   --shadow:         0 10px 28px rgba(15,45,90,0.12), 0 2px 6px rgba(15,45,90,0.06);
 }
 
@@ -326,17 +326,97 @@ body {
 }
 
 :root.light .card > .card-title {
-  background: rgba(2, 132, 199, 0.09);
-  color: var(--accent2);
+  background: var(--accent2);
+  color: #fff;
 }
 
 /* Used by bespoke header-bar wrappers (title rows built with inline
    styles rather than the .card-title class) so they pick up the same
    accent tint instead of the neutral --blue-mid panel color, in both
-   themes. */
+   themes. Light mode uses a literal hex (not var(--accent2)) so this
+   value can't be affected by the local --accent2 overrides elsewhere. */
 :root { --title-band: rgba(56, 189, 248, 0.12); }
-:root.light { --title-band: rgba(2, 132, 199, 0.09); }
+:root.light { --title-band: #0369a1; }
 
+/* Light mode: card titles are a solid, fully-colored band rather than a
+   faint tint (dark mode keeps the translucent glow — it already reads
+   clearly against the dark card background). Add the same class to any
+   bespoke header-bar wrapper that sets `background: var(--title-band)`
+   inline (CollapsibleSection's .collapse-header already qualifies).
+   Redefining --accent/--text-secondary/--text-muted locally means every
+   label inside the bar (including ones set via inline style) picks up a
+   readable light color automatically, without editing each one by hand. */
+:root.light .title-band-bar,
+:root.light .collapse-header {
+  --accent: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.92);
+  --text-muted: rgba(255, 255, 255, 0.82);
+}
+:root.light .collapse-header:hover .card-title { color: #fff; opacity: 0.85; }
+
+/* The 2D/3D map-view toggle (and similar bare-background controls) keeps
+   its own light --blue-mid pill background no matter which header it
+   sits in, so the title-band text-color overrides above would make its
+   label invisible (white-on-white). Reset those variables back to their
+   normal light-theme values for this control specifically. */
+:root.light .title-band-bar .view-toggle-group {
+  --accent: #0284c7;
+  --text-muted: #5c7699;
+}
+
+
+/* Hero masthead — the dashboard's primary banner (brand, location, live
+   sync status). Previously this info sat in a plain bottom-bordered row
+   with no real container; it's now its own gradient panel so the page
+   opens with a clear focal point instead of starting flat. The contour
+   pattern from the old page-level decorative wash now lives inside this
+   component instead of floating behind unrelated content below it. */
+.hero-masthead {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--blue-border);
+  background: linear-gradient(135deg, var(--blue-panel) 0%, var(--blue-mid) 100%);
+  padding: 28px 28px 22px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+}
+.hero-masthead-pattern {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+}
+.hero-masthead-row {
+  position: relative; z-index: 1;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap; gap: 20px;
+}
+.hero-brand { display: flex; align-items: flex-start; gap: 16px; }
+.hero-brand-icon {
+  width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent2), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem; box-shadow: 0 6px 20px rgba(14,165,233,0.35);
+}
+.hero-eyebrow {
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 5px;
+}
+.hero-title {
+  font-family: var(--font-display); font-weight: 800; letter-spacing: -0.015em;
+  color: var(--text-primary); margin: 0 0 5px; font-size: clamp(1.35rem, 2.6vw, 1.9rem);
+  line-height: 1.15;
+}
+.hero-location { font-size: 0.82rem; color: var(--text-secondary); font-weight: 600; }
+.hero-coords { color: var(--text-muted); font-family: monospace; font-weight: 400; }
+.hero-status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.hero-status-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.hero-synced { font-size: 0.68rem; color: var(--text-muted); text-align: right; }
+
+@media (max-width: 640px) {
+  .hero-masthead { padding: 22px 18px 18px; }
+  .hero-status-col { align-items: flex-start; }
+  .hero-status-row { justify-content: flex-start; }
+  .hero-synced { text-align: left; }
+}
 
 /* Stat card -- used by the dashboard's KPI strip (Conditions Strip). Each
    cell gets a colored top edge and a faint tint of its own metric color
