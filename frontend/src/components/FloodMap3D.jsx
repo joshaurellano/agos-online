@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
 import trianguloFloodHazard from '../data/trianguloFloodHazard.json';
+import { CRITICAL_FACILITIES, FACILITY_STYLE } from '../data/criticalFacilities';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
 import MinuteForecastStrip from './MinuteForecastStrip';
@@ -123,16 +124,80 @@ function roadWidthExpression() {
   return expr;
 }
 
-export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely }) {
+// Plain DOM element for a maplibregl.Marker -- these live outside the
+// style/source/layer system entirely, so (unlike everything in
+// addDataLayers) they survive a setStyle() basemap switch without needing
+// to be re-added.
+function createFacilityMarkerEl(facility) {
+  const style = FACILITY_STYLE[facility.facilityType];
+  const el = document.createElement('div');
+  el.style.width = '26px';
+  el.style.height = '26px';
+  el.style.borderRadius = '50%';
+  el.style.background = style.color;
+  el.style.border = '2px solid #fff';
+  el.style.boxShadow = '0 1px 5px rgba(0,0,0,0.45)';
+  el.style.display = 'flex';
+  el.style.alignItems = 'center';
+  el.style.justifyContent = 'center';
+  el.style.fontSize = '13px';
+  el.style.lineHeight = '1';
+  el.style.cursor = 'pointer';
+  el.textContent = style.emoji;
+  return el;
+}
+
+export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, focusRequest }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
   const [rainDebugPreset, setRainDebugPreset] = useState(null); // dev-only override, see RainDebugControls
   const [showHazard, setShowHazard] = useState(true);
+  const [showFacilities, setShowFacilities] = useState(true);
+  const facilityMarkersRef = useRef([]);
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
   const showHazardRef = useRef(showHazard);
   showHazardRef.current = showHazard;
+  const showFacilitiesRef = useRef(showFacilities);
+  showFacilitiesRef.current = showFacilities;
+
+  // Critical-facility markers (hospitals/schools) -- plain maplibregl.Marker
+  // DOM overlays, not style layers, so they're created once on load rather
+  // than inside addDataLayers (which re-runs on every basemap switch and
+  // would otherwise duplicate them).
+  const addFacilityMarkers = (map) => {
+    if (facilityMarkersRef.current.length > 0) return;
+    facilityMarkersRef.current = CRITICAL_FACILITIES.map(facility => {
+      const el = createFacilityMarkerEl(facility);
+      const style = FACILITY_STYLE[facility.facilityType];
+      const popup = new maplibregl.Popup({ offset: 16, closeButton: false }).setHTML(`
+        <div style="min-width:180px; padding:2px;">
+          <div style="font-weight:700; font-size:0.85rem; margin-bottom:4px;">${facility.name}</div>
+          <div style="display:inline-block; font-size:0.6rem; font-weight:700; text-transform:uppercase;
+                      letter-spacing:0.04em; color:${style.color}; background:${style.color}18;
+                      border:1px solid ${style.color}40; border-radius:4px; padding:2px 6px; margin-bottom:6px;">
+            ${style.label}
+          </div>
+          <div style="font-size:0.7rem; color:#666; font-family:monospace; margin-top:4px;">
+            ${facility.position.lat.toFixed(4)}, ${facility.position.lng.toFixed(4)}
+          </div>
+          <a href="https://www.google.com/maps?q=${facility.position.lat},${facility.position.lng}"
+             target="_blank" rel="noopener noreferrer"
+             style="display:inline-block; margin-top:6px; font-size:0.68rem; font-weight:700; color:#0ea5e9;">
+            Directions →
+          </a>
+        </div>
+      `);
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([facility.position.lng, facility.position.lat])
+        .setPopup(popup)
+        .addTo(map);
+      marker._facilityId = facility.id; // plain JS property, for lookup on focus-request below
+      el.style.display = showFacilitiesRef.current ? 'flex' : 'none';
+      return marker;
+    });
+  };
 
   // Adds/re-adds all custom sources and layers. Called on first load AND
   // after every setStyle() call, since switching styles wipes any custom
@@ -279,6 +344,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     map.on('load', () => {
       addDataLayers(map);
       applyTimeOfDay(map);
+      addFacilityMarkers(map);
     });
 
     // Re-lights every 5 minutes so a long-running demo still drifts with
@@ -289,10 +355,40 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
 
     return () => {
       clearInterval(lightTimer);
+      facilityMarkersRef.current.forEach(marker => marker.remove());
+      facilityMarkersRef.current = [];
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Toggle critical-facility marker visibility. Markers are plain DOM
+  // overlays (not a style layer), so this just flips each element's
+  // display rather than touching map state.
+  useEffect(() => {
+    facilityMarkersRef.current.forEach(marker => {
+      marker.getElement().style.display = showFacilities ? 'flex' : 'none';
+    });
+  }, [showFacilities]);
+
+  // Fly to + pop open a facility marker when a Critical Facilities card is
+  // clicked (focusRequest set by the Dashboard). ts in focusRequest makes
+  // re-clicking the same facility retrigger this even though the id repeats.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!focusRequest || !map) return;
+    const facility = CRITICAL_FACILITIES.find(f => f.id === focusRequest.id);
+    if (!facility) return;
+    setShowFacilities(true);
+    const flyAndPop = () => {
+      map.flyTo({ center: [facility.position.lng, facility.position.lat], zoom: 18, pitch: 55, duration: 1200 });
+      const marker = facilityMarkersRef.current.find(m => m._facilityId === facility.id);
+      const popup = marker?.getPopup();
+      if (popup && !popup.isOpen()) marker.togglePopup();
+    };
+    if (map.isStyleLoaded()) flyAndPop();
+    else map.once('load', flyAndPop);
+  }, [focusRequest]);
 
   // Keep road color AND water slab height/opacity in sync with alert level.
   useEffect(() => {
@@ -447,6 +543,40 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
                 <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0 }} />
                   <span style={{ fontSize: '0.58rem', color: '#8da4be' }}>{level}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            title="Hospitals and schools -- exposure layer"
+            style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              gap: 12, marginTop: 2, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>Facilities</span>
+            <button
+              onClick={() => setShowFacilities(v => !v)}
+              style={{
+                width: 26, height: 14, borderRadius: 7, flexShrink: 0,
+                background: showFacilities ? 'var(--accent, #0ea5e9)' : 'rgba(255,255,255,0.18)',
+                position: 'relative', border: 'none', cursor: 'pointer', padding: 0,
+                transition: 'background 0.2s',
+              }}
+            >
+              <div style={{
+                width: 10, height: 10, borderRadius: '50%', background: '#fff',
+                position: 'absolute', top: 2, left: showFacilities ? 14 : 2, transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
+          {showFacilities && (
+            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+              {Object.values(FACILITY_STYLE).map(({ label, color }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.58rem', color: '#8da4be' }}>{label}</span>
                 </div>
               ))}
             </div>

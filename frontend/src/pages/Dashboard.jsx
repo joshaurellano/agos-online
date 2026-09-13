@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { SectionLabel, ErrorBanner } from '../components/ui';
+import { SectionLabel, ErrorBanner, Badge } from '../components/ui';
 import Swal from 'sweetalert2';
-import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -20,6 +20,8 @@ import {
 } from 'recharts';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
+import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER } from '../data/criticalFacilities';
+import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
@@ -121,6 +123,30 @@ function createReportClusterIcon(cluster) {
     ">${count}</div>
   `;
   return L.divIcon({ html, className: '', iconSize: [34, 34] });
+}
+
+// Critical-facility pin (hospital/school) -- a plain colored circle rather
+// than the report teardrop or the evacuation-center label pin, so all
+// three marker families read as visually distinct layers at a glance.
+function createFacilityIcon(facility) {
+  const style = FACILITY_STYLE[facility.facilityType];
+  const html = `
+    <div style="
+      width: 26px; height: 26px; border-radius: 50%;
+      background: ${style.color}; border: 2px solid #fff;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.45);
+      display: flex; align-items: center; justify-content: center;
+    ">
+      <span style="font-size: 13px; line-height: 1;">${style.emoji}</span>
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: '',
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
+  });
 }
 
 const TRIANGULO_AREA = {
@@ -755,12 +781,36 @@ function LayerToggle({ layers, onToggle }) {
   );
 }
 
-function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg }) {
+// Runs inside the MapContainer (needs the Leaflet map via useMap()) so a
+// Critical Facilities card click can fly the 2D map to that facility and
+// pop its marker open -- regardless of react-leaflet's ref-forwarding
+// story for MapContainer itself, useMap() is stable across versions.
+function FloodMapFocusController({ focusRequest, markerRefs, ensureVisible }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!focusRequest) return;
+    const facility = CRITICAL_FACILITIES.find(f => f.id === focusRequest.id);
+    if (!facility) return;
+    ensureVisible();
+    map.flyTo([facility.position.lat, facility.position.lng], 17, { duration: 1.1 });
+    // Marker may only just be mounting (if it was previously hidden) --
+    // give it a tick before asking it to open its popup.
+    requestAnimationFrame(() => {
+      markerRefs.current[facility.id]?.openPopup();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest]);
+  return null;
+}
+
+function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg, focusRequest }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
   const [basemap, setBasemap] = useState('street');
   const [reports, setReports] = useState([]);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showReports, setShowReports] = useState(true);
+  const [showFacilities, setShowFacilities] = useState(true);
+  const facilityMarkerRefs = useRef({});
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -910,6 +960,54 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
             );
           })}
         </MarkerClusterGroup>
+
+        {/* Critical facilities (hospitals, schools) -- a fixed, small set,
+            so plain markers rather than a cluster group; unlike incident
+            reports these don't change at runtime. */}
+        {showFacilities && CRITICAL_FACILITIES.map(facility => {
+          const style = FACILITY_STYLE[facility.facilityType];
+          return (
+            <LeafletMarker
+              key={facility.id}
+              ref={(el) => { if (el) facilityMarkerRefs.current[facility.id] = el; }}
+              position={[facility.position.lat, facility.position.lng]}
+              icon={createFacilityIcon(facility)}
+            >
+              <LeafletPopup>
+                <div style={{ minWidth: 200, padding: '4px 2px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 4 }}>
+                    {facility.name}
+                  </div>
+                  <div style={{
+                    display: 'inline-block', fontSize: '0.62rem', fontWeight: 700,
+                    color: style.color, background: `${style.color}18`,
+                    border: `1px solid ${style.color}40`, borderRadius: 4,
+                    padding: '2px 6px', marginBottom: 6, textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}>
+                    {style.label}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace' }}>
+                    {facility.position.lat.toFixed(4)}, {facility.position.lng.toFixed(4)}
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps?q=${facility.position.lat},${facility.position.lng}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ display: 'inline-block', marginTop: 6, fontSize: '0.7rem', fontWeight: 700, color: '#0ea5e9' }}
+                  >
+                    Directions →
+                  </a>
+                </div>
+              </LeafletPopup>
+            </LeafletMarker>
+          );
+        })}
+
+        <FloodMapFocusController
+          focusRequest={focusRequest}
+          markerRefs={facilityMarkerRefs}
+          ensureVisible={() => setShowFacilities(true)}
+        />
       </MapContainer>
 
       {/* zIndex above Leaflet's own panes (tilePane 200 / overlayPane 400 /
@@ -936,10 +1034,12 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
         layers={[
           { key: 'boundary', label: 'Boundary', visible: showBoundary },
           { key: 'reports', label: 'Reports', visible: showReports },
+          { key: 'facilities', label: 'Critical Facilities', visible: showFacilities },
         ]}
         onToggle={(key) => {
           if (key === 'boundary') setShowBoundary(v => !v);
-          else setShowReports(v => !v);
+          else if (key === 'reports') setShowReports(v => !v);
+          else setShowFacilities(v => !v);
         }}
       />
     </div>
@@ -1004,6 +1104,156 @@ function AlertLevelTable({ currentAlert }) {
         })}
       </tbody>
     </table>
+  );
+}
+
+// ─── Critical Facilities panel ─────────────────────────────────────────────
+// Project-NOAH-style exposure list: every hospital/clinic, school, and
+// emergency responder in the barangay, filterable by category and
+// (optionally, on request) sorted by distance from the visitor. The map
+// (FloodMap / FloodMap3D) answers "where is it"; this panel answers "which
+// ones, and how far" -- same shared dataset and color/emoji styling as the
+// map markers, so nothing drifts between the two views.
+const FACILITY_FILTERS = [
+  { key: 'all', label: 'All' },
+  ...FACILITY_TYPE_ORDER.map(key => ({ key, label: FACILITY_STYLE[key].label })),
+];
+
+function FacilityCard({ facility, onSelect }) {
+  const style = FACILITY_STYLE[facility.facilityType];
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(facility)}
+      className="card toggle-pill"
+      style={{
+        borderTop: `3px solid ${style.color}`,
+        display: 'flex', alignItems: 'center', gap: 12,
+        width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
+        appearance: 'none', WebkitAppearance: 'none',
+      }}
+    >
+      <div style={{
+        width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+        background: `${style.color}18`, border: `1px solid ${style.color}40`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '1.1rem',
+      }}>
+        {style.emoji}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+          {facility.name}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+          <Badge color={style.color} size="sm">{style.label.toUpperCase()}</Badge>
+          {facility.distanceKm != null && (
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {formatDistanceKm(facility.distanceKm)} away
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function CriticalFacilitiesPanel({ onSelectFacility }) {
+  const [filter, setFilter] = useState('all');
+  const [userLocation, setUserLocation] = useState(null);
+  // idle | loading | granted | denied | unsupported
+  const [geoStatus, setGeoStatus] = useState('idle');
+
+  const requestLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGeoStatus('unsupported');
+      return;
+    }
+    setGeoStatus('loading');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGeoStatus('granted');
+      },
+      () => setGeoStatus('denied'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
+
+  // Locate automatically as soon as the panel mounts, so distances are
+  // filled in without the visitor needing to press anything first.
+  useEffect(() => { requestLocation(); }, [requestLocation]);
+
+  const facilities = useMemo(() => {
+    const filtered = filter === 'all'
+      ? CRITICAL_FACILITIES
+      : CRITICAL_FACILITIES.filter(f => f.facilityType === filter);
+
+    if (userLocation) {
+      return filtered
+        .map(f => ({ ...f, distanceKm: haversineDistanceKm(userLocation, f.position) }))
+        .sort((a, b) => a.distanceKm - b.distanceKm);
+    }
+    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  }, [filter, userLocation]);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {FACILITY_FILTERS.map(f => (
+            <button
+              key={f.key}
+              className="toggle-pill"
+              onClick={() => setFilter(f.key)}
+              style={{
+                padding: '5px 12px', fontSize: '0.68rem', fontWeight: 700,
+                letterSpacing: '0.03em', cursor: 'pointer', borderRadius: 999,
+                border: `1px solid ${filter === f.key ? 'var(--accent)' : 'var(--blue-border)'}`,
+                background: filter === f.key ? 'var(--accent)' : 'transparent',
+                color: filter === f.key ? '#fff' : 'var(--text-muted)',
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {geoStatus === 'loading' && (
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Locating you…</span>
+        )}
+        {(geoStatus === 'denied' || geoStatus === 'unsupported') && (
+          <button
+            className="toggle-pill"
+            onClick={requestLocation}
+            style={{
+              padding: '6px 14px', fontSize: '0.7rem', fontWeight: 700, borderRadius: 6,
+              border: '1px solid var(--blue-border)', cursor: 'pointer',
+              background: 'var(--blue-mid)', color: 'var(--accent)',
+            }}
+          >
+            📍 Enable Location
+          </button>
+        )}
+      </div>
+
+      {geoStatus === 'denied' && (
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 10 }}>
+          Location access was declined — showing facilities sorted alphabetically instead.
+        </div>
+      )}
+      {geoStatus === 'unsupported' && (
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 10 }}>
+          Location isn't available in this browser — showing facilities sorted alphabetically instead.
+        </div>
+      )}
+
+      <div className="grid-3">
+        {facilities.map(facility => (
+          <FacilityCard key={facility.id} facility={facility} onSelect={onSelectFacility} />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1542,6 +1792,16 @@ export default function Dashboard() {
   const [recentTrend, setRecentTrend]         = useState(null);
   const [probHistory, setProbHistory]         = useState([]);
   const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
+  // { id, ts } | null -- set when a Critical Facilities card is clicked;
+  // ts makes each click a distinct object so re-clicking the same facility
+  // still re-triggers the fly-to effect below.
+  const [focusRequest, setFocusRequest] = useState(null);
+  const mapCardRef = useRef(null);
+
+  const handleSelectFacility = (facility) => {
+    setFocusRequest({ id: facility.id, ts: Date.now() });
+    mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   
   useEffect(() => {
     setForecastLoading(true);
@@ -1809,7 +2069,7 @@ export default function Dashboard() {
       />
 
       {/* ── 4. Flood Status Map ──────────────────────────────────── */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+      <div ref={mapCardRef} className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div className="title-band-bar" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
           padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
@@ -1858,6 +2118,7 @@ export default function Dashboard() {
             windSignal={prediction?.live_metrics?.wind_signal}
             windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
             condition={weatherCondition}
+            focusRequest={focusRequest}
           />
         ) : (
           <FloodMap3D
@@ -1869,6 +2130,7 @@ export default function Dashboard() {
             windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
             condition={weatherCondition}
             minutely={minutelyForecast}
+            focusRequest={focusRequest}
           />
         )}
 
@@ -1903,7 +2165,15 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── 5. Alert Classification Reference ───────────────────── */}
+      {/* ── 5. Critical Facilities Near You ─────────────────────── */}
+      <CollapsibleSection
+        title="Critical Facilities Near You"
+        subtitle="Hospitals, clinics, schools, and emergency responders in Barangay Triangulo — filter by type or find the nearest to your location"
+      >
+        <CriticalFacilitiesPanel onSelectFacility={handleSelectFacility} />
+      </CollapsibleSection>
+
+      {/* ── 6. Alert Classification Reference ───────────────────── */}
       <CollapsibleSection
         title="Alert Classification Reference"
         subtitle="How probability thresholds map to alert levels and recommended actions"
@@ -1912,19 +2182,19 @@ export default function Dashboard() {
         <AlertLevelTable currentAlert={currentAlert} />
       </CollapsibleSection>
 
-      {/* ── 6. Flood Forecast Chart ───────────────────── */}
+      {/* ── 7. Flood Forecast Chart ───────────────────── */}
       <div style={{ marginBottom: 18 }}>
         <FloodForecast14Day />
       </div>
 
-      {/* ── 7. GRU Flood Probability Chart ───────────────────── */}
+      {/* ── 8. GRU Flood Probability Chart ───────────────────── */}
       {/* Trend chart is staff/admin/resident-only — kept out of the public
           view. Current status (bulletin, conditions strip, map, alert
           reference) stays public; the historical/predicted probability
           trend is reserved for signed-in accounts. */}
       {user && <FloodForecastChart />}
 
-      {/* ── 8. Weather Forecast ───────────── */}
+      {/* ── 9. Weather Forecast ───────────── */}
       <div style={{ marginBottom: 18 }}>
         <CollapsibleSection title="Weather Forecast" defaultOpen={true}>
           <WeatherForecast
@@ -1939,7 +2209,7 @@ export default function Dashboard() {
         </CollapsibleSection>
       </div>
 
-      {/* ── 9. Model Transparency ───────────────────── */}
+      {/* ── 11. Model Transparency ───────────────────── */}
       <ModelTransparencyPanel area={TRIANGULO_AREA} weatherCache={forecastCache} />
 
       {/* ── 10. Standing Disclaimer ───────────────────────────────── */}
