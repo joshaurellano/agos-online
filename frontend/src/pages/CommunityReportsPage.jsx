@@ -46,8 +46,9 @@ function RejectDialog({ onConfirm, onCancel }) {
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+      padding: 20,
     }}>
-      <div className="card" style={{ width: 380, padding: 20 }}>
+      <div className="card" style={{ width: 380, maxWidth: '100%', padding: 20 }}>
         <SectionLabel>Reject Report</SectionLabel>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
           Let the resident know why this report wasn't verified.

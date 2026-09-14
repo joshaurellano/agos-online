@@ -76,7 +76,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div className="topbar-controls" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
 
         {/* Algorithm switcher — GRU / LSTM / CNN. All three are trained on
             the same scaler/feature contract, so switching here just tells
