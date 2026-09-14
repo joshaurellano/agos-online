@@ -81,9 +81,8 @@ export default function ExpandableMapFrame({ children, height = 480 }) {
         {createPortal(
           <div
             style={{
-              position: 'fixed', top: '25%', bottom: '25%', left: 16, right: 16, zIndex: 900,
-              borderRadius: 'var(--radius-sm)', overflow: 'hidden',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
+              position: 'fixed', top: 0, bottom: 0, left: 0, right: 0, zIndex: 900,
+              overflow: 'hidden',
             }}
           >
             {children}
