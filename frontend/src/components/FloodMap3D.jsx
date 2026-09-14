@@ -9,6 +9,7 @@ import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
 import MinuteForecastStrip from './MinuteForecastStrip';
 import WindDirectionArrow, { degToCardinal } from './WindDirectionArrow';
+import { MapRecenterButton } from './ui';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
 // two views read consistently (trunk/primary thicker, service thinner).
@@ -20,6 +21,10 @@ const ROAD_WEIGHT = {
 
 const BOUNDARY_COLOR = '#38bdf8';
 const WATER_COLOR = '#1e88e5';
+
+// Shared between the initial map setup and the recenter button, so the two
+// can never drift apart.
+const DEFAULT_VIEW = { center: [123.1905, 13.618], zoom: 16.2, pitch: 55, bearing: -17 };
 
 // 25-yr rainfall return period hazard zones, clipped to the barangay
 // boundary. Extruded a little per class (not real depth data -- just a
@@ -314,10 +319,10 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: STYLE_URLS.liberty,
-      center: [123.1905, 13.618],
-      zoom: 16.2,
-      pitch: 55,
-      bearing: -17,
+      center: DEFAULT_VIEW.center,
+      zoom: DEFAULT_VIEW.zoom,
+      pitch: DEFAULT_VIEW.pitch,
+      bearing: DEFAULT_VIEW.bearing,
       antialias: true,
     });
     mapRef.current = map;
@@ -330,6 +335,12 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
       addFacilityMarkers(map);
     });
 
+    // Keeps the canvas correctly sized whenever the container's box
+    // changes -- e.g. when it's expanded to fullscreen and back -- not
+    // just on window resize.
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(containerRef.current);
+
     // Re-lights every 5 minutes so a long-running demo still drifts with
     // the real clock instead of freezing at whatever time the page opened.
     const lightTimer = setInterval(() => {
@@ -338,6 +349,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
 
     return () => {
       clearInterval(lightTimer);
+      resizeObserver.disconnect();
       facilityMarkersRef.current.forEach(marker => marker.remove());
       facilityMarkersRef.current = [];
       map.remove();
@@ -430,9 +442,15 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     setRainDebugPreset(preset.mm === null ? null : preset);
   };
 
+  const handleRecenter = () => {
+    mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 800 });
+  };
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: 420, borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      <MapRecenterButton onClick={handleRecenter} />
 
       {/* ── Rain overlay ─────────────────────────────────────────────── */}
       <RainOverlay rainfallMm={effectiveRainfallMm} condition={effectiveCondition} windSignal={windSignal} />
