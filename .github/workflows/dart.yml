@@ -26,6 +26,20 @@ jobs:
 
       - run: flutter build ios --release --no-codesign
         working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
+        continue-on-error: true
+
+      - name: Build unsigned IPA via xcodebuild
+        run: |
+          xcodebuild -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}/ios
 
       - run: mkdir Payload
         working-directory: ${{ env.FLUTTER_PROJECT_DIR }}/build/ios/iphoneos
