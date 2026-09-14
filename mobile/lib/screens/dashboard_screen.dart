@@ -1814,7 +1814,7 @@ class _MapTeaserCard extends StatelessWidget {
         const SizedBox(width: 10),
         const Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Flood Zone Map & Live Radar', style: TextStyle(
+            Text('Flood and Weather Map', style: TextStyle(
                 color: AppColors.textPri, fontSize: 12.5, fontWeight: FontWeight.w700)),
             SizedBox(height: 1),
             Text('See the barangay boundary and rain visualization',

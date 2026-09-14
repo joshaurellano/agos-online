@@ -860,7 +860,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(color: const Color(0xFF38bdf8).withValues(alpha: 0.4)),
                         ),
-                        child: const Text('Locate Me',
+                        child: const Text('Locate',
                             style: TextStyle(color: Color(0xFF38bdf8),
                                 fontSize: 10, fontWeight: FontWeight.w700)),
                       ),
@@ -1027,7 +1027,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                         color: c.color, fontSize: 9, fontWeight: FontWeight.w700)),
               ),
               const SizedBox(height: 8),
-              // Address + coordinates, as labeled rows in one info box
+              // Address, as a labeled row in its own info box
               // (mirrors the web dashboard's detail-card layout).
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -1044,64 +1044,6 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                   Text(c.note,
                       style: const TextStyle(
                           color: Color(0xFF8da4be), fontSize: 11.5, height: 1.5)),
-                  const SizedBox(height: 9),
-                  Container(height: 1, color: const Color(0xFF1e3a5f)),
-                  const SizedBox(height: 9),
-                  const Text('COORDINATES',
-                      style: TextStyle(color: Color(0xFF4a6080), fontSize: 8.5,
-                          fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                  const SizedBox(height: 3),
-                  Row(children: [
-                    Expanded(
-                      child: Text(
-                        '${c.lat.toStringAsFixed(4)}, ${c.lng.toStringAsFixed(4)}',
-                        style: const TextStyle(
-                            color: Color(0xFF8da4be),
-                            fontSize: 11,
-                            fontFamily: 'monospace'),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(
-                            text:
-                                '${c.lat.toStringAsFixed(6)}, ${c.lng.toStringAsFixed(6)}'));
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Coordinates copied — ${c.name}',
-                                style: const TextStyle(fontSize: 12)),
-                            backgroundColor: const Color(0xFF0d1f3c),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF38bdf8).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                              color:
-                                  const Color(0xFF38bdf8).withValues(alpha: 0.3)),
-                        ),
-                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.copy_rounded,
-                              color: Color(0xFF38bdf8), size: 10),
-                          SizedBox(width: 3),
-                          Text('Copy',
-                              style: TextStyle(
-                                  color: Color(0xFF38bdf8),
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700)),
-                        ]),
-                      ),
-                    ),
-                  ]),
                 ]),
               ),
               if (_routing && _selectedCenterId == c.id) ...[
@@ -1120,10 +1062,12 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 Row(children: [
                   const Icon(Icons.directions_walk_rounded, color: Color(0xFF22C55E), size: 13),
                   const SizedBox(width: 4),
-                  Text(
-                    '${_formatDistance(_routeDistanceMeters!)} · ${_formatDuration(_routeDurationSeconds ?? 0)} by street'
-                    '${dist != null ? ' (${_formatDistance(dist)} straight-line)' : ''}',
-                    style: const TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.w600),
+                  Expanded(
+                    child: Text(
+                      '${_formatDistance(_routeDistanceMeters!)} · ${_formatDuration(_routeDurationSeconds ?? 0)} by street'
+                      '${dist != null ? ' (${_formatDistance(dist)} straight-line)' : ''}',
+                      style: const TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ]),
               ] else if (dist != null) ...[
@@ -1132,12 +1076,14 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                   const Icon(Icons.directions_walk_rounded,
                       color: Color(0xFF22C55E), size: 13),
                   const SizedBox(width: 4),
-                  Text(
-                    '${_formatDistance(dist)} away (straight-line — street route unavailable)',
-                    style: const TextStyle(
-                        color: Color(0xFF22C55E),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600),
+                  Expanded(
+                    child: Text(
+                      '${_formatDistance(dist)} away (straight-line — street route unavailable)',
+                      style: const TextStyle(
+                          color: Color(0xFF22C55E),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ]),
               ],
@@ -1247,7 +1193,7 @@ class _CenterCard extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 10),
-          // Address + coordinates, as labeled rows in one info box
+          // Address, as a labeled row in its own info box
           // (mirrors the web dashboard's card layout).
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -1264,62 +1210,6 @@ class _CenterCard extends StatelessWidget {
               Text(center.note,
                   style: const TextStyle(
                       color: Color(0xFF8da4be), fontSize: 12, height: 1.5)),
-              const SizedBox(height: 9),
-              Container(height: 1, color: const Color(0xFF1e3a5f)),
-              const SizedBox(height: 9),
-              const Text('COORDINATES',
-                  style: TextStyle(color: Color(0xFF4a6080), fontSize: 8.5,
-                      fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-              const SizedBox(height: 3),
-              Row(children: [
-                Expanded(
-                  child: Text(
-                    '${center.lat.toStringAsFixed(4)}, ${center.lng.toStringAsFixed(4)}',
-                    style: const TextStyle(
-                        color: Color(0xFF8da4be),
-                        fontSize: 11,
-                        fontFamily: 'monospace'),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(
-                        text:
-                            '${center.lat.toStringAsFixed(6)}, ${center.lng.toStringAsFixed(6)}'));
-                    HapticFeedback.lightImpact();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Coordinates copied — ${center.name}',
-                            style: const TextStyle(fontSize: 12)),
-                        backgroundColor: const Color(0xFF0d1f3c),
-                        behavior: SnackBarBehavior.floating,
-                        duration: const Duration(seconds: 2),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF38bdf8).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                          color: const Color(0xFF38bdf8).withValues(alpha: 0.3)),
-                    ),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.copy_rounded,
-                          color: Color(0xFF38bdf8), size: 10),
-                      SizedBox(width: 3),
-                      Text('Copy',
-                          style: TextStyle(
-                              color: Color(0xFF38bdf8),
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700)),
-                    ]),
-                  ),
-                ),
-              ]),
             ]),
           ),
           if (distanceMeters != null) ...[
@@ -1329,14 +1219,16 @@ class _CenterCard extends StatelessWidget {
                   color: isNearest ? const Color(0xFF22C55E) : const Color(0xFF8da4be),
                   size: 13),
               const SizedBox(width: 5),
-              Text(
-                '${_formatDistance(distanceMeters!)} away',
-                style: TextStyle(
-                    color: isNearest
-                        ? const Color(0xFF22C55E)
-                        : const Color(0xFF8da4be),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700),
+              Expanded(
+                child: Text(
+                  '${_formatDistance(distanceMeters!)} away',
+                  style: TextStyle(
+                      color: isNearest
+                          ? const Color(0xFF22C55E)
+                          : const Color(0xFF8da4be),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700),
+                ),
               ),
             ]),
           ],
