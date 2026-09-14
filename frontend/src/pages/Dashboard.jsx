@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { SectionLabel, ErrorBanner, Badge } from '../components/ui';
+import { SectionLabel, ErrorBanner } from '../components/ui';
 import Swal from 'sweetalert2';
 import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -20,7 +20,7 @@ import {
 } from 'recharts';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
-import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER } from '../data/criticalFacilities';
+import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, FACILITY_ICON_PATHS, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
@@ -125,27 +125,18 @@ function createReportClusterIcon(cluster) {
   return L.divIcon({ html, className: '', iconSize: [34, 34] });
 }
 
-// Critical-facility pin (hospital/school) -- a plain colored circle rather
-// than the report teardrop or the evacuation-center label pin, so all
-// three marker families read as visually distinct layers at a glance.
+// Critical-facility pin (hospital/school/etc.) -- the flat icon glyph only,
+// no circle/box container, so it reads as a simple map symbol rather than a
+// badge.
 function createFacilityIcon(facility) {
   const style = FACILITY_STYLE[facility.facilityType];
-  const html = `
-    <div style="
-      width: 26px; height: 26px; border-radius: 50%;
-      background: ${style.color}; border: 2px solid #fff;
-      box-shadow: 0 1px 5px rgba(0,0,0,0.45);
-      display: flex; align-items: center; justify-content: center;
-    ">
-      <span style="font-size: 13px; line-height: 1;">${style.emoji}</span>
-    </div>
-  `;
+  const html = facilityIconSvgMarkup(facility.facilityType, { size: 24, color: style.color });
   return L.divIcon({
     html,
     className: '',
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
-    popupAnchor: [0, -13],
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12],
   });
 }
 
@@ -803,13 +794,12 @@ function FloodMapFocusController({ focusRequest, markerRefs, ensureVisible }) {
   return null;
 }
 
-function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg, focusRequest }) {
+function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg, focusRequest, showFacilities, setShowFacilities }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
   const [basemap, setBasemap] = useState('street');
   const [reports, setReports] = useState([]);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showReports, setShowReports] = useState(true);
-  const [showFacilities, setShowFacilities] = useState(true);
   const facilityMarkerRefs = useRef({});
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -974,7 +964,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
               icon={createFacilityIcon(facility)}
             >
               <LeafletPopup>
-                <div style={{ minWidth: 200, padding: '4px 2px' }}>
+                <div style={{ minWidth: 180, padding: '4px 2px' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 4 }}>
                     {facility.name}
                   </div>
@@ -982,21 +972,11 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
                     display: 'inline-block', fontSize: '0.62rem', fontWeight: 700,
                     color: style.color, background: `${style.color}18`,
                     border: `1px solid ${style.color}40`, borderRadius: 4,
-                    padding: '2px 6px', marginBottom: 6, textTransform: 'uppercase',
+                    padding: '2px 6px', textTransform: 'uppercase',
                     letterSpacing: '0.04em',
                   }}>
                     {style.label}
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace' }}>
-                    {facility.position.lat.toFixed(4)}, {facility.position.lng.toFixed(4)}
-                  </div>
-                  <a
-                    href={`https://www.google.com/maps?q=${facility.position.lat},${facility.position.lng}`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'inline-block', marginTop: 6, fontSize: '0.7rem', fontWeight: 700, color: '#0ea5e9' }}
-                  >
-                    Directions →
-                  </a>
                 </div>
               </LeafletPopup>
             </LeafletMarker>
@@ -1112,12 +1092,25 @@ function AlertLevelTable({ currentAlert }) {
 // emergency responder in the barangay, filterable by category and
 // (optionally, on request) sorted by distance from the visitor. The map
 // (FloodMap / FloodMap3D) answers "where is it"; this panel answers "which
-// ones, and how far" -- same shared dataset and color/emoji styling as the
+// ones, and how far" -- same shared dataset and color/icon styling as the
 // map markers, so nothing drifts between the two views.
 const FACILITY_FILTERS = [
   { key: 'all', label: 'All' },
   ...FACILITY_TYPE_ORDER.map(key => ({ key, label: FACILITY_STYLE[key].label })),
 ];
+
+// Small inline icon, rendered directly from the shared path data -- no
+// circle or box behind it, just the glyph in its category color, the same
+// glyph used on both maps via facilityIconSvgMarkup().
+function FacilityIcon({ facilityType, size = 20, color }) {
+  const glyph = FACILITY_ICON_PATHS[facilityType];
+  if (!glyph) return null;
+  return (
+    <svg viewBox={glyph.viewBox} width={size} height={size} style={{ flexShrink: 0 }}>
+      <path d={glyph.d} fill={color} />
+    </svg>
+  );
+}
 
 function FacilityCard({ facility, onSelect }) {
   const style = FACILITY_STYLE[facility.facilityType];
@@ -1127,32 +1120,21 @@ function FacilityCard({ facility, onSelect }) {
       onClick={() => onSelect(facility)}
       className="card toggle-pill"
       style={{
-        borderTop: `3px solid ${style.color}`,
         display: 'flex', alignItems: 'center', gap: 12,
         width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
         appearance: 'none', WebkitAppearance: 'none',
       }}
     >
-      <div style={{
-        width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-        background: `${style.color}18`, border: `1px solid ${style.color}40`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '1.1rem',
-      }}>
-        {style.emoji}
-      </div>
+      <FacilityIcon facilityType={facility.facilityType} size={22} color={style.color} />
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
           {facility.name}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-          <Badge color={style.color} size="sm">{style.label.toUpperCase()}</Badge>
-          {facility.distanceKm != null && (
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              {formatDistanceKm(facility.distanceKm)} away
-            </span>
-          )}
-        </div>
+        {facility.distanceKm != null && (
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+            {formatDistanceKm(facility.distanceKm)} away
+          </div>
+        )}
       </div>
     </button>
   );
@@ -1221,19 +1203,6 @@ function CriticalFacilitiesPanel({ onSelectFacility }) {
 
         {geoStatus === 'loading' && (
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Locating you…</span>
-        )}
-        {(geoStatus === 'denied' || geoStatus === 'unsupported') && (
-          <button
-            className="toggle-pill"
-            onClick={requestLocation}
-            style={{
-              padding: '6px 14px', fontSize: '0.7rem', fontWeight: 700, borderRadius: 6,
-              border: '1px solid var(--blue-border)', cursor: 'pointer',
-              background: 'var(--blue-mid)', color: 'var(--accent)',
-            }}
-          >
-            📍 Enable Location
-          </button>
         )}
       </div>
 
@@ -1796,6 +1765,7 @@ export default function Dashboard() {
   // ts makes each click a distinct object so re-clicking the same facility
   // still re-triggers the fly-to effect below.
   const [focusRequest, setFocusRequest] = useState(null);
+  const [showFacilities, setShowFacilities] = useState(true);
   const mapCardRef = useRef(null);
 
   const handleSelectFacility = (facility) => {
@@ -2119,6 +2089,8 @@ export default function Dashboard() {
             windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
             condition={weatherCondition}
             focusRequest={focusRequest}
+            showFacilities={showFacilities}
+            setShowFacilities={setShowFacilities}
           />
         ) : (
           <FloodMap3D
@@ -2131,6 +2103,8 @@ export default function Dashboard() {
             condition={weatherCondition}
             minutely={minutelyForecast}
             focusRequest={focusRequest}
+            showFacilities={showFacilities}
+            setShowFacilities={setShowFacilities}
           />
         )}
 
@@ -2166,12 +2140,17 @@ export default function Dashboard() {
       </div>
 
       {/* ── 5. Critical Facilities Near You ─────────────────────── */}
-      <CollapsibleSection
-        title="Critical Facilities Near You"
-        subtitle="Hospitals, clinics, schools, and emergency responders in Barangay Triangulo — filter by type or find the nearest to your location"
-      >
-        <CriticalFacilitiesPanel onSelectFacility={handleSelectFacility} />
-      </CollapsibleSection>
+      {/* Only shown while the Facilities layer is toggled on (same toggle
+          used on both maps) -- one switch controls whether the layer exists
+          at all, on the map and in this list. */}
+      {showFacilities && (
+        <CollapsibleSection
+          title="Critical Facilities Near You"
+          subtitle="Hospitals, clinics, schools, and emergency responders in Barangay Triangulo — filter by type or find the nearest to your location"
+        >
+          <CriticalFacilitiesPanel onSelectFacility={handleSelectFacility} />
+        </CollapsibleSection>
+      )}
 
       {/* ── 6. Alert Classification Reference ───────────────────── */}
       <CollapsibleSection
