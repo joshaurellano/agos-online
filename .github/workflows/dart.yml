@@ -3,6 +3,9 @@ name: iOS-ipa-build
 on:
   workflow_dispatch:
 
+env:
+  FLUTTER_PROJECT_DIR: mobile
+
 jobs:
   build-ios:
     name: 🎉 iOS Build
@@ -14,29 +17,31 @@ jobs:
         with:
           channel: 'stable'
           architecture: x64
+
       - run: flutter pub get
-      
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
 
       - run: pod repo update
-        working-directory: ios
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}/ios
 
       - run: flutter build ios --release --no-codesign
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}
 
       - run: mkdir Payload
-        working-directory: build/ios/iphoneos
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}/build/ios/iphoneos
 
       - run: mv Runner.app/ Payload
-        working-directory: build/ios/iphoneos
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}/build/ios/iphoneos
 
       - name: Zip output
         run: zip -qq -r -9 FlutterIpaExport.ipa Payload
-        working-directory: build/ios/iphoneos
+        working-directory: ${{ env.FLUTTER_PROJECT_DIR }}/build/ios/iphoneos
 
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: build/ios/iphoneos/FlutterIpaExport.ipa
+          file: ${{ env.FLUTTER_PROJECT_DIR }}/build/ios/iphoneos/FlutterIpaExport.ipa
           tag: v1.0
           overwrite: true
           body: "This is first release"
