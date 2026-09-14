@@ -90,26 +90,34 @@ const TRIANGULO_BOUNDARY = [
 //     the marker's coordinates regardless of label width. ─────────────────────
 function createCenterIcon(center) {
   const html = `
-    <div style="width:140px; display:flex; flex-direction:column; align-items:center;">
+    <div style="position:relative; width:30px; height:30px;">
       <div style="
+        position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+        margin-bottom:6px;
         background:${center.color}; color:#fff; font-size:10px; font-weight:700;
-        padding:2px 7px; border-radius:4px; white-space:nowrap; margin-bottom:4px;
+        padding:2px 7px; border-radius:4px; white-space:nowrap;
         box-shadow:0 1px 4px rgba(0,0,0,0.25);
       ">
         ${center.name}
       </div>
-      <svg width="24" height="32" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 0C5.37 0 0 5.37 0 12c0 8.25 12 20 12 20s12-11.75 12-20C24 5.37 18.63 0 12 0z" fill="${center.color}" />
-        <circle cx="12" cy="12" r="4" fill="white" />
-      </svg>
+      <div style="
+        position:absolute; inset:0; border-radius:50%;
+        background:${center.color}33; border:2px solid ${center.color};
+      "></div>
+      <div style="
+        position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+        width:12px; height:12px; border-radius:50%;
+        background:${center.color}; border:2px solid #fff;
+        box-shadow:0 1px 3px rgba(0,0,0,0.35);
+      "></div>
     </div>
   `;
   return L.divIcon({
     html,
     className: '', // clears Leaflet's default white-square marker background
-    iconSize: [140, 56],
-    iconAnchor: [70, 56],   // bottom-center of the box = pin's tip
-    popupAnchor: [0, -60],  // pop the popup up above the label
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],   // center of the circle = the exact coordinate
+    popupAnchor: [0, -20],
   });
 }
 
@@ -138,14 +146,6 @@ function EvacuationCenterCard({ center }) {
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-          background: `${center.color}18`, border: `1px solid ${center.color}40`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1.1rem',
-        }}>
-          
-        </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
             {center.name}
@@ -167,14 +167,6 @@ function EvacuationCenterCard({ center }) {
         background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
         borderRadius: 6, padding: '8px 12px',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Coordinates
-          </span>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-            {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
-          </span>
-        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>
             Address
@@ -276,9 +268,7 @@ export default function FloodMapPage() {
                     <div style={{ fontSize: '0.75rem', color: '#333', lineHeight: 1.4, marginTop: 2 }}>
                       {center.address}
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 6 }}>
-                      {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
-                    </div>
+                    
                   </div>
                 </Popup>
               </Marker>
