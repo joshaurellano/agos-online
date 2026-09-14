@@ -480,8 +480,8 @@ export default function RainfallPage() {
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div style={{ overflowY: 'auto', maxHeight: 300 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+          <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: 300 }}>
+            <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--blue-border)' }}>
                   {[period === 'hourly' ? 'Hour' : 'Date', 'Rainfall', 'PAGASA Category', 'Operational Note'].map(h => (
