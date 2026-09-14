@@ -4,7 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
 import trianguloFloodHazard from '../data/trianguloFloodHazard.json';
-import { CRITICAL_FACILITIES, FACILITY_STYLE } from '../data/criticalFacilities';
+import { CRITICAL_FACILITIES, FACILITY_STYLE, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
 import MinuteForecastStrip from './MinuteForecastStrip';
@@ -127,33 +127,24 @@ function roadWidthExpression() {
 // Plain DOM element for a maplibregl.Marker -- these live outside the
 // style/source/layer system entirely, so (unlike everything in
 // addDataLayers) they survive a setStyle() basemap switch without needing
-// to be re-added.
+// to be re-added. Just the flat icon glyph, no circle/box behind it.
 function createFacilityMarkerEl(facility) {
   const style = FACILITY_STYLE[facility.facilityType];
   const el = document.createElement('div');
-  el.style.width = '26px';
-  el.style.height = '26px';
-  el.style.borderRadius = '50%';
-  el.style.background = style.color;
-  el.style.border = '2px solid #fff';
-  el.style.boxShadow = '0 1px 5px rgba(0,0,0,0.45)';
   el.style.display = 'flex';
   el.style.alignItems = 'center';
   el.style.justifyContent = 'center';
-  el.style.fontSize = '13px';
-  el.style.lineHeight = '1';
   el.style.cursor = 'pointer';
-  el.textContent = style.emoji;
+  el.innerHTML = facilityIconSvgMarkup(facility.facilityType, { size: 24, color: style.color });
   return el;
 }
 
-export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, focusRequest }) {
+export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, focusRequest, showFacilities, setShowFacilities }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
   const [rainDebugPreset, setRainDebugPreset] = useState(null); // dev-only override, see RainDebugControls
   const [showHazard, setShowHazard] = useState(true);
-  const [showFacilities, setShowFacilities] = useState(true);
   const facilityMarkersRef = useRef([]);
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
@@ -172,21 +163,13 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
       const el = createFacilityMarkerEl(facility);
       const style = FACILITY_STYLE[facility.facilityType];
       const popup = new maplibregl.Popup({ offset: 16, closeButton: false }).setHTML(`
-        <div style="min-width:180px; padding:2px;">
+        <div style="min-width:160px; padding:2px;">
           <div style="font-weight:700; font-size:0.85rem; margin-bottom:4px;">${facility.name}</div>
           <div style="display:inline-block; font-size:0.6rem; font-weight:700; text-transform:uppercase;
                       letter-spacing:0.04em; color:${style.color}; background:${style.color}18;
-                      border:1px solid ${style.color}40; border-radius:4px; padding:2px 6px; margin-bottom:6px;">
+                      border:1px solid ${style.color}40; border-radius:4px; padding:2px 6px;">
             ${style.label}
           </div>
-          <div style="font-size:0.7rem; color:#666; font-family:monospace; margin-top:4px;">
-            ${facility.position.lat.toFixed(4)}, ${facility.position.lng.toFixed(4)}
-          </div>
-          <a href="https://www.google.com/maps?q=${facility.position.lat},${facility.position.lng}"
-             target="_blank" rel="noopener noreferrer"
-             style="display:inline-block; margin-top:6px; font-size:0.68rem; font-weight:700; color:#0ea5e9;">
-            Directions →
-          </a>
         </div>
       `);
       const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
