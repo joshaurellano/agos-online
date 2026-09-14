@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show rootBundle, HapticFeedback;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:http/http.dart' as http;
 import '../main.dart';
+import '../data/critical_facilities.dart';
 import '../models/alert_level.dart';
 import '../theme/panahon_ui.dart';
 import '../services/model_api_client.dart';
@@ -186,6 +187,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   DateTime? _lastUpdated;
 
   bool _showLegend = false;
+  // Critical facilities (hospitals/clinics, schools, police, fire) overlay --
+  // off by default, same as the web dashboard's `showFacilities` toggle, so
+  // the map isn't cluttered until the resident asks for it.
+  bool _showFacilities = false;
   bool _isFullscreen = false;
   String _baseStyleKey = 'standard';
   double _zoom = 14.5;
@@ -529,6 +534,16 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                             onTap: () => setState(() => _showLegend = !_showLegend),
                           ),
                         ),
+                        Tooltip(
+                          message: _showFacilities
+                              ? 'Hide critical facilities'
+                              : 'Show critical facilities',
+                          child: MapToolButton(
+                            icon: Icons.local_hospital_rounded,
+                            active: _showFacilities,
+                            onTap: () => setState(() => _showFacilities = !_showFacilities),
+                          ),
+                        ),
                         if (_hourly.isNotEmpty)
                           Tooltip(
                             message: 'Radar layers',
@@ -640,11 +655,70 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
               borderStrokeWidth: 2.0,
             ),
           ]),
+
+          // ── Critical facilities (hospitals, schools, police, fire) --
+          // a fixed, small set, same dataset/colors/icons as the web
+          // dashboard's "Critical Facilities" layer.
+          if (_showFacilities)
+            MarkerLayer(
+              markers: kCriticalFacilities.map((facility) {
+                final style = kFacilityStyles[facility.type]!;
+                return Marker(
+                  point: LatLng(facility.lat, facility.lng),
+                  width: 30,
+                  height: 30,
+                  child: GestureDetector(
+                    onTap: () => _showFacilityInfo(facility, style),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.bgDark,
+                        border: Border.all(color: style.color, width: 2),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 4),
+                        ],
+                      ),
+                      child: Icon(style.icon, color: style.color, size: 15),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+
           RichAttributionWidget(
             alignment: AttributionAlignment.bottomRight,
             attributions: [TextSourceAttribution(style.attribution)],
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Critical facility tap info ───────────────────────────────────────────
+  void _showFacilityInfo(CriticalFacility facility, FacilityStyle style) {
+    HapticFeedback.selectionClick();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(children: [
+          Icon(style.icon, color: style.color, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(facility.name,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                Text(style.label,
+                    style: TextStyle(color: style.color, fontSize: 10.5, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ]),
+        backgroundColor: const Color(0xFF0d1f3c),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -696,7 +770,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
 
   Widget _legendPanel() {
     return Container(
-      width: 168,
+      width: 180,
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: AppColors.bgDark.withValues(alpha: 0.96),
@@ -728,6 +802,26 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         const SizedBox(height: 2),
         const Text('Barangay boundary shaded by current level',
             style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
+        if (_showFacilities) ...[
+          const SizedBox(height: 10),
+          Container(height: 1, color: AppColors.bgBorder),
+          const SizedBox(height: 10),
+          const Text('CRITICAL FACILITIES', style: TextStyle(
+              color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+          const SizedBox(height: 8),
+          ...kFacilityTypeOrder.map((type) {
+            final style = kFacilityStyles[type]!;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                Icon(style.icon, color: style.color, size: 13),
+                const SizedBox(width: 7),
+                Expanded(child: Text(style.label, style: const TextStyle(
+                    color: AppColors.textSec, fontSize: 10.5, fontWeight: FontWeight.w500))),
+              ]),
+            );
+          }),
+        ],
       ]),
     );
   }

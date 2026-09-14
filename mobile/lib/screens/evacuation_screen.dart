@@ -532,10 +532,32 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              CustomPaint(
-                                size: const Size(20, 26),
-                                painter: _PinPainter(
-                                    color: isNearest ? const Color(0xFF22C55E) : c.color),
+                              // Circle halo surrounding the pin icon — mirrors
+                              // the translucent ring drawn around each
+                              // evacuation marker on the web dashboard's map
+                              // (createCenterIcon in FloodMapPage.jsx), so the
+                              // same visual language carries over to mobile.
+                              Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: (isNearest ? const Color(0xFF22C55E) : c.color)
+                                          .withValues(alpha: 0.2),
+                                      border: Border.all(
+                                          color: isNearest ? const Color(0xFF22C55E) : c.color,
+                                          width: 2),
+                                    ),
+                                  ),
+                                  CustomPaint(
+                                    size: const Size(20, 26),
+                                    painter: _PinPainter(
+                                        color: isNearest ? const Color(0xFF22C55E) : c.color),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
