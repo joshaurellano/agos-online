@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { SectionLabel, ErrorBanner } from '../components/ui';
+import { SectionLabel, ErrorBanner, ExpandableMapFrame, MapRecenterButton } from '../components/ui';
 import Swal from 'sweetalert2';
 import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -715,6 +715,9 @@ const BASEMAP_TILES = {
 };
 const BASEMAP_LABELS_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
 
+// Shared between FloodMap's initial view and its recenter button.
+const FLOOD_MAP_DEFAULT_VIEW = { center: [13.6140, 123.1915], zoom: 15 };
+
 // Small overlay control, positioned to match the 3D map's bottom-left
 // basemap switcher so the two views feel like the same product.
 function BasemapSwitcher({ basemap, onChange }) {
@@ -801,6 +804,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   const [showBoundary, setShowBoundary] = useState(true);
   const [showReports, setShowReports] = useState(true);
   const facilityMarkerRefs = useRef({});
+  const mapRef = useRef(null);
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -842,12 +846,13 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   }, [fetchReports]);
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
-        center={[13.6140, 123.1915]}
-        zoom={15}
+        ref={mapRef}
+        center={FLOOD_MAP_DEFAULT_VIEW.center}
+        zoom={FLOOD_MAP_DEFAULT_VIEW.zoom}
         scrollWheelZoom={true}
-        style={{ width: '100%', height: 480, borderRadius: 'var(--radius-sm)' }}
+        style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-sm)' }}
       >
         <TileLayer
           key={basemap}
@@ -989,6 +994,10 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           ensureVisible={() => setShowFacilities(true)}
         />
       </MapContainer>
+
+      <MapRecenterButton
+        onClick={() => mapRef.current?.setView(FLOOD_MAP_DEFAULT_VIEW.center, FLOOD_MAP_DEFAULT_VIEW.zoom)}
+      />
 
       {/* zIndex above Leaflet's own panes (tilePane 200 / overlayPane 400 /
           shadowPane 500) but below markerPane (600), so weather sits over
@@ -2081,6 +2090,7 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <ExpandableMapFrame height={480}>
         {mapView === '2d' ? (
           <FloodMap
             currentAlert={currentAlert}
@@ -2107,6 +2117,7 @@ export default function Dashboard() {
             setShowFacilities={setShowFacilities}
           />
         )}
+        </ExpandableMapFrame>
 
         {/* Cartographic legend — swatch, classification, threshold — rather
             than a row of dots, so the map reads like a hazard map rather

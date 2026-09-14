@@ -3,8 +3,13 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import RainOverlay from './RainOverlay';
+import { MapRecenterButton } from './ui';
 
 const BOUNDARY_COLOR = '#38bdf8';
+
+// Shared between the initial map setup and the recenter button, so the two
+// can never drift apart.
+const DEFAULT_VIEW = { center: [123.1905, 13.618], zoom: 16.2, pitch: 55, bearing: -17 };
 
 function boundaryToGeoJSON(boundary) {
   return {
@@ -85,15 +90,21 @@ export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallM
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: [123.1905, 13.618],
-      zoom: 16.2,
-      pitch: 55,
-      bearing: -17,
+      center: DEFAULT_VIEW.center,
+      zoom: DEFAULT_VIEW.zoom,
+      pitch: DEFAULT_VIEW.pitch,
+      bearing: DEFAULT_VIEW.bearing,
       antialias: true,
     });
     mapRef.current = map;
 
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+    // Keeps the canvas correctly sized whenever the container's box
+    // changes -- e.g. when it's expanded to fullscreen and back -- not
+    // just on window resize.
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(containerRef.current);
 
     map.on('load', () => {
       map.addSource('triangulo-boundary', { type: 'geojson', data: boundaryToGeoJSON(boundary) });
@@ -126,14 +137,18 @@ export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallM
       });
     });
 
-    return () => map.remove();
+    return () => {
+      resizeObserver.disconnect();
+      map.remove();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: 500, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       <RainOverlay rainfallMm={rainfallMm} condition={condition} windSignal={windSignal} />
+      <MapRecenterButton onClick={() => mapRef.current?.flyTo({ ...DEFAULT_VIEW, duration: 800 })} />
     </div>
   );
 }

@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { MapContainer, TileLayer, Polygon as LeafletPolygon, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import EvacuationMap3D from '../components/EvacuationMap3D';
-import { SectionLabel } from '../components/ui';
+import { SectionLabel, ExpandableMapFrame, MapRecenterButton } from '../components/ui';
+
+// Shared between the initial 2D map setup and its recenter button.
+const DEFAULT_2D_VIEW = { center: [13.618, 123.1905], zoom: 15.5 };
 
 // ─── Evacuation Centers ─────────────────────────────────────────────────────
 const EVACUATION_CENTERS = [
@@ -184,6 +187,7 @@ function EvacuationCenterCard({ center }) {
 
 export default function FloodMapPage() {
   const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
+  const mapRef = useRef(null);
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
 
   return (
@@ -222,12 +226,14 @@ export default function FloodMapPage() {
           </div>
         </div>
 
+        <ExpandableMapFrame height={500}>
         {mapView === '2d' ? (
           <MapContainer
-            center={[13.618, 123.1905]}
-            zoom={15.5}
+            ref={mapRef}
+            center={DEFAULT_2D_VIEW.center}
+            zoom={DEFAULT_2D_VIEW.zoom}
             scrollWheelZoom={true}
-            style={{ width: '100%', height: 500 }}
+            style={{ width: '100%', height: '100%' }}
           >
             <TileLayer
               // OpenStreetMap standard tiles — free, no API key required
@@ -268,7 +274,9 @@ export default function FloodMapPage() {
                     <div style={{ fontSize: '0.75rem', color: '#333', lineHeight: 1.4, marginTop: 2 }}>
                       {center.address}
                     </div>
-                    
+                    <div style={{ fontSize: '0.72rem', color: '#666', fontFamily: 'monospace', marginTop: 6 }}>
+                      {center.position.lat.toFixed(4)}, {center.position.lng.toFixed(4)}
+                    </div>
                   </div>
                 </Popup>
               </Marker>
@@ -277,6 +285,12 @@ export default function FloodMapPage() {
         ) : (
           <EvacuationMap3D boundary={TRIANGULO_BOUNDARY} evacuationCenters={EVACUATION_CENTERS} />
         )}
+        {mapView === '2d' && (
+          <MapRecenterButton
+            onClick={() => mapRef.current?.setView(DEFAULT_2D_VIEW.center, DEFAULT_2D_VIEW.zoom)}
+          />
+        )}
+        </ExpandableMapFrame>
       </div>
 
       <SectionLabel>Evacuation Center Details</SectionLabel>
