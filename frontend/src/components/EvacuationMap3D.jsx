@@ -6,6 +6,7 @@ import RainOverlay from './RainOverlay';
 import { MapRecenterButton } from './ui';
 
 const BOUNDARY_COLOR = '#38bdf8';
+const ROUTE_COLOR = '#22c55e';
 
 // Shared between the initial map setup and the recenter button, so the two
 // can never drift apart.
@@ -20,6 +21,36 @@ function boundaryToGeoJSON(boundary) {
       coordinates: boundary.map(p => [p.lng, p.lat]),
     },
   };
+}
+
+const EMPTY_FEATURE_COLLECTION = { type: 'FeatureCollection', features: [] };
+
+// Same route shape FloodMapPage computes via lib/routing.js's
+// findNearestCenterByRoad() -- { path: [{lat,lng}, ...], ... }.
+function routeToGeoJSON(route) {
+  if (!route) return EMPTY_FEATURE_COLLECTION;
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'LineString', coordinates: route.path.map(p => [p.lng, p.lat]) },
+    }],
+  };
+}
+
+// Same pulsing "you are here" dot used on the 2D map (USER_LOCATION_ICON in
+// FloodMapPage.jsx), built as a real DOM node for maplibregl.Marker.
+function buildUserLocationElement() {
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'relative';
+  wrapper.style.width = '20px';
+  wrapper.style.height = '20px';
+  wrapper.innerHTML = `
+    <div style="position:absolute; inset:0; border-radius:50%; background:#38bdf8; opacity:0.28; animation: pulse-ring 1.6s ease-out infinite;"></div>
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:12px; height:12px; border-radius:50%; background:#38bdf8; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>
+  `;
+  return wrapper;
 }
 
 // Builds the same pin-with-label DOM element the 2D page uses
@@ -80,9 +111,48 @@ function buildPopupHTML(center) {
   `;
 }
 
-export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallMm, condition, windSignal }) {
+export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallMm, condition, windSignal, route }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
+  const userMarkerRef = useRef(null);
+  const mapLoadedRef = useRef(false);
+  // Keeps the route sync function reading the latest prop even though it's
+  // only wired up once, inside the mount effect's `load` handler.
+  const routeRef = useRef(route);
+  routeRef.current = route;
+
+  // Pushes the current route onto the map: updates the route-line source,
+  // (re)places the "you are here" marker, and flies the camera to frame the
+  // whole route. Safe to call before the style has finished loading -- the
+  // mount effect only calls it from inside `map.on('load')`, and the
+  // route-sync effect below guards on mapLoadedRef.
+  const syncRoute = () => {
+    const map = mapRef.current;
+    if (!map || !map.getSource('evac-route')) return;
+    const currentRoute = routeRef.current;
+
+    map.getSource('evac-route').setData(routeToGeoJSON(currentRoute));
+
+    if (userMarkerRef.current) {
+      userMarkerRef.current.remove();
+      userMarkerRef.current = null;
+    }
+
+    if (currentRoute) {
+      userMarkerRef.current = new maplibregl.Marker({ element: buildUserLocationElement(), anchor: 'center' })
+        .setLngLat([currentRoute.userPoint.lng, currentRoute.userPoint.lat])
+        .setPopup(new maplibregl.Popup({ offset: 16 }).setText('You are here'))
+        .addTo(map);
+
+      const lngs = currentRoute.path.map(p => p.lng);
+      const lats = currentRoute.path.map(p => p.lat);
+      const bounds = [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ];
+      map.fitBounds(bounds, { padding: 80, pitch: DEFAULT_VIEW.pitch, bearing: DEFAULT_VIEW.bearing, duration: 900 });
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -128,6 +198,29 @@ export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallM
         },
       });
 
+      // Route (via-roads walking path to the nearest evacuation center).
+      // Starts empty; syncRoute() below fills it in once a route exists.
+      map.addSource('evac-route', { type: 'geojson', data: EMPTY_FEATURE_COLLECTION });
+      map.addLayer({
+        id: 'evac-route-halo',
+        type: 'line',
+        source: 'evac-route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': ROUTE_COLOR, 'line-width': 9, 'line-opacity': 0.18 },
+      });
+      map.addLayer({
+        id: 'evac-route-line',
+        type: 'line',
+        source: 'evac-route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': ROUTE_COLOR,
+          'line-width': 4,
+          'line-opacity': 0.9,
+          'line-dasharray': [1, 2],
+        },
+      });
+
       evacuationCenters.forEach(center => {
         const popup = new maplibregl.Popup({ offset: 28 }).setHTML(buildPopupHTML(center));
         new maplibregl.Marker({ element: buildMarkerElement(center), anchor: 'center' })
@@ -135,14 +228,25 @@ export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallM
           .setPopup(popup)
           .addTo(map);
       });
+
+      mapLoadedRef.current = true;
+      syncRoute(); // picks up a route that was already set before the style finished loading
     });
 
     return () => {
       resizeObserver.disconnect();
       map.remove();
+      mapLoadedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-sync whenever the route changes (new "find nearest" result, or
+  // cleared) after the map is already up and running.
+  useEffect(() => {
+    if (mapLoadedRef.current) syncRoute();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
