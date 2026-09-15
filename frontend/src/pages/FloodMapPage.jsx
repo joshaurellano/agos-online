@@ -1,9 +1,12 @@
-import { useState, useRef } from 'react';
-import { MapContainer, TileLayer, Polygon as LeafletPolygon, Marker, Popup } from 'react-leaflet';
+import { useState, useRef, useMemo } from 'react';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import EvacuationMap3D from '../components/EvacuationMap3D';
 import { SectionLabel, ExpandableMapFrame, MapRecenterButton } from '../components/ui';
+import trianguloRoads from '../data/trianguloRoads.json';
+import { buildRoadGraph, findNearestCenterByRoad } from '../lib/routing';
+import { formatDistanceKm } from '../lib/geo';
 
 // Shared between the initial 2D map setup and its recenter button.
 const DEFAULT_2D_VIEW = { center: [13.618, 123.1905], zoom: 15.5 };
@@ -124,6 +127,20 @@ function createCenterIcon(center) {
   });
 }
 
+// Simple pulsing dot for "you are here" -- deliberately plainer than the
+// evacuation-center pins so it doesn't compete with them visually.
+const USER_LOCATION_ICON = L.divIcon({
+  html: `
+    <div style="position:relative; width:20px; height:20px;">
+      <div style="position:absolute; inset:0; border-radius:50%; background:#38bdf8; opacity:0.28; animation: pulse-ring 1.6s ease-out infinite;"></div>
+      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:12px; height:12px; border-radius:50%; background:#38bdf8; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>
+    </div>
+  `,
+  className: '',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+});
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function LegendItem({ color, label, shape = 'circle' }) {
@@ -190,6 +207,46 @@ export default function FloodMapPage() {
   const mapRef = useRef(null);
   const boundaryPositions = TRIANGULO_BOUNDARY.map(p => [p.lat, p.lng]);
 
+  // Road graph is built once from the bundled OSM street data and reused
+  // for every "find nearest center" lookup -- routing runs entirely
+  // client-side against it, no external routing API or network call.
+  const roadGraph = useMemo(() => buildRoadGraph(trianguloRoads), []);
+
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState(null);
+  const [route, setRoute] = useState(null); // { center, totalKm, walkMinutes, path, userPoint }
+
+  const handleFindNearest = () => {
+    if (!navigator.geolocation) {
+      setLocateError('Location isn\u2019t available on this device/browser.');
+      return;
+    }
+    setLocating(true);
+    setLocateError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const userPoint = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const result = findNearestCenterByRoad(roadGraph, userPoint, EVACUATION_CENTERS);
+        setLocating(false);
+        if (!result) {
+          setLocateError('Couldn\u2019t find a road route from your location.');
+          return;
+        }
+        setRoute({ ...result, userPoint });
+        mapRef.current?.fitBounds(result.path.map(p => [p.lat, p.lng]), { padding: [40, 40] });
+      },
+      (err) => {
+        setLocating(false);
+        setLocateError(
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission was denied.'
+            : 'Couldn\u2019t get your location. Try again.'
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   return (
     <div className="fade-in">
       <div className="card" style={{ marginBottom: 18, padding: 0, overflow: 'hidden' }}>
@@ -200,7 +257,7 @@ export default function FloodMapPage() {
         }}>
           <div>
             <div className="card-title" style={{ marginBottom: 2 }}>
-              Evacuation Route Map — Barangay Triangulo
+              Evacuation Route Map
             </div>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
               Tap a marker for details
@@ -210,6 +267,21 @@ export default function FloodMapPage() {
             <LegendItem color="#ef4444" label="Primary Evacuation Center" />
             <LegendItem color="#3b82f6" label="School Evacuation Center" />
             <LegendItem color="#38bdf8" label="Barangay Boundary" shape="line" />
+            {route && <LegendItem color="#22c55e" label="Route (via roads)" shape="line" />}
+            <button
+              onClick={handleFindNearest}
+              disabled={locating}
+              className="toggle-pill"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', fontSize: '0.72rem', fontWeight: 700,
+                letterSpacing: '0.04em', cursor: locating ? 'default' : 'pointer',
+                border: 'none', borderRadius: 6, color: '#fff',
+                background: locating ? 'var(--blue-border)' : '#22c55e',
+              }}
+            >
+              {locating ? 'Locating…' : '📍 Find Nearest Evacuation Center'}
+            </button>
             <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
               {['2d', '3d'].map(v => (
                 <button key={v} onClick={() => setMapView(v)} style={{
@@ -225,6 +297,31 @@ export default function FloodMapPage() {
             </div>
           </div>
         </div>
+
+        {(route || locateError) && (
+          <div style={{
+            padding: '10px 18px', borderBottom: '1px solid var(--blue-border)',
+            background: route ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+          }}>
+            {route ? (
+              <>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                  Nearest by road: <strong>{route.center.name}</strong>
+                  <span style={{ color: 'var(--text-muted)' }}> — {formatDistanceKm(route.totalKm)} along streets, ~{route.walkMinutes} min walk</span>
+                </div>
+                <button
+                  onClick={() => setRoute(null)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Clear route
+                </button>
+              </>
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: '#f87171' }}>{locateError}</div>
+            )}
+          </div>
+        )}
 
         <ExpandableMapFrame height={500}>
         {mapView === '2d' ? (
@@ -251,6 +348,18 @@ export default function FloodMapPage() {
                 fillOpacity: 0.08,
               }}
             />
+
+            {route && (
+              <>
+                <Polyline
+                  positions={route.path.map(p => [p.lat, p.lng])}
+                  pathOptions={{ color: '#22c55e', weight: 5, opacity: 0.85, dashArray: '1 8', lineCap: 'round' }}
+                />
+                <Marker position={[route.userPoint.lat, route.userPoint.lng]} icon={USER_LOCATION_ICON}>
+                  <Popup>You are here</Popup>
+                </Marker>
+              </>
+            )}
 
             {EVACUATION_CENTERS.map((center) => (
               <Marker
@@ -283,7 +392,7 @@ export default function FloodMapPage() {
             ))}
           </MapContainer>
         ) : (
-          <EvacuationMap3D boundary={TRIANGULO_BOUNDARY} evacuationCenters={EVACUATION_CENTERS} />
+          <EvacuationMap3D boundary={TRIANGULO_BOUNDARY} evacuationCenters={EVACUATION_CENTERS} route={route} />
         )}
         {mapView === '2d' && (
           <MapRecenterButton

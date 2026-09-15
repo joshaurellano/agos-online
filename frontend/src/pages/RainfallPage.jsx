@@ -331,13 +331,13 @@ export default function RainfallPage() {
             sub: period === 'hourly' ? 'Last 24 hours · hourly average' : 'Last 7 days · daily total',
           },
           {
-            label: 'Peak Intensity',
+            label: period === 'hourly' ? 'Peak Intensity' : 'Peak Day',
             value: `${peak}`,
-            unit: 'mm/hr',
+            unit: period === 'hourly' ? 'mm/hr' : 'mm',
             icon: '',
-            color: peak >= 30 ? '#7c3aed' : peak >= 15 ? '#ef4444' : peak >= 7.5 ? '#f97316' : peak >= 2.5 ? '#eab308' : '#22c55e',
+            color: peak > 0 ? getRainfallCategory(peak, period).color : '#22c55e',
             sub: peak > 0
-              ? `${getRainfallCategory(peak, 'hourly').label} intensity · ${getRainfallCategory(peak, 'hourly').pagasa}`
+              ? `${getRainfallCategory(peak, period).label}${period === 'hourly' ? ' intensity' : ''} · ${getRainfallCategory(peak, period).pagasa}`
               : 'No rainfall recorded',
           },
           {
@@ -595,11 +595,7 @@ export default function RainfallPage() {
               https://www.pagasa.dost.gov.ph/information/rainfall-information
             </span>
           </div>
-          <div style={{ marginTop: 2 }}>
-            {prediction
-              ? 'Live data source: Open-Meteo Weather API via LSTM Backend · Poll interval: 30s'
-              : 'Fallback source: PAGASA Weather Station · Naga City'}
-          </div>
+          
         </div>
       </div>
 
