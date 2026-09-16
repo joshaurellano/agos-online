@@ -65,7 +65,7 @@ function deliveryDetailText(channel, status, detail) {
   }
   // push
   if (status === 'failed') return detail?.error ?? 'FCM send failed';
-  return 'Delivered to flood_alerts topic';
+  return 'Delivered';
 }
 
 function needsAttention(delivery) {

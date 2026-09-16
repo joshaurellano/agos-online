@@ -6,6 +6,7 @@ const ALERT_TITLES: Record<string, string> = {
   WARNING:  '🟠 WARNING',
   CRITICAL: '🔴 EVACUATION ALERT',
   NORMAL:   '🟢 All Clear',
+  OUTLOOK:  '🔵 Rising risk in 3 days',
 };
 
 // Best-effort logging of a channel's dispatch outcome into alert_deliveries.
