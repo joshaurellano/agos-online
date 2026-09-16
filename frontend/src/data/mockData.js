@@ -38,6 +38,21 @@ export const ALERT_LEVELS = {
     action: 'EVACUATE IMMEDIATELY. Proceed to designated evacuation centers.',
     level: 3,
   },
+  // Forecast-based heads-up, not a live-reading severity -- fires when the
+  // 3-day outlook crosses into Advisory-or-above territory before conditions
+  // on the ground actually get there. Deliberately excluded from the
+  // hardcoded NORMAL/ADVISORY/WARNING/CRITICAL key lists used for the live
+  // classification table/legend (Dashboard, AnalyticsPage) since it isn't a
+  // rung on that ladder -- it's an early warning about one of the other three.
+  OUTLOOK: {
+    label: 'Outlook',
+    color: '#38bdf8',
+    bg: '#e0f2fe',
+    border: '#0284c7',
+    description: 'Rising flood risk expected within the next 3 days, based on the forecast -- not current conditions.',
+    action: 'Monitor AGOS for updates as the outlook firms up.',
+    level: null,
+  },
 };
 
 export const generateRainfallData = () => {

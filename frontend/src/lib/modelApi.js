@@ -51,36 +51,52 @@ export function alertLevelFromKey(key) {
   }
 }
 
+const LOCATION = 'Barangay Triangulo, Naga City';
+const SOURCE = 'AGOS';
+
+// (2:05 PM, Sep 16) — same shape as an NDRRMC SMS timestamp, in Manila time.
+// Keep in sync with formatTimestamp() in supabase/functions/poll-flood/index.ts.
+function formatTimestamp(date) {
+  const time = date.toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true });
+  const day  = date.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+  return `(${time}, ${day})`;
+}
+
+// Message copy: NDRRMC-style source + timestamp + what/where up front, then
+// a plain-language impact + action — the same two-part shape as a Google
+// Weather card's headline + detail line. Keep in sync with
+// buildCurrentMessage() in supabase/functions/poll-flood/index.ts — this is
+// the same wording, just built client-side for the level-change dispatch
+// that fires while the dashboard is open.
 const ALERT_MESSAGES = {
-  ADVISORY: () => `Elevated flood risk detected. Stay alert and prepare your emergency go-bags.`,
-  WARNING:  () => `WARNING level reached. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
-  CRITICAL: () => `CRITICAL level reached. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
-  NORMAL:   () => `Situation has returned to NORMAL. Flood risk has subsided. Continue monitoring for updates.`,
+  ADVISORY: (pct) => `${SOURCE}: ${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Elevated water levels; minor flooding possible in low-lying areas. Residents near waterways should stay alert and prepare emergency go-bags.`,
+  WARNING:  (pct) => `${SOURCE}: ${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
+  CRITICAL: (pct) => `${SOURCE}: ${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  NORMAL:   () => `${SOURCE}: ${formatTimestamp(new Date())} Situation in ${LOCATION} has returned to Normal. Flood risk has subsided. Continue monitoring for updates.`,
 };
 
 // Push notification titles now live solely in on-alert-change/index.ts —
 // that's the only place left that ever calls send-push-notification, so
 // keeping a second copy here would just risk drifting out of sync again.
+//
+// There used to be a second alert-dispatch path here (dispatchAutoAlert),
+// firing whenever a dashboard's own 30s poll saw a level change. It's been
+// removed: its dedup lived in an in-memory Map local to that browser tab,
+// never synced against the flood_snapshots row poll-flood's cron dedupes
+// against, so a dashboard left open during a transition could insert a
+// second `alerts` row (and a second real SMS + push blast) after the cron
+// had already sent one. poll-flood is now the ONLY thing that ever writes
+// to `alerts` for a live-reading transition, cron or dashboard-open or not.
+// Same reasoning is why the 3-day-outlook check was never added here either
+// — see poll-flood/index.ts.
 
-async function dispatchAutoAlert(alertKey) {
-  const message = ALERT_MESSAGES[alertKey]?.();
-  if (!message) return;
-
-  logger.debug(`Alert level changed to ${alertKey} — dispatching alert...`);
-
-  // SMS + push are dispatched automatically by the on-alert-change DB
-  // webhook whenever a row lands in `alerts` — do not call send-alert /
-  // send-push-notification here too. (This was the second, differently
-  // titled push showing up alongside the one from on-alert-change.)
-  const { error: dbError } = await supabase.from('alerts').insert({
-    type:    alertKey,
-    message,
-    sent_by: 'AGOS Auto-Alert',
-  });
-  if (dbError) logger.warn('Alert log failed:', dbError.message);
-}
-
-// Saves snapshot to Supabase for the FloodForecastChart
+// Saves snapshot to Supabase for the FloodForecastChart. Only writes the
+// fields this hook actually knows (alert_key from the live prediction it
+// just fetched) — outlook_key is deliberately left untouched, not zeroed,
+// because it's poll-flood's cron-only dedup state for the 3-day-outlook
+// escalation check; a client write that nulled it out on every 30s poll
+// would make poll-flood think each cycle was its first run and silently
+// suppress a genuine outlook alert.
 async function saveSnapshot(data) {
   const rainfall = data?.live_metrics?.rainfall_mm ?? 0;
 
@@ -98,11 +114,11 @@ async function saveSnapshot(data) {
   else logger.debug('Snapshot saved to Supabase');
 }
 
-// Tracks the last alert key we dispatched, per data-source, so switching
-// between live and mock (or, in future, calling this hook for more than
-// one model at once) can't cause one query's alert transition to suppress
-// or spuriously trigger another's. Keyed rather than a single module-level
-// value for exactly that reason.
+// Tracks the last alert key seen, per data-source, so switching between live
+// and mock (or, in future, calling this hook for more than one model at
+// once) can't cause one query's transition to suppress or spuriously
+// trigger another's. This now only drives the mock-mode local toast below —
+// real dispatch lives solely in poll-flood's cron (see note above).
 const lastDispatchedAlertKeyByKey = new Map();
 
 // ── Day-1 prediction (KPI cards, alerts, snapshot logging) ──────────────
@@ -147,18 +163,13 @@ export function useModelPrediction(modelKey = 'gru') {
     refetchInterval: POLL_INTERVAL_MS,
   });
 
-  // Side effects — auto-alert dispatch + snapshot logging — run whenever a
-  // fresh prediction comes back, mirroring the old fetchLatest() behavior.
+  // Side effects — snapshot logging for the chart — run whenever a fresh
+  // prediction comes back. Real alert dispatch for a live-level transition
+  // happens solely in poll-flood's cron now (see note above saveSnapshot).
   //
-  // isMock guards both real calls: dispatchAutoAlert() writes a row to the
-  // real `alerts` table, which the on-alert-change DB webhook turns into
-  // actual SMS/push notifications to residents, and which AlertsLogPage
-  // reads back out as PUBLIC alert history. Without this guard, an admin
-  // flipping to "Mock Data" mid-demo could broadcast a real false alarm,
-  // and leave a fake entry in residents' alert history, the moment the
-  // mock data's alert level differs from the last live one. Snapshot
-  // logging is skipped for the same reason: mock readings have no business
-  // in the real flood_snapshots history.
+  // isMock guards the real call: saveSnapshot() writes to the real
+  // flood_snapshots table poll-flood reads for its own dedup state, and
+  // mock readings have no business in that history.
   //
   // Mock mode isn't left silent, though — a level change still surfaces as
   // a clearly-labeled local toast, so testing/demoing the threshold logic
@@ -175,23 +186,41 @@ export function useModelPrediction(modelKey = 'gru') {
 
     if (isMock) {
       if (changed) {
-        Swal.fire({
-          title: 'Simulated alert (mock data)',
-          text: ALERT_MESSAGES[currentKey]?.() ?? `Alert level changed to ${currentKey}`,
-          icon: 'info',
-          background: '#0d1f3c', color: '#e2eaf5',
-          confirmButtonColor: '#0ea5e9',
-          timer: 6000, timerProgressBar: true,
-          footer: 'No SMS/push was sent and nothing was written to the alert log — mock data never touches either.',
-        });
+        const message = ALERT_MESSAGES[currentKey]?.(Math.round((query.data.probability ?? 0) * 100))
+          ?? `Alert level changed to ${currentKey}`;
+
+        // Mock mode now dispatches through the exact same path poll-flood's
+        // cron uses for a real level change: insert into `alerts`, which
+        // on-alert-change picks up via DB webhook and fires real SMS + push
+        // to every registered resident. `sent_by` is tagged so a mock-driven
+        // row is always identifiable in the alert log / delivery status
+        // panel after the fact — it is NOT a dry run.
+        supabase.from('alerts')
+          .insert({ type: currentKey, message, sent_by: 'AGOS Mock Test' })
+          .then(({ error }) => {
+            if (error) {
+              logger.warn('Mock alert insert failed:', error.message);
+              Swal.fire({
+                title: 'Mock alert failed to dispatch',
+                text: error.message,
+                icon: 'error',
+                background: '#0d1f3c', color: '#e2eaf5',
+                confirmButtonColor: '#0ea5e9',
+              });
+              return;
+            }
+            Swal.fire({
+              title: 'Mock alert dispatched',
+              text: message,
+              icon: 'info',
+              background: '#0d1f3c', color: '#e2eaf5',
+              confirmButtonColor: '#0ea5e9',
+              timer: 6000, timerProgressBar: true,
+              footer: 'Alert sent to residents.',
+            });
+          });
       }
       return;
-    }
-
-    if (changed) {
-      dispatchAutoAlert(currentKey).catch(err =>
-        logger.error('Alert dispatch failed:', err.message)
-      );
     }
 
     saveSnapshot(query.data).catch(err =>

@@ -22,6 +22,7 @@ const HEADLINE = {
   ADVISORY: 'Flood Advisory',
   WARNING: 'Flood Warning',
   CRITICAL: 'Flood Critical Alert',
+  OUTLOOK: 'Rising Risk Expected — 3-Day Outlook',
 };
 
 // Plain triangle-warning glyph, drawn from two shapes (no external icon
@@ -193,6 +194,7 @@ export default function AlertsLogPage() {
           style={{ width: 'auto', fontSize: '0.78rem' }}
         >
           <option value="ALL">All severities</option>
+          <option value="OUTLOOK">3-Day Outlook</option>
           <option value="ADVISORY">Advisory</option>
           <option value="WARNING">Warning</option>
           <option value="CRITICAL">Critical</option>
