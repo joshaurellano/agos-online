@@ -508,61 +508,73 @@ class FloodHeroBanner extends StatelessWidget {
                   ),
                 ],
                 const Spacer(),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(icon, color: Colors.white, size: 34),
-                    const SizedBox(width: 10),
-                    // Crossfades + slides up on change (e.g. when a new
-                    // /predict-flood poll comes in) instead of the number
-                    // just snapping, so a live update reads as "ticking
-                    // over" rather than a jarring flash of new digits.
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 420),
-                      switchInCurve: Curves.easeOutCubic,
-                      transitionBuilder: (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: SlideTransition(
-                          position: Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(anim),
-                          child: child,
-                        ),
-                      ),
-                      child: Text(
-                        bigValue,
-                        key: ValueKey(bigValue),
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 62, fontWeight: FontWeight.w900,
-                            height: 1.0, letterSpacing: -2),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12, left: 2),
-                      child: Text(bigUnit,
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 22, fontWeight: FontWeight.w800)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(headline,
-                    style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
-                const SizedBox(height: 3),
-                Text(tagline,
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12.5, height: 1.35)),
-                if (stats.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Row(
+                SizedBox(
+                  width: double.infinity,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      for (final s in stats) ...[
-                        Icon(s.icon, color: Colors.white.withValues(alpha: 0.85), size: 14),
-                        const SizedBox(width: 5),
-                        Text(s.value, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w800)),
-                        const SizedBox(width: 4),
-                        Text(s.label, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10.5)),
-                        const SizedBox(width: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(icon, color: Colors.white, size: 34),
+                          const SizedBox(width: 10),
+                          // Crossfades + slides up on change (e.g. when a new
+                          // /predict-flood poll comes in) instead of the number
+                          // just snapping, so a live update reads as "ticking
+                          // over" rather than a jarring flash of new digits.
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 420),
+                            switchInCurve: Curves.easeOutCubic,
+                            transitionBuilder: (child, anim) => FadeTransition(
+                              opacity: anim,
+                              child: SlideTransition(
+                                position: Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(anim),
+                                child: child,
+                              ),
+                            ),
+                            child: Text(
+                              bigValue,
+                              key: ValueKey(bigValue),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 62, fontWeight: FontWeight.w900,
+                                  height: 1.0, letterSpacing: -2),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12, left: 2),
+                            child: Text(bigUnit,
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 22, fontWeight: FontWeight.w800)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(headline,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+                      const SizedBox(height: 3),
+                      Text(tagline,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12.5, height: 1.35)),
+                      if (stats.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            for (final s in stats) ...[
+                              Icon(s.icon, color: Colors.white.withValues(alpha: 0.85), size: 14),
+                              const SizedBox(width: 5),
+                              Text(s.value, style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w800)),
+                              const SizedBox(width: 4),
+                              Text(s.label, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10.5)),
+                              const SizedBox(width: 16),
+                            ],
+                          ],
+                        ),
                       ],
                     ],
                   ),
-                ],
+                ),
               ],
             ),
               ),
