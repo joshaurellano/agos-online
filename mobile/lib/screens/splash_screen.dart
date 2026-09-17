@@ -214,7 +214,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 ],
                               ),
                               child: const Center(
-                                child: Text('🌊', style: TextStyle(fontSize: 36)),
+                                child: Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: Image(
+                                    image: AssetImage('lib/assets/agos_icon.png'),
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
                               ),
                             ),
                           ),

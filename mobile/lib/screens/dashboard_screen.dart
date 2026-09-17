@@ -573,7 +573,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           location: 'Brgy. Triangulo, Naga City',
           statusLine: _error
               ? "Can't reach live data · showing ${_relativeTime(_lastUpdated)}"
-              : 'Live · updated ${_relativeTime(_lastUpdated)}',
+              : 'Updated ${_relativeTime(_lastUpdated)}',
           actions: [
             HeroIconButton(
               icon: Icons.notifications_rounded,
