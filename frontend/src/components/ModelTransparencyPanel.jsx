@@ -86,10 +86,12 @@ export default function ModelTransparencyPanel({ area, weatherCache }) {
   const reliability = meta14?.model_reliability;
 
   const metrics = [
+    { label: 'Accuracy', value: pct(reliability?.avg_accuracy), color: 'var(--accent)' },
     { label: 'Precision', value: pct(reliability?.avg_precision), color: 'var(--accent)' },
     { label: 'Recall', value: pct(reliability?.avg_recall), color: 'var(--accent)' },
     { label: 'F1 Score', value: pct(reliability?.avg_f1), color: 'var(--accent)' },
     { label: 'False Alarm', value: pct(reliability?.avg_false_alarm_rate), color: '#f97316' },
+    { label: 'Missed Event', value: pct(reliability?.avg_missed_event_rate), color: '#f97316' },
   ];
 
   return (
