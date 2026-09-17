@@ -1696,7 +1696,10 @@ function FloodForecast14Day() {
             {visibleForecast.map((d, i) => {
               const pct = Math.round(d.flood_probability * 100);
               const dateObj = new Date(d.date);
-              const isToday = i === 0 && d.day_ahead === 0;
+              
+              const todayStr = new Date().toLocaleDateString('en-CA');
+              const isToday = d.date === todayStr;
+              
               return (
                 <button
                   key={d.date}

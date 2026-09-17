@@ -86,10 +86,12 @@ export default function AnalyticsPage() {
       ...opt,
       isLoaded: !!modelData,
       isSelected: opt.key === modelKey,
+      avgAccuracy: reliability?.avg_accuracy,
       avgPrecision: reliability?.avg_precision,
       avgRecall: reliability?.avg_recall,
       avgF1: reliability?.avg_f1,
       avgFalseAlarm: reliability?.avg_false_alarm_rate,
+      avgMissedEvent: reliability?.avg_missed_event_rate,
       day1ProbPct: day1Prob != null ? Math.round(day1Prob * 100) : null,
       measuredOn: reliability?.measured_on,
     };
@@ -238,6 +240,10 @@ export default function AnalyticsPage() {
               <div style={{ fontSize: '1.1rem', fontWeight: 700, color: algo.isSelected ? algo.color : 'var(--text-primary)', marginBottom: '16px' }}>{algo.fullLabel}</div>
               <div style={{ display: 'flex', gap: '20px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px', flexWrap: 'wrap' }}>
                 <div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Accuracy</div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{pct(algo.avgAccuracy)}</div>
+                </div>
+                <div>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Avg Precision</div>
                   <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{pct(algo.avgPrecision)}</div>
                 </div>
@@ -252,6 +258,10 @@ export default function AnalyticsPage() {
                 <div>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '2px' }} title="Lower is better — how often this model cries wolf">Avg False Alarm</div>
                   <div style={{ fontSize: '0.9rem', color: '#f97316', fontWeight: 600 }}>{pct(algo.avgFalseAlarm)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '2px' }} title="Lower is better — share of actual floods this model failed to flag">Missed Event</div>
+                  <div style={{ fontSize: '0.9rem', color: '#f97316', fontWeight: 600 }}>{pct(algo.avgMissedEvent)}</div>
                 </div>
               </div>
               <div>
