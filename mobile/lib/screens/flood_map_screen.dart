@@ -67,9 +67,12 @@ Color _scaleColor(double t) {
   return Color.lerp(_scaleStops[i], _scaleStops[i + 1], frac)!;
 }
 
-// What drives the timeline's coloring — two hourly-resolution views over
-// the same /api/forecast data (kept to the same time resolution so
-// switching layers doesn't also jump the timeline to a different grid).
+// What drives the timeline's coloring. `probability` and `intensity` are
+// hourly-resolution views over the same /api/forecast data (kept to the
+// same time grid so switching between *those two* doesn't jump the
+// timeline). `flood` is different on purpose: the flood model only
+// forecasts daily, so that layer gets its own 7-day timeline (see
+// _dailyFlood / _floodDayIndex) instead of reusing the hourly grid.
 enum _RadarLayer { flood, probability, intensity }
 
 // Same shape-coded icon set as dashboard_screen.dart / alert_screen.dart
@@ -212,14 +215,16 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   Timer? _playTimer;
   _RadarLayer _radarLayer = _RadarLayer.flood;
 
-  // Daily flood outlook, keyed by "yyyy-MM-dd", for the flood-probability
-  // layer — the model only forecasts flood risk per day (see
-  // /api/forecast-flood), so every hour within the same calendar day
-  // shows that day's probability. Fetched once; a 14-day outlook doesn't
-  // need the 30s refresh cadence the live status pill uses.
-  Map<String, double> _floodProbByDate = {};
+  // Daily flood outlook for the flood-probability layer's own timeline —
+  // the model only forecasts flood risk per day (see /api/forecast-flood),
+  // so this layer animates one frame per day instead of riding the hourly
+  // grid the other two layers use. Fetched once; a multi-day outlook
+  // doesn't need the 30s refresh cadence the live status pill uses.
+  List<Map<String, dynamic>> _dailyFlood = [];
+  int _floodDayIndex = 0;
 
   static const _timelineHours = 24; // next 24h — matches the reference UI's single-evening span
+  static const _timelineDays = 7;   // flood-probability layer: next 7 days
 
   @override
   void initState() {
@@ -247,14 +252,14 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
         final list = (body['forecast'] as List? ?? []).cast<Map<String, dynamic>>();
-        final byDate = <String, double>{};
-        for (final d in list) {
-          final date = d['date']?.toString();
-          final prob = d['flood_probability'];
-          if (date == null || prob is! num) continue;
-          byDate[date] = prob.toDouble();
-        }
-        setState(() => _floodProbByDate = byDate);
+        final daily = list
+            .where((d) => d['date'] != null && d['flood_probability'] is num)
+            .take(_timelineDays)
+            .toList();
+        setState(() {
+          _dailyFlood = daily;
+          if (_floodDayIndex >= _dailyFlood.length) _floodDayIndex = 0;
+        });
       }
     } catch (e) {
       debugPrint('AGOS: daily flood forecast fetch failed: $e');
@@ -283,14 +288,36 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     }
   }
 
+  // The flood-probability layer steps through _dailyFlood (one frame per
+  // day); probability/intensity step through _hourly (one frame per hour).
+  // These two helpers are the single place that decides which list/index
+  // is "live" so play/scrub/build don't each re-derive it.
+  bool get _isFloodLayer => _radarLayer == _RadarLayer.flood;
+  List<Map<String, dynamic>> get _activeTimelineList => _isFloodLayer ? _dailyFlood : _hourly;
+  int get _activeTimelineIndex => _isFloodLayer ? _floodDayIndex : _timelineIndex;
+  set _activeTimelineIndex(int i) {
+    if (_isFloodLayer) {
+      _floodDayIndex = i;
+    } else {
+      _timelineIndex = i;
+    }
+  }
+
   void _togglePlay() {
-    if (_hourly.isEmpty) return;
+    if (_activeTimelineList.isEmpty) return;
     setState(() => _isPlaying = !_isPlaying);
     if (_isPlaying) {
       _playTimer?.cancel();
-      _playTimer = Timer.periodic(const Duration(milliseconds: 900), (_) {
-        if (!mounted || _hourly.isEmpty) return;
-        setState(() => _timelineIndex = (_timelineIndex + 1) % _hourly.length);
+      // The 7-day flood outlook gets a slower cadence than the hourly
+      // layers — each frame is a whole day, so it needs a beat longer to
+      // actually read before advancing.
+      final interval = _isFloodLayer
+          ? const Duration(milliseconds: 1400)
+          : const Duration(milliseconds: 900);
+      _playTimer = Timer.periodic(interval, (_) {
+        final list = _activeTimelineList;
+        if (!mounted || list.isEmpty) return;
+        setState(() => _activeTimelineIndex = (_activeTimelineIndex + 1) % list.length);
       });
     } else {
       _playTimer?.cancel();
@@ -299,39 +326,44 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   }
 
   void _scrubTo(int index) {
-    if (_hourly.isEmpty) return;
+    final list = _activeTimelineList;
+    if (list.isEmpty) return;
     if (_isPlaying) _togglePlay(); // dragging the scrubber pauses playback
-    setState(() => _timelineIndex = index.clamp(0, _hourly.length - 1));
+    setState(() => _activeTimelineIndex = index.clamp(0, list.length - 1));
   }
 
   Map<String, dynamic>? get _selectedHour =>
       (_hourly.isNotEmpty && _timelineIndex < _hourly.length) ? _hourly[_timelineIndex] : null;
 
-  // 0..1 read of the selected hour under whichever layer is active, for
-  // both the boundary/legend color and the RainOverlay's strength.
+  Map<String, dynamic>? get _selectedFloodDay =>
+      (_dailyFlood.isNotEmpty && _floodDayIndex < _dailyFlood.length)
+          ? _dailyFlood[_floodDayIndex]
+          : null;
+
+  // The flood-probability layer is colored from the same NORMAL/ADVISORY/
+  // WARNING/CRITICAL set as the status pill and legend — each day already
+  // comes back from the backend with its own alert_level (see
+  // probability_to_alert_level() in backend/app/utils/alerts.py), so this
+  // reuses that instead of computing a color off the raw probability.
+  // Falls back to NORMAL for a missing/unrecognized value rather than
+  // guessing a probability threshold that might not match the backend's.
+  Color _dailyAlertColor(Map<String, dynamic> day) {
+    final raw = day['alert_level']?.toString().toUpperCase();
+    final key = (raw != null && _alertLevelKeys.contains(raw)) ? raw : 'NORMAL';
+    return _alertColors[key]!;
+  }
+
+  // 0..1 read of the selected hour for whichever *hourly* layer is active
+  // (probability/intensity only — the flood layer reads its own daily
+  // value directly in build(), since it isn't on this hourly grid).
   double _hourValue01(Map<String, dynamic> h) {
     num? n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '');
-    if (_radarLayer == _RadarLayer.flood) {
-      final prob = _floodProbForHour(h);
-      return prob?.clamp(0.0, 1.0) ?? (_probability ?? 0).clamp(0.0, 1.0);
-    }
     if (_radarLayer == _RadarLayer.probability) {
       final pct = n(h['rain_probability_pct'])?.toDouble() ?? 0;
       return (pct / 100).clamp(0.0, 1.0);
     }
     final mm = n(h['precipitation'])?.toDouble() ?? 0;
     return (mm / 20).clamp(0.0, 1.0); // 20mm/hr ≈ top of the scale
-  }
-
-  // The daily flood model has no per-hour resolution, so every hour within
-  // the same calendar day reads that day's forecasted probability — falls
-  // back to the live predict-flood probability if the daily outlook hasn't
-  // loaded yet or doesn't cover that date.
-  double? _floodProbForHour(Map<String, dynamic> h) {
-    final t = DateTime.tryParse(h['time']?.toString() ?? '');
-    if (t == null) return null;
-    final key = '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
-    return _floodProbByDate[key];
   }
 
   Future<void> _fetchStatus() async {
@@ -415,25 +447,56 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     final activeStyle = _baseStyles[_baseStyleKey]!;
 
     // Radar timeline: only once the user actually scrubs away from "now"
-    // (index 0) does the boundary follow that hour's probability via the
+    // (index 0) does the boundary follow the selected frame's color via the
     // continuous gradient — matches the timeline's own intent (browsing a
-    // forecasted hour) without hijacking the default view. Previously this
-    // checked `_hourly.isNotEmpty` instead of the timeline position, which
-    // meant the boundary used the continuous gradient the moment the hourly
-    // forecast finished loading (near-instant) — even at rest, on index 0 —
-    // so it never showed the plain ADVISORY/WARNING/CRITICAL color the
-    // status pill shows, only wherever that day's probability happened to
-    // fall on the gradient (e.g. a yellow-green blend instead of solid
-    // yellow for an ADVISORY-range probability). The status pill up top is
-    // untouched either way and always shows the live model alert level.
-    final selectedHour = _selectedHour;
-    final timelineColor = selectedHour != null ? _scaleColor(_hourValue01(selectedHour)) : color;
-    final boundaryColor = (_hourly.isNotEmpty && _timelineIndex != 0) ? timelineColor : color;
+    // forecasted hour/day) without hijacking the default view. At rest, on
+    // index 0, the boundary still shows the plain ADVISORY/WARNING/CRITICAL
+    // color the status pill shows. The status pill up top is untouched
+    // either way and always shows the live model alert level.
+    //
+    // The flood-probability layer reads its own daily frame (_dailyFlood /
+    // _floodDayIndex) instead of the hourly grid the other two layers use
+    // — see _activeTimelineList. It's also colored differently on purpose:
+    // each day already comes back from the backend with its own
+    // NORMAL/ADVISORY/WARNING/CRITICAL alert_level (the same field the
+    // status pill and legend use), so the flood layer is colored from that
+    // same 4-color set via _dailyAlertColor — never the blue-green-yellow-
+    // orange-red radar ramp _scaleColor uses for the other two layers. That
+    // ramp starts at blue, a color that doesn't exist anywhere else in the
+    // app's flood-risk vocabulary, so using it for the flood layer misread
+    // as "the flood animation is stuck on blue" — this keeps every flood
+    // color on screen (boundary, status pill, legend, timeline) drawn from
+    // the exact same 4 colors.
+    Color? frameColor;
+    if (_isFloodLayer) {
+      final day = _selectedFloodDay;
+      if (day != null) frameColor = _dailyAlertColor(day);
+    } else {
+      final hour = _selectedHour;
+      if (hour != null) frameColor = _scaleColor(_hourValue01(hour));
+    }
+    final timelineColor = frameColor ?? color;
+    final boundaryColor = (_activeTimelineList.isNotEmpty && _activeTimelineIndex != 0) ? timelineColor : color;
+
+    // The rain overlay (streaks/clouds/fog animation) rides the hourly
+    // grid's per-hour precipitation, which doesn't mean anything for the
+    // flood layer's daily risk frames — so it's simply switched off while
+    // that layer is active, rather than falling back to a live reading
+    // that has nothing to do with what the timeline is showing.
+    final selectedHour = _isFloodLayer ? null : _selectedHour;
     num? numOf(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '');
+    final showRainOverlay = !_isFloodLayer;
     final overlayRainfallMm = selectedHour != null
         ? (numOf(selectedHour['precipitation'])?.toDouble() ?? 0)
         : _liveRainfallMm;
     final overlayCondition = selectedHour?['condition']?.toString();
+
+    // Chrome (legend scale, "radar layers" button, timeline bar itself)
+    // stays visible as long as *either* forecast has loaded, even if the
+    // one backing the currently selected layer is still in flight — avoids
+    // the toolbar jumping around as the two independent fetches resolve.
+    final anyTimelineData = _hourly.isNotEmpty || _dailyFlood.isNotEmpty;
+
 
     // Everything is wrapped in one outer SafeArea (top only — the bottom
     // nav chrome, if any, is handled by whatever hosts this screen) so
@@ -482,14 +545,17 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
 
                     // ── Radar animation (rain streaks / clouds / fog /
                     // lightning) — sits above the basemap, below markers
-                    // and chrome.
-                    Positioned.fill(
-                      child: RainOverlay(
-                        rainfallMm: overlayRainfallMm,
-                        condition: overlayCondition,
-                        windSignal: _liveWindSignal.toDouble(),
+                    // and chrome. Hidden for the flood-probability layer,
+                    // since it has no rainfall/condition data of its own
+                    // to animate (see showRainOverlay above).
+                    if (showRainOverlay)
+                      Positioned.fill(
+                        child: RainOverlay(
+                          rainfallMm: overlayRainfallMm,
+                          condition: overlayCondition,
+                          windSignal: _liveWindSignal.toDouble(),
+                        ),
                       ),
-                    ),
 
                     // ── Status bar ─────────────────────────────────────────
                     Positioned(top: 10, left: 10, right: 58, child: _statusPill(color)),
@@ -499,16 +565,27 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                     if (_liveWindDirectionDeg != null)
                       Positioned(top: 62, left: 10, child: _windPill()),
 
-                    // ── Vertical intensity legend (left edge, like the
-                    // reference radar app's color scale) — starts below
-                    // the wind pill so the two never overlap.
-                    if (_hourly.isNotEmpty)
-                      Positioned(
-                        top: _liveWindDirectionDeg != null ? 104 : 62,
-                        bottom: 78,
-                        left: 10,
-                        child: _intensityScaleBar(),
-                      ),
+                    // ── Vertical legend (left edge) — a continuous
+                    // blue→red gradient scale for the hourly layers (rain
+                    // probability / intensity), or a compact 4-color key
+                    // for the flood layer (see _intensityScaleBar) —
+                    // starts below the wind pill so the two never overlap.
+                    // The flood key sizes to its own content (top-only
+                    // Positioned) rather than stretching the full strip
+                    // height the gradient bar fills.
+                    if (anyTimelineData)
+                      _isFloodLayer
+                          ? Positioned(
+                              top: _liveWindDirectionDeg != null ? 104 : 62,
+                              left: 10,
+                              child: _intensityScaleBar(),
+                            )
+                          : Positioned(
+                              top: _liveWindDirectionDeg != null ? 104 : 62,
+                              bottom: 78,
+                              left: 10,
+                              child: _intensityScaleBar(),
+                            ),
 
                     // ── Legend panel ───────────────────────────────────────
                     if (_showLegend) Positioned(top: 62, right: 56, child: _legendPanel()),
@@ -518,6 +595,16 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                       top: 62,
                       right: 10,
                       child: MapToolStack(children: [
+                        // "?" help button, first in the stack so it's the
+                        // first thing a resident notices — opens a plain-
+                        // language explainer for every control below it.
+                        Tooltip(
+                          message: 'What do these buttons do?',
+                          child: MapToolButton(
+                            icon: Icons.help_outline_rounded,
+                            onTap: _openHelpSheet,
+                          ),
+                        ),
                         Tooltip(
                           message: _isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
                           child: MapToolButton(
@@ -527,28 +614,37 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                           ),
                         ),
                         Tooltip(
-                          message: 'Toggle legend',
+                          message: 'What do the colors mean?',
                           child: MapToolButton(
-                            icon: Icons.layers_rounded,
+                            // An info icon reads as "explain this" — the
+                            // old layers_rounded icon here looked like a
+                            // second map-layers switcher and was easy to
+                            // confuse with the "Choose what the map shows"
+                            // button below.
+                            icon: Icons.info_outline_rounded,
                             active: _showLegend,
                             onTap: () => setState(() => _showLegend = !_showLegend),
                           ),
                         ),
                         Tooltip(
                           message: _showFacilities
-                              ? 'Hide critical facilities'
-                              : 'Show critical facilities',
+                              ? 'Hide hospitals, schools & fire/police stations'
+                              : 'Show hospitals, schools & fire/police stations',
                           child: MapToolButton(
                             icon: Icons.local_hospital_rounded,
                             active: _showFacilities,
                             onTap: () => setState(() => _showFacilities = !_showFacilities),
                           ),
                         ),
-                        if (_hourly.isNotEmpty)
+                        if (anyTimelineData)
                           Tooltip(
-                            message: 'Radar layers',
+                            message: 'Choose what the map shows',
                             child: MapToolButton(
-                              icon: Icons.tune_rounded,
+                              // This is the actual "which data layer" picker
+                              // (flood risk / rain chance / rainfall), so it
+                              // gets the layers icon — swapped with the
+                              // legend button above for that reason.
+                              icon: Icons.layers_rounded,
                               onTap: _openLayersSheet,
                             ),
                           ),
@@ -586,13 +682,13 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                     // timeline bar when it's showing, instead of the two
                     // overlapping at the bottom-left corner.
                     Positioned(
-                      bottom: _hourly.isNotEmpty ? 66 : 10,
+                      bottom: anyTimelineData ? 66 : 10,
                       left: 10,
                       child: _styleSwitcher(),
                     ),
 
                     // ── Radar timeline scrubber (bottom) ────────────────────
-                    if (_hourly.isNotEmpty)
+                    if (anyTimelineData)
                       Positioned(left: 0, right: 0, bottom: 0, child: _timelineBar()),
                   ]),
                 ),
@@ -875,12 +971,36 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     );
   }
 
-  // ── Vertical intensity scale bar (radar-style legend) ─────────────────────
-  // A gradient strip + numeric ticks, same idea as the reference radar app's
-  // left-edge color scale — maps the same blue→red ramp used to color the
-  // boundary polygon to a value: rain probability (%) or rainfall intensity
-  // (mm/hr), depending on which layer is selected in the layers sheet.
+  // ── Vertical legend (radar-style scale, or a flood color key) ─────────────
+  // Rain probability / intensity: a gradient strip + numeric ticks, same
+  // idea as the reference radar app's left-edge color scale — maps the
+  // blue→red ramp used to color the boundary polygon to a value.
+  // Flood probability: a compact 4-swatch key using the exact same
+  // NORMAL/ADVISORY/WARNING/CRITICAL colors as the status pill and legend
+  // panel, since that's what actually colors this layer (see
+  // _dailyAlertColor) — a numeric gradient scale would just be wrong here.
   Widget _intensityScaleBar() {
+    if (_isFloodLayer) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 9),
+        decoration: BoxDecoration(
+          color: AppColors.bgDark.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.bgBorder),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < _alertLevelKeys.length; i++) ...[
+              if (i != 0) const SizedBox(height: 5),
+              _floodLegendRow(_alertLevelKeys[i]),
+            ],
+          ],
+        ),
+      );
+    }
+
     final isMm = _radarLayer == _RadarLayer.intensity;
     final topLabel = isMm ? '20mm' : '100%';
     final midLabel = isMm ? '10mm' : '50%';
@@ -918,6 +1038,29 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     );
   }
 
+  // Plain-language label for an alert key ("ADVISORY" -> "Advisory"),
+  // reusing AlertLevelType's copy (see models/alert_level.dart) so this
+  // reads the same way the rest of the app describes these levels to
+  // residents, rather than shouting the raw backend key.
+  String _labelForAlertKey(String key) {
+    switch (key) {
+      case 'CRITICAL': return AlertLevelType.critical.label;
+      case 'WARNING':  return AlertLevelType.warning.label;
+      case 'ADVISORY': return AlertLevelType.advisory.label;
+      default:         return AlertLevelType.normal.label;
+    }
+  }
+
+  // One "● Normal" / "● Advisory" / ... row of the flood color key.
+  Widget _floodLegendRow(String key) {
+    final c = _alertColors[key]!;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+      const SizedBox(width: 6),
+      Text(_labelForAlertKey(key), style: TextStyle(color: c, fontSize: 9, fontWeight: FontWeight.w700)),
+    ]);
+  }
+
   // ── Radar timeline scrubber ────────────────────────────────────────────────
   String _hourLabel(DateTime t) {
     final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
@@ -925,24 +1068,157 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     return '$h$ampm';
   }
 
-  Widget _timelineBar() {
+  // "Today" / "Tomorrow" / weekday abbreviation for the flood layer's
+  // 7-day timeline — mirrors _hourLabel's role for the hourly layers.
+  String _dayLabel(DateTime t) {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final diff = DateTime(t.year, t.month, t.day).difference(startOfDay).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return weekdays[t.weekday - 1];
+  }
+
+  Widget _timelineBar() => _isFloodLayer ? _floodTimelineBar() : _hourlyTimelineBar();
+
+  // Flood-probability layer: one frame per day, next 7 days.
+  Widget _floodTimelineBar() {
+    final days = _dailyFlood;
+    if (days.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        decoration: BoxDecoration(
+          color: AppColors.bgDark.withValues(alpha: 0.92),
+          border: Border(top: BorderSide(color: AppColors.bgBorder)),
+        ),
+        child: const Text('Loading 7-day flood outlook…',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+      );
+    }
+
+    final index = _floodDayIndex.clamp(0, days.length - 1);
+    final day = days[index];
+    final date = DateTime.tryParse(day['date']?.toString() ?? '');
+    final prob = (day['flood_probability'] as num?)?.toDouble();
+    final dayColor = _dailyAlertColor(day);
+    // Leads with the plain-language level ("Advisory") ahead of the raw
+    // percentage — a resident checking this doesn't need to do the mental
+    // math of "42% means what, exactly?" themselves.
+    final raw = day['alert_level']?.toString().toUpperCase();
+    final alertKey = (raw != null && _alertLevelKeys.contains(raw)) ? raw : 'NORMAL';
+    final readout = prob != null
+        ? '${_labelForAlertKey(alertKey)} · ${(prob * 100).toStringAsFixed(0)}% flood risk'
+        : '—';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.bgDark.withValues(alpha: 0.92),
+        border: Border(top: BorderSide(color: AppColors.bgBorder)),
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (date != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(width: 7, height: 7, decoration: BoxDecoration(color: dayColor, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              // Flexible + ellipsis: the readout now reads "Today ·
+              // Advisory · 42% flood risk", which is long enough to
+              // overflow this Row on narrow screens or larger accessibility
+              // text sizes — this caps it at the available width instead
+              // of forcing the Row wider than its container.
+              Flexible(
+                child: Text(
+                  '${_dayLabel(date)} · $readout',
+                  style: const TextStyle(color: AppColors.textPri, fontSize: 11, fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+            ]),
+          ),
+        Row(children: [
+          GestureDetector(
+            onTap: _togglePlay,
+            child: Container(
+              width: 30, height: 30,
+              decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+              child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 18),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                activeTrackColor: AppColors.accent,
+                inactiveTrackColor: AppColors.bgBorder,
+                thumbColor: Colors.white,
+              ),
+              child: Slider(
+                min: 0,
+                max: (days.length - 1).toDouble(),
+                value: index.toDouble(),
+                // Whole-day steps only — unlike the continuous hourly
+                // slider, dragging between two days should snap to a day
+                // rather than land on a value with no matching forecast.
+                divisions: days.length > 1 ? days.length - 1 : null,
+                onChanged: (v) => _scrubTo(v.round()),
+              ),
+            ),
+          ),
+        ]),
+        // One tick per day — at most 7, so no need to thin these out the
+        // way the hourly bar does every 4h.
+        Row(
+          children: List.generate(days.length, (i) => i).map((i) {
+            final t = DateTime.tryParse(days[i]['date']?.toString() ?? '');
+            return Expanded(
+              child: Text(
+                t != null ? _dayLabel(t) : '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textMuted, fontSize: 9),
+              ),
+            );
+          }).toList(),
+        ),
+      ]),
+    );
+  }
+
+  // Rain-probability / rainfall-intensity layers: one frame per hour, next
+  // 24h — this is the screen's original timeline bar, unchanged apart from
+  // dropping the flood case (flood now has its own bar above).
+  Widget _hourlyTimelineBar() {
+    if (_hourly.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        decoration: BoxDecoration(
+          color: AppColors.bgDark.withValues(alpha: 0.92),
+          border: Border(top: BorderSide(color: AppColors.bgBorder)),
+        ),
+        child: const Text('Loading hourly forecast…',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
+      );
+    }
+
     final hour = _selectedHour;
     final time = hour != null ? DateTime.tryParse(hour['time']?.toString() ?? '') : null;
     String readout = '';
     if (hour != null) {
       switch (_radarLayer) {
-        case _RadarLayer.flood:
-          {
-            final prob = _floodProbForHour(hour) ?? _probability;
-            readout = prob != null ? '${(prob * 100).toStringAsFixed(0)}% flood risk' : '—';
-          }
-          break;
         case _RadarLayer.probability:
           readout = '${(hour['rain_probability_pct'] ?? '—')}% rain chance';
           break;
         case _RadarLayer.intensity:
           readout = '${(hour['precipitation'] ?? '—')}mm/hr';
           break;
+        case _RadarLayer.flood:
+          break; // unreachable — flood layer renders via _floodTimelineBar
       }
     }
 
@@ -984,8 +1260,8 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
               ),
               child: Slider(
                 min: 0,
-                // This bar is only ever built when _hourly.isNotEmpty (see
-                // the Positioned guard in build()), so length - 1 is always >= 0.
+                // Guarded by the _hourly.isEmpty check above, so
+                // length - 1 is always >= 0 here.
                 max: (_hourly.length - 1).toDouble(),
                 value: _timelineIndex.clamp(0, _hourly.length - 1).toDouble(),
                 onChanged: (v) => _scrubTo(v.round()),
@@ -1013,6 +1289,74 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     );
   }
 
+  // ── Help sheet ───────────────────────────────────────────────────────────
+  // Plain-language explainer for the icon-only tool stack — for a resident
+  // who's never used a radar-style map app before and doesn't know what
+  // "toggle legend" or "radar layers" mean just from a picture. One row per
+  // button, in the same top-to-bottom order they appear in the stack.
+  void _openHelpSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.bgDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Map controls', style: TextStyle(
+                color: AppColors.textPri, fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            const Text("What each button on the map's right edge does.",
+                style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+            const SizedBox(height: 16),
+            _helpRow(Icons.fullscreen_rounded, 'Fullscreen',
+                'Makes the map fill the whole screen so it\'s easier to see.'),
+            _helpRow(Icons.info_outline_rounded, 'What do the colors mean?',
+                'Shows what green, yellow, orange, and red mean for your barangay.'),
+            _helpRow(Icons.local_hospital_rounded, 'Hospitals & evacuation help',
+                'Shows nearby hospitals, schools, police, and fire stations on the map.'),
+            if (_hourly.isNotEmpty || _dailyFlood.isNotEmpty)
+              _helpRow(Icons.layers_rounded, 'Choose what the map shows',
+                  'Switch between flood risk, chance of rain, and how much rain is expected — and play back the forecast on the timeline at the bottom.'),
+            _helpRow(Icons.center_focus_strong_rounded, 'Recenter',
+                'Brings the map back to Barangay Triangulo if you\'ve scrolled away.'),
+            _helpRow(Icons.add_rounded, 'Zoom in / out',
+                'Makes the map bigger or smaller. You can also pinch the map with two fingers.'),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _helpRow(IconData icon, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 30, height: 30,
+          decoration: BoxDecoration(
+            color: AppColors.accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: AppColors.accent, size: 16),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(
+                color: AppColors.textPri, fontSize: 13, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            Text(description, style: const TextStyle(
+                color: AppColors.textMuted, fontSize: 11, height: 1.3)),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   // ── Radar layers sheet ──────────────────────────────────────────────────
   // Mobile equivalent of the reference UI's "Radar layers" panel — a short
   // list of which data drives the timeline's coloring, each with a radio
@@ -1020,40 +1364,41 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   void _openLayersSheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppColors.bgDark,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) => SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Radar layers', style: TextStyle(
+              const Text('Choose what the map shows', style: TextStyle(
                   color: AppColors.textPri, fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              const Text('Choose what the timeline colors the barangay by.',
+              const Text('Pick what the barangay is colored by, and what plays on the timeline below.',
                   style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
               const SizedBox(height: 16),
               _layerOption(
-                title: 'Flood probability',
-                subtitle: "This day's forecasted flood risk (default)",
+                title: 'Flood risk',
+                subtitle: 'Animates the flood forecast for the next 7 days (default)',
                 icon: Icons.warning_amber_rounded,
                 value: _RadarLayer.flood,
                 setSheetState: setSheetState,
               ),
               const SizedBox(height: 8),
               _layerOption(
-                title: 'Rain probability',
-                subtitle: 'Chance of rain each hour, next 24h',
+                title: 'Chance of rain',
+                subtitle: 'How likely it is to rain each hour, next 24 hours',
                 icon: Icons.water_drop_outlined,
                 value: _RadarLayer.probability,
                 setSheetState: setSheetState,
               ),
               const SizedBox(height: 8),
               _layerOption(
-                title: 'Rainfall intensity',
-                subtitle: 'Forecast mm/hr, next 24h',
+                title: 'Amount of rain',
+                subtitle: 'How much rain is expected each hour, next 24 hours',
                 icon: Icons.grain_rounded,
                 value: _RadarLayer.intensity,
                 setSheetState: setSheetState,
@@ -1075,7 +1420,18 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     final selected = _radarLayer == value;
     return GestureDetector(
       onTap: () {
-        setState(() => _radarLayer = value);
+        if (_radarLayer != value) {
+          // Switching layers switches timeline grids too (daily <-> hourly)
+          // — stop any playback so it doesn't keep animating the layer you
+          // just left. Each layer remembers its own scrub position
+          // (_floodDayIndex vs _timelineIndex) independently.
+          _playTimer?.cancel();
+          _playTimer = null;
+          setState(() {
+            _radarLayer = value;
+            _isPlaying = false;
+          });
+        }
         setSheetState(() {}); // repaint the sheet's radio dots immediately
       },
       child: Container(
