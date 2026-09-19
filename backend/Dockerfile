@@ -27,6 +27,12 @@ COPY flood_cnn_14day_encdec_model.h5 .
 COPY flood_scaler.pkl .
 COPY feature_metadata.json .
 
+# Per-model held-out test metrics (registry.py's _load_per_model_reliability
+# reads this at startup for LSTM/CNN's real precision/recall/f1/false-alarm
+# numbers). Without it, those two models silently fall back to a shared
+# placeholder reliability block instead of their own measured performance.
+COPY all_models_per_horizon_metrics.csv .
+
 EXPOSE 8080
 
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]

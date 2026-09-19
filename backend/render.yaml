@@ -1,0 +1,32 @@
+# Render Blueprint -- lets you deploy this whole service with
+# "New +" -> "Blueprint" in the Render dashboard, pointed at this repo,
+# instead of configuring a Web Service by hand.
+#
+# Every env var below is optional (see .env.example for what each one
+# does); they're listed here with their defaults so they're visible and
+# editable from the Render dashboard after the first deploy.
+#
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: agos-flood-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: FLOOD_DEFAULT_MODEL
+        value: gru
+      - key: WEATHER_CACHE_TTL_MINUTES
+        value: "180"
+      - key: WEATHER_FAILURE_COOLDOWN_MINUTES
+        value: "5"
+      # Optional restart-proof weather cache -- set these two in the
+      # Render dashboard after creating the service if you want it
+      # (sync: false means Render won't try to source a value from this
+      # file; it prompts you for one instead and keeps it secret).
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

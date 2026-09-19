@@ -53,13 +53,15 @@
   "api_5d_min": 0.0,
   "api_5d_max": 906.6154515795131,
   "typhoon_signal_column": "typhoon_signal",
-  "note": "typhoon_signal sa dataset ay 0-4 (parehong scale ng wind_to_signal() thresholds sa API backend, kaya walang kailangang i-remap dito). prev_flood ay EXCLUDED sa future_feature_order dahil hindi ito known-in-advance. enriched_features_used (kung meron) ay dapat ma-fetch din ng main.py mula sa live Open-Meteo call -- ito ang nag-uugnay sa training dataset at live inference features, kaya laging kasama ito sa feature_order/future_feature_order kapag backfilled ang ginamit.",
+  "note": "typhoon_signal in the dataset is 0-4 (same scale as the wind_to_signal() thresholds in the API backend, so no remapping is needed). prev_flood is EXCLUDED from future_feature_order because it isn't known in advance. enriched_features_used (if any) must also be fetched by app/features/engineering.py from the live Open-Meteo call -- that's what links the training dataset to the live inference features.",
   "reliability": {
     "measured_on": "held-out test split (20% of sequential data, never seen in training)",
-    "avg_precision_across_14day_horizon": 0.5327619649214798,
-    "avg_recall_across_14day_horizon": 0.7201876951388458,
-    "avg_f1_across_14day_horizon": 0.6123968380672473,
-    "avg_false_alarm_rate": 0.09805672534701414,
-    "honest_caveat": "Dataset has 1825 days of history and 238 flood events total. Metrics beyond ~day 7-10 also inherit Open-Meteo's own forecast uncertainty at longer lead times, on top of the model's own error -- treat flood_probability as decision-support, not a certainty score."
+    "avg_accuracy_across_14day_horizon": 0.8834586466165414,
+    "avg_precision_across_14day_horizon": 0.5525910775803979,
+    "avg_recall_across_14day_horizon": 0.7012372578210616,
+    "avg_f1_across_14day_horizon": 0.6180561428099038,
+    "avg_false_alarm_rate": 0.08823939138846493,
+    "avg_missed_event_rate": 0.2987627421727809,
+    "honest_caveat": "Metrics beyond ~day 7-10 also inherit Open-Meteo's own forecast uncertainty at longer lead times, on top of the model's own error -- treat flood_probability as decision-support, not a certainty score."
   }
 }

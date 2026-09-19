@@ -30,10 +30,8 @@ side by side.
     │
     ├── weather/
     │   ├── cache.py            # in-process TTL cache + status
-    │   ├── persistence.py      # Supabase restart-proof source of truth
-    │   ├── client.py           # Open-Meteo fetch, retries, circuit breaker
-    │   ├── pagasa_client.py    # scrapes PAGASA's Pili AWS station (ground truth)
-    │   └── calibration.py      # bias-corrects Open-Meteo against PAGASA
+    │   ├── persistence.py      # Upstash Redis restart-proof fallback
+    │   └── client.py           # Open-Meteo fetch, retries, circuit breaker
     │
     ├── features/
     │   ├── aggregation.py      # hourly→daily aggregation, live_metrics
@@ -122,52 +120,8 @@ GET /api/forecast-flood           # same shape as the original single-model API,
 GET /api/forecast          # 48h hourly + 14-day daily weather (no flood model involved)
 GET /api/models            # which algorithms are actually loaded and ready
 GET /api/test-openmeteo    # raw Open-Meteo connectivity check
-GET /api/test-pagasa       # raw PAGASA AWS connectivity/parse check
-GET /api/calibration       # PAGASA bias-correction status (samples, per-field bias)
 GET /                      # health check
 ```
-
-## PAGASA ground-truth calibration
-
-Open-Meteo is a numerical-weather-model estimate, not an instrument
-reading. PAGASA operates a real Automated Weather Station (AWS) network,
-and **"Pili, Camarines Sur AWS" (site 5037)** — ~15 km from the Naga City
-forecast point, also the site of Naga Airport — is the closest official
-station. It's treated as ground truth: every fresh Open-Meteo fetch is
-bias-corrected against it before being cached and fed into the model.
-
-How it works:
-
-- PAGASA doesn't publish a documented API, only a live HTML table at
-  `bagong.pagasa.dost.gov.ph/automated-weather-station`. `pagasa_client.py`
-  scrapes that page for station 5037's row, discarding readings that are
-  stale or unparseable (a few stations on that page are known to report
-  stuck/broken timestamps).
-- Each time `refresh_weather_from_openmeteo()` performs a genuine live
-  Open-Meteo call (only from `/api/cron/refresh-weather`, on your
-  external schedule -- never from a user-facing request), `calibration.py`
-  pairs that response with a fresh PAGASA reading and stores the sample
-  (persisted to Supabase so it survives a restart, bounded to
-  `PAGASA_CALIBRATION_MAX_SAMPLES`).
-- Once a field has at least `PAGASA_CALIBRATION_MIN_SAMPLES` paired
-  samples, its bias (median PAGASA − Open-Meteo difference) is applied
-  as a correction to every Open-Meteo value of that field — current,
-  hourly, and daily alike. Below that threshold, raw Open-Meteo values
-  pass through unmodified.
-- **Corrected fields:** humidity, wind speed, pressure (surface + MSL),
-  temperature.
-- **Not corrected:** precipitation (Open-Meteo's is an hourly
-  accumulation, PAGASA's is an instantaneous mm/hr rate — not directly
-  comparable, and it's the single most safety-critical model input, so
-  an ill-founded correction here is a worse failure mode than leaving it
-  untouched). Soil moisture and wind gusts also aren't corrected, since
-  PAGASA's public AWS table doesn't report either. Rainfall bias is
-  still tracked and visible via `/api/calibration` for transparency.
-
-Env vars: `PAGASA_CALIBRATION_ENABLED` (default `true`),
-`PAGASA_CALIBRATION_MIN_SAMPLES` (default `20`),
-`PAGASA_CALIBRATION_MAX_SAMPLES` (default `500`),
-`PAGASA_MAX_READING_AGE_MINUTES` (default `180`).
 
 ## Notes
 
