@@ -2,10 +2,13 @@
 Builds the two model input tensors (encoder "past" window + decoder
 "future" window) from a single Open-Meteo response.
 
-    past_window:   window_size x n_features    (encoder input)
-    future_window: horizon x n_future_features  (decoder input, driven
-                    by Open-Meteo's actual forecast rather than a blind
-                    extrapolation of past patterns)
+    past_window:     window_size x n_features    (encoder input, scaled)
+    future_window:   horizon x n_future_features  (decoder input, driven
+                      by Open-Meteo's actual forecast rather than a blind
+                      extrapolation of past patterns)
+    past_window_raw: window_size x n_features    (same rows as past_window,
+                      before the StandardScaler transform -- human-readable
+                      units, used by the SHAP explain endpoint)
 
 IMPORTANT: feature engineering is performed across the complete
 past+future timeline before slicing, preserving the original
@@ -270,6 +273,12 @@ def build_prediction_windows(meta, scaler):
     # IDENTIFY PAST/FUTURE POSITIONS
     # ----------------------------------------------------------------------
 
+    # NOTE: the decoder/future window is meant to include TODAY as its
+    # first day (so the API's 14-day forecast starts today instead of
+    # tomorrow) -- mirrors the "Include today and next 13 days" logic in
+    # routes_weather.py. That means the encoder/past window must end
+    # YESTERDAY, not today, so the decoder still immediately follows the
+    # encoder's last day.
     past_positions = [
         i
         for i, d in enumerate(daily_time)
@@ -309,6 +318,14 @@ def build_prediction_windows(meta, scaler):
             past_positions[-window:]
         ]
 
+        # Unscaled version of the same rows -- kept alongside past_block so
+        # callers that need human-readable units (e.g. the SHAP explain
+        # endpoint) don't have to invert the StandardScaler transform or
+        # re-run feature engineering a second time.
+        past_block_raw = feat_matrix[
+            past_positions[-window:]
+        ]
+
         past_dates = [
             daily_time[i]
             for i in past_positions[-window:]
@@ -327,6 +344,17 @@ def build_prediction_windows(meta, scaler):
             )
         )
 
+        have_raw = (
+            feat_matrix[past_positions]
+            if past_positions
+            else np.zeros(
+                (
+                    0,
+                    feat_matrix.shape[1]
+                )
+            )
+        )
+
         pad = np.zeros(
             (
                 window - len(past_positions),
@@ -338,6 +366,13 @@ def build_prediction_windows(meta, scaler):
             [
                 pad,
                 have
+            ]
+        )
+
+        past_block_raw = np.vstack(
+            [
+                pad,
+                have_raw
             ]
         )
 
@@ -497,5 +532,6 @@ def build_prediction_windows(meta, scaler):
         future_block,
         past_dates,
         future_dates,
-        future_enriched
+        future_enriched,
+        past_block_raw
     )

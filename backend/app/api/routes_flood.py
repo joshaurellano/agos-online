@@ -149,25 +149,24 @@ def forecast_flood_default():
 @router.get("/api/predict-flood")
 def predict_flood():
     """
-    Convenience endpoint: returns only TODAY's flood prediction (day_ahead=0)
-    for the default model. Reuses forecast_with_model(), which in turn uses
-    the same weather cache.
+    Convenience endpoint: returns only Day-1 flood prediction for the
+    default model. Reuses forecast_with_model(), which in turn uses the
+    same weather cache.
     """
     full = _run_forecast(DEFAULT_MODEL_KEY)
 
     if full["status"] != "success" or not full["forecast"]:
         return full
 
-    today_entry = full["forecast"][0]
+    day1 = full["forecast"][0]
 
     return {
         "status": "success",
         "model_key": DEFAULT_MODEL_KEY,
-        "alert_level": today_entry["alert_level"],
-        "probability": today_entry["flood_probability"],
+        "alert_level": day1["alert_level"],
+        "probability": day1["flood_probability"],
         "live_metrics": full.get("live_metrics", {}),
         "weather_cache": full.get("weather_cache", {}),
-        "pagasa_calibration": full.get("pagasa_calibration", {}),
         "meta": full["meta"],
     }
 
@@ -186,15 +185,14 @@ def predict_flood_for_model(model_key: str):
     if full["status"] != "success" or not full["forecast"]:
         return full
 
-    today_entry = full["forecast"][0]
+    day1 = full["forecast"][0]
 
     return {
         "status": "success",
         "model_key": model_key,
-        "alert_level": today_entry["alert_level"],
-        "probability": today_entry["flood_probability"],
+        "alert_level": day1["alert_level"],
+        "probability": day1["flood_probability"],
         "live_metrics": full.get("live_metrics", {}),
         "weather_cache": full.get("weather_cache", {}),
-        "pagasa_calibration": full.get("pagasa_calibration", {}),
         "meta": full["meta"],
     }

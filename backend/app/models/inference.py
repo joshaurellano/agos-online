@@ -18,7 +18,6 @@ from app.config.settings import MODEL_REGISTRY, DEFAULT_MODEL_KEY
 from app.features.windows import build_prediction_windows
 from app.weather.client import fetch_weather
 from app.weather.cache import get_cache_status
-from app.weather.calibration import get_calibration_status
 from app.features.aggregation import get_live_metrics
 from app.utils.alerts import probability_to_alert_level
 from app.models.registry import registry
@@ -73,6 +72,11 @@ def _build_forecast_entries(probs, today, future_enriched):
     Same per-day shape the original API returned: date, day_ahead,
     flood_probability, alert_level, confidence_band, plus the enriched
     Open-Meteo fields for that day.
+
+    day_offset 0 = TODAY (not tomorrow) -- the decoder/future window now
+    starts on today's date, so forecast_out[0] is today's forecast and
+    the 14-day horizon runs today..+13, matching the day count Open-Meteo
+    was asked for.
     """
     forecast_out = []
 
@@ -83,7 +87,7 @@ def _build_forecast_entries(probs, today, future_enriched):
 
         forecast_out.append({
             "date": forecast_date.isoformat(),
-            "day_ahead": day_offset,
+            "day_ahead": day_offset + 1,
             "flood_probability": round(p, 4),
             "alert_level": probability_to_alert_level(p),
             "confidence_band": (
@@ -113,12 +117,12 @@ def _meta_block(model_key, feature_metadata):
             "driven by Open-Meteo's actual 14-day forecast)"
         ),
         "note": (
-            "Day 0 (today) through Day+2 = high confidence, Day+3 through "
-            "Day+6 = moderate, Day+7 through Day+13 = general trend/outlook "
-            "only. Longer lead times inherit both the model's uncertainty "
-            "and Open-Meteo forecast uncertainty. If weather_cache.status "
-            "is 'stale_fallback', this forecast is based on the last "
-            "successful Open-Meteo fetch rather than a fresh one -- check "
+            "Days 1-3 = high confidence, Days 4-7 = moderate, "
+            "Days 8-14 = general trend/outlook only. Longer lead times "
+            "inherit both the model's uncertainty and Open-Meteo forecast "
+            "uncertainty. If weather_cache.status is 'stale_fallback', "
+            "this forecast is based on the last successful Open-Meteo "
+            "fetch rather than a fresh one -- check "
             "weather_cache.age_minutes and significantly_stale."
         ),
         "assumptions": [
@@ -142,14 +146,19 @@ def _meta_block(model_key, feature_metadata):
             ),
         ],
         "model_reliability": {
+            "avg_accuracy": reliability.get("avg_accuracy_across_14day_horizon"),
             "avg_precision": reliability.get("avg_precision_across_14day_horizon"),
             "avg_recall": reliability.get("avg_recall_across_14day_horizon"),
             "avg_f1": reliability.get("avg_f1_across_14day_horizon"),
             "avg_false_alarm_rate": reliability.get("avg_false_alarm_rate"),
+            "avg_missed_event_rate": reliability.get("avg_missed_event_rate"),
             "measured_on": reliability.get("measured_on"),
             "plain_language": (
                 "Treat flood_probability as a decision-support signal, "
-                "not a certainty score."
+                "not a certainty score. Accuracy is overall correctness "
+                "across all days (flood and non-flood); missed_event_rate "
+                "is the share of actual floods the model failed to flag "
+                "(higher is worse -- it's the complement of recall)."
             ),
         },
         "enriched_metrics_used_by_model": feature_metadata.get("enriched_features_used", []),
@@ -174,6 +183,7 @@ def forecast_with_model(model_key):
         past_dates,
         future_dates,
         future_enriched,
+        _past_window_raw,
     ) = build_prediction_windows(registry.feature_metadata, registry.scaler)
 
     probs = _predict_probs(model_key, past_window, future_window)
@@ -188,7 +198,6 @@ def forecast_with_model(model_key):
         "status": "success",
         "generated_at": current_time,
         "weather_cache": get_cache_status(),
-        "pagasa_calibration": get_calibration_status(),
         "model_input_past_dates": past_dates,
         "model_input_forecast_dates": future_dates,
         "live_metrics": live_metrics,
@@ -227,6 +236,7 @@ def compare_models(model_keys=None):
         past_dates,
         future_dates,
         future_enriched,
+        _past_window_raw,
     ) = build_prediction_windows(registry.feature_metadata, registry.scaler)
 
     weather_data = fetch_weather()
@@ -261,7 +271,7 @@ def compare_models(model_keys=None):
 
         comparison.append({
             "date": forecast_date.isoformat(),
-            "day_ahead": day_offset,
+            "day_ahead": day_offset + 1,
             "probabilities": {key: round(p, 4) for key, p in day_probs.items()},
             "alert_levels": alert_levels,
             "ensemble_mean_probability": round(mean_p, 4),
@@ -274,7 +284,6 @@ def compare_models(model_keys=None):
         "status": "success",
         "generated_at": current_time,
         "weather_cache": get_cache_status(),
-        "pagasa_calibration": get_calibration_status(),
         "model_input_past_dates": past_dates,
         "model_input_forecast_dates": future_dates,
         "live_metrics": live_metrics,

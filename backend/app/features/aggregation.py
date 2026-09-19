@@ -114,12 +114,6 @@ def get_live_metrics(data):
         "max_wind_kph":
             wind_kph,
 
-        "wind_direction_deg":
-            current.get(
-                "wind_direction_10m",
-                None
-            ),
-
         "pressure_msl_hpa":
             current.get(
                 "pressure_msl",

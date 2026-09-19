@@ -31,20 +31,17 @@ weather_cache = {
     # Whether the last returned data was stale fallback data.
     "using_stale_data": False,
 
-    # True if this cache entry was loaded from Supabase (either at
-    # startup, or because the in-process cache had gone stale), rather
-    # than written by this process performing a live Open-Meteo fetch.
+    # True if this cache entry was loaded from Upstash at startup, rather
+    # than fetched during this process's lifetime.
     "loaded_from_disk": False,
 
-    # "supabase" if the current data came from the persisted snapshot,
-    # or None (this process wrote it directly via a live fetch, or
-    # nothing loaded yet).
+    # "upstash" if the current data came from the persisted fallback,
+    # or None (live fetch / nothing loaded yet).
     "fallback_source": None,
 
-    # Wall-clock time of the most recent exhausted-retries failure from
-    # refresh_weather_from_openmeteo(). Used by the cooldown/circuit
-    # breaker so repeated cron calls during an Open-Meteo outage don't
-    # each re-trigger a full retry storm.
+    # Wall-clock time of the most recent exhausted-retries failure.
+    # Used by the cooldown/circuit-breaker so repeated incoming requests
+    # don't each re-trigger a full retry storm against Open-Meteo.
     "last_failure_at": None,
 }
 

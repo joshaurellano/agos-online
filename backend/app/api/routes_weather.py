@@ -11,7 +11,6 @@ from fastapi import APIRouter
 
 from app.weather.client import fetch_weather, WeatherUnavailableError
 from app.weather.cache import get_cache_status
-from app.weather.calibration import get_calibration_status
 from app.features.aggregation import hourly_to_daily_mean, get_live_metrics
 from app.utils.alerts import wmo_label, wind_to_signal
 
@@ -192,45 +191,6 @@ def get_forecast():
                 start_idx = 0
 
         # ------------------------------------------------------------------
-        # MINUTELY (15-MIN STEPS) DATA
-        # ------------------------------------------------------------------
-
-        minutely_time = data.get(
-            "minutely_15",
-            {}
-        ).get(
-            "time",
-            []
-        )
-
-        m_precip = data.get(
-            "minutely_15",
-            {}
-        ).get(
-            "precipitation",
-            []
-        )
-
-        # First 15-min interval that covers "now" -- ISO8601 strings sort
-        # lexicographically the same as chronologically, so a plain string
-        # comparison against current_time (minute precision) works here.
-        start_idx_m = 0
-
-        if current_time:
-
-            try:
-
-                start_idx_m = next(
-                    i
-                    for i, t in enumerate(minutely_time)
-                    if t >= current_time
-                )
-
-            except StopIteration:
-
-                start_idx_m = 0
-
-        # ------------------------------------------------------------------
         # SAFE VALUE
         # ------------------------------------------------------------------
 
@@ -257,48 +217,6 @@ def get_forecast():
                 )
 
             return v
-
-        # ------------------------------------------------------------------
-        # MINUTELY OUTPUT
-        # ------------------------------------------------------------------
-        # Each entry is a 15-minute step. precipitation_mm is Open-Meteo's
-        # raw accumulated total for that 15-minute window; rate_mmhr is the
-        # same amount expressed as an hourly rate (x4) so the frontend can
-        # feed it straight into the same PAGASA hourly thresholds already
-        # used for the current/hourly rainfall badges, without a second set
-        # of 15-minute-specific thresholds to keep in sync.
-
-        minutely_out = []
-
-        for i in range(
-            start_idx_m,
-            min(
-                start_idx_m + 8,
-                len(minutely_time)
-            )
-        ):
-
-            precip_15 = _safe_val(
-                m_precip,
-                i,
-                2,
-                0.0
-            ) or 0.0
-
-            minutely_out.append({
-
-                "time":
-                    minutely_time[i],
-
-                "precipitation_mm":
-                    precip_15,
-
-                "precipitation_rate_mmhr":
-                    round(
-                        precip_15 * 4,
-                        2
-                    ),
-            })
 
         # ------------------------------------------------------------------
         # HOURLY OUTPUT
@@ -725,9 +643,6 @@ def get_forecast():
             "weather_cache":
                 get_cache_status(),
 
-            "pagasa_calibration":
-                get_calibration_status(),
-
             "outlook": {
 
                 "next_6h_rain_mm":
@@ -763,9 +678,6 @@ def get_forecast():
                     data
                 ),
 
-            "minutely":
-                minutely_out,
-
             "hourly":
                 hourly_out,
 
@@ -793,9 +705,6 @@ def get_forecast():
             "weather_cache":
                 get_cache_status(),
 
-            "minutely":
-                [],
-
             "hourly":
                 [],
 
@@ -815,9 +724,6 @@ def get_forecast():
 
             "weather_cache":
                 get_cache_status(),
-
-            "minutely":
-                [],
 
             "hourly":
                 [],

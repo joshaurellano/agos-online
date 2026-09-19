@@ -28,15 +28,23 @@ except ImportError:
 
 from app.config.settings import MODEL_REGISTRY, SCALER_FILE, FEATURE_METADATA_FILE
 
+if TF_AVAILABLE:
+    # Must run before any of the three .h5 files are loaded -- see
+    # keras_compat.py for why this is needed and why it's safe.
+    from app.models.keras_compat import patch_incompatible_initializers
+    patch_incompatible_initializers()
+
 
 _FALLBACK_RELIABILITY = {
     "measured_on":
         "held-out test split "
         "(fallback -- feature_metadata.json missing 'reliability')",
+    "avg_accuracy_across_14day_horizon": 0.720,
     "avg_precision_across_14day_horizon": 0.310,
     "avg_recall_across_14day_horizon": 0.575,
     "avg_f1_across_14day_horizon": 0.402,
     "avg_false_alarm_rate": 0.249,
+    "avg_missed_event_rate": 0.425,
 }
 
 # model.py writes this per-horizon-day CSV for ALL THREE algorithms
@@ -138,10 +146,11 @@ class ModelRegistry:
     def _load_per_model_reliability(self):
         """
         Reads all_models_per_horizon_metrics.csv (written by model.py for
-        LSTM/GRU/CNN together) and averages precision/recall/f1/false-alarm
-        across the 14-day horizon, per model. Returns {} if the file isn't
-        present -- that's expected for older training runs, and callers
-        fall back to _FALLBACK_RELIABILITY / the GRU-only block instead.
+        LSTM/GRU/CNN together) and averages accuracy/precision/recall/f1/
+        false-alarm-rate/missed-event-rate across the 14-day horizon, per
+        model. Returns {} if the file isn't present -- that's expected for
+        older training runs, and callers fall back to _FALLBACK_RELIABILITY
+        / the GRU-only block instead.
         """
         if not os.path.exists(ALL_MODELS_METRICS_FILE):
             return {}
@@ -158,12 +167,16 @@ class ModelRegistry:
                         continue
 
                     bucket = sums.setdefault(key, {
-                        "precision": 0.0, "recall": 0.0,
+                        "accuracy": 0.0, "precision": 0.0, "recall": 0.0,
                         "f1_score": 0.0, "false_alarm_rate": 0.0,
+                        "missed_event_rate": 0.0,
                     })
                     counts[key] = counts.get(key, 0) + 1
 
-                    for field in ("precision", "recall", "f1_score", "false_alarm_rate"):
+                    for field in (
+                        "accuracy", "precision", "recall", "f1_score",
+                        "false_alarm_rate", "missed_event_rate",
+                    ):
                         try:
                             bucket[field] += float(row.get(field, 0.0) or 0.0)
                         except (TypeError, ValueError):
@@ -177,10 +190,12 @@ class ModelRegistry:
             n = max(counts.get(key, 1), 1)
             out[key] = {
                 "measured_on": "held-out test split (20% of sequential data, never seen in training)",
+                "avg_accuracy_across_14day_horizon": bucket["accuracy"] / n,
                 "avg_precision_across_14day_horizon": bucket["precision"] / n,
                 "avg_recall_across_14day_horizon": bucket["recall"] / n,
                 "avg_f1_across_14day_horizon": bucket["f1_score"] / n,
                 "avg_false_alarm_rate": bucket["false_alarm_rate"] / n,
+                "avg_missed_event_rate": bucket["missed_event_rate"] / n,
             }
         return out
 
