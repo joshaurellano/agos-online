@@ -1,16 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-// Overridable so you can point this at the mock (flood-api-mock) during
-// testing/demo without editing code -- set the MODEL_BASE_URL secret via
-// `supabase secrets set MODEL_BASE_URL=https://<your-mock-url>` and unset
-// it (or set it back) to return to production.
-const BASE_URL            = Deno.env.get('MODEL_BASE_URL') ?? 'https://flood-api-553657561163.asia-southeast1.run.app'
-const BACKUP_BASE_URL     = 'https://agos-flood-predict.onrender.com'
-const MODEL_URL           = `${BASE_URL}/api/predict-flood`               // unchanged from before
-const BACKUP_MODEL_URL    = `${BACKUP_BASE_URL}/api/predict-flood`
-const MODEL_KEY           = 'gru'                                          // matches backend DEFAULT_MODEL_KEY
-const FORECAST_URL        = `${BASE_URL}/api/forecast-flood/${MODEL_KEY}`
-const BACKUP_FORECAST_URL = `${BACKUP_BASE_URL}/api/forecast-flood/${MODEL_KEY}`
+import { fetchPrediction, fetchForecast } from '../_shared/model-api.ts'
+import { checkOutlook } from '../_shared/outlook.ts'
 
 const ALERT_MESSAGES: Record<string, string> = {
   ADVISORY: 'AGOS Alert: ADVISORY level reached...',
@@ -30,52 +20,51 @@ const STILL_ELEVATED_REMINDER_HOURS = 3  // remind at most this often while elev
 // #4 Downgrade caution
 const FORECAST_LOOKAHEAD_DAYS = 3
 
-// Piggyback check-forecast onto THIS cron instead of maintaining a second
-// one. poll-flood runs every 5 min; this only actually fires once per
-// CHECK_FORECAST_EVERY_HOURS window (whichever run lands in that hour's
-// first 5 minutes) -- so check-forecast still only runs every few hours,
-// it's just triggered by poll-flood's existing schedule instead of its own.
-const CHECK_FORECAST_EVERY_HOURS = 4
+// 3-day outlook: save the forecast window into forecast_snapshots ONCE PER
+// DAY (Manila time), from FORECAST_SNAPSHOT_HOUR_MANILA onward. This runs off
+// poll-flood's existing 5-minute cron, so if the model is down at 06:00 it
+// simply retries on the next cycle until a snapshot for today is saved.
+// The outlook check itself only ever reads that table.
+const FORECAST_SNAPSHOT_HOUR_MANILA = 6   // 6:00 AM Asia/Manila
+const MANILA_OFFSET_MS = 8 * 3_600_000    // UTC+8, no DST
 
-async function maybeTriggerForecastCheck(supabaseUrl: string, serviceRoleKey: string) {
-  const now = new Date()
-  const isTriggerWindow =
-    now.getUTCHours() % CHECK_FORECAST_EVERY_HOURS === 0 && now.getUTCMinutes() < 5
-
-  if (!isTriggerWindow) return
-
-  try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/check-forecast`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${serviceRoleKey}` },
-    })
-    console.log(`Piggybacked check-forecast trigger: ${res.status}`)
-  } catch (err) {
-    // Never let a forecast-check hiccup affect poll-flood's own job.
-    console.error('Piggybacked check-forecast trigger failed:', err.message)
-  }
+function manilaParts(ms: number) {
+  const d = new Date(ms + MANILA_OFFSET_MS)
+  return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() }
 }
 
-// Fetches JSON from a primary URL, falling back to a backup host on any
-// failure (network error, non-2xx, or an application-level `status: "error"`
-// body) -- mirrors the fallback pattern already used on the frontend
-// (modelApi.js fetchModelJson), so predict/forecast calls here are no more
-// fragile than the client's.
-async function fetchModelData(primaryUrl: string, backupUrl: string) {
-  try {
-    const res = await fetch(primaryUrl)
-    if (!res.ok) throw new Error(`Primary API error: ${res.status}`)
-    const data = await res.json()
-    if (data.status && data.status !== 'success') throw new Error(data.message || 'Primary API returned error status')
-    return data
-  } catch (err) {
-    console.error(`Primary fetch failed (${primaryUrl}): ${err.message} — trying backup`)
-    const res = await fetch(backupUrl)
-    if (!res.ok) throw new Error(`Backup API error: ${res.status}`)
-    const data = await res.json()
-    if (data.status && data.status !== 'success') throw new Error(data.message || 'Backup API returned error status')
-    return data
-  }
+async function maybeSaveForecastSnapshot(supabase: any) {
+  const now = manilaParts(Date.now())
+  if (now.hour < FORECAST_SNAPSHOT_HOUR_MANILA) return
+
+  const { data: latest } = await supabase
+    .from('forecast_snapshots')
+    .select('created_at')
+    .eq('source', 'live')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  // Already saved one today.
+  if (latest && manilaParts(new Date(latest.created_at).getTime()).date === now.date) return
+
+  const forecastData = await fetchForecast()
+  const upcoming = (forecastData.forecast ?? []).slice(0, FORECAST_LOOKAHEAD_DAYS)
+  if (upcoming.length === 0) throw new Error('forecast response had no days')
+
+  // The worst (highest-probability) day drives the tier -- a single bad day
+  // 2 days out matters even if day 1 and 3 look fine.
+  const worst = upcoming.reduce((max: any, day: any) =>
+    (day.flood_probability ?? 0) > (max.flood_probability ?? 0) ? day : max
+  )
+
+  const { error } = await supabase.from('forecast_snapshots').insert({
+    days: upcoming.map((d: any) => ({ date: d.date, flood_probability: d.flood_probability ?? 0 })),
+    worst_date: String(worst.date),
+    worst_probability: worst.flood_probability ?? 0,
+  })
+  if (error) throw new Error(error.message)
+  console.log('forecast snapshot saved')
 }
 
 // #1: has probability jumped by >= RAPID_RISE_THRESHOLD within the window?
@@ -131,7 +120,7 @@ async function isDueForReminder(supabase: any, hours: number) {
 // must never block the real downgrade alert.
 async function buildDowngradeMessage(defaultMessage: string): Promise<string> {
   try {
-    const forecastData = await fetchModelData(FORECAST_URL, BACKUP_FORECAST_URL)
+    const forecastData = await fetchForecast()
     const upcoming = (forecastData.forecast ?? []).slice(0, FORECAST_LOOKAHEAD_DAYS)
     const risky = upcoming.find((d: any) => (d.flood_probability ?? 0) >= 0.25) // ADVISORY tier+
 
@@ -155,7 +144,7 @@ Deno.serve(async () => {
   // 1. Fetch current prediction
   let data
   try {
-    data = await fetchModelData(MODEL_URL, BACKUP_MODEL_URL)
+    data = await fetchPrediction()
   } catch (err) {
     console.error('predict-flood fetch failed entirely:', err.message)
     return new Response(`model fetch error: ${err.message}`, { status: 502 })
@@ -220,12 +209,20 @@ Deno.serve(async () => {
     status:      data.status ?? null,
   })
 
-  // Piggyback: nudge check-forecast roughly every CHECK_FORECAST_EVERY_HOURS
-  // hours, off this same cron, instead of running a second one.
-  await maybeTriggerForecastCheck(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  )
+  // 5. 3-day outlook. Each step is isolated: a forecast hiccup must never
+  // affect the current-conditions alerting above.
+  try {
+    await maybeSaveForecastSnapshot(supabase)
+  } catch (err) {
+    console.error('Forecast snapshot failed:', err.message)
+  }
+  try {
+    // Cheap when there's nothing new (one read). Runs every cycle so a snapshot
+    // whose check failed once is retried on the next run.
+    console.log('outlook check:', await checkOutlook(supabase))
+  } catch (err) {
+    console.error('Outlook check failed:', err.message)
+  }
 
   return new Response('ok')
 })
