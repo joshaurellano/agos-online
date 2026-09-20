@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { path: '/evacuation-map',label: 'Evacuation Map',    icon: <Icon icon="fluent-color:location-ripple-16" width={20} />, group: 'community' },
   { path: '/analytics',     label: 'ML Analytics',      icon: <Icon icon="noto:bar-chart" width={20} />, group: 'community' },
   { path: '/alerts-log',    label: 'Alert Log',         icon: <Icon icon="noto:scroll" width={20} />, group: 'community' },
+  { path: '/settings',      label: 'Settings',          icon: <Icon icon="noto:gear" width={20} />, group: 'community' },
   { path: '/reports',       label: 'Flood Reports',     icon: <Icon icon="flat-color-icons:overtime" width={20} />, staffOnly: true, group: 'staff' },
   { path: '/community-reports', label: 'Resident Reports', icon: <Icon icon="fluent-color:megaphone-loud-16" width={20} />, staffOnly: true, group: 'staff' },
   { path: '/register',      label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true, group: 'staff' },

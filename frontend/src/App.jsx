@@ -6,6 +6,7 @@ import { ThemeProvider } from './hooks/useTheme';
 import { LanguageProvider } from './hooks/useLanguage';
 import { DataSourceProvider } from './hooks/useDataSource';
 import { ModelSelectionProvider } from './hooks/useModelSelection';
+import { AccessibilityProvider } from './hooks/useAccessibility';
 
 import LoginPage from './pages/LoginPage';
 import RegistrationPage from './pages/RegistrationPage';
@@ -16,6 +17,7 @@ import ReportsPage from './pages/ReportsPage';
 import CommunityReportsPage from './pages/CommunityReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import AlertsLogPage from './pages/AlertsLogPage';
+import SettingsPage from './pages/SettingsPage';
 
 import MainLayout from './components/MainLayout';
 import AdminRoute from './components/AdminRoute';
@@ -25,6 +27,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
     <ThemeProvider>
+      <AccessibilityProvider>
       <LanguageProvider>
       <AuthProvider>
         <DataSourceProvider>
@@ -46,6 +49,7 @@ function App() {
                 <Route path="/evacuation-map" element={<FloodMapPage />} />
                 <Route path="/analytics"     element={<AnalyticsPage />} />
                 <Route path="/alerts-log"    element={<AlertsLogPage />} />
+                <Route path="/settings"      element={<SettingsPage />} />
 
                 <Route path="/reports" element={
                   <ResidentRoute>
@@ -77,6 +81,7 @@ function App() {
         </DataSourceProvider>
       </AuthProvider>
       </LanguageProvider>
+      </AccessibilityProvider>
     </ThemeProvider>
     </QueryClientProvider>
   );
