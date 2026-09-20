@@ -240,6 +240,74 @@ export function useModelPrediction(modelKey = 'gru') {
   };
 }
 
+// ── Mock-mode outlook test ───────────────────────────────────────────────
+// Mirrors what the mock level-alert path above does: in mock mode ONLY, the
+// forecast currently on screen is saved as a `source = 'mock'` row in
+// forecast_snapshots, then check-forecast is run right away. That exercises
+// the real outlook logic (NORMAL -> above-NORMAL within the 3-day window) on
+// mock data. Live snapshots are written by poll-flood alone, never here.
+//
+// The first mock snapshot is stored as an already-checked baseline, so merely
+// opening the dashboard in mock mode never fires an alert -- only a later
+// change does. As with the mock level alerts, a triggered outlook is NOT a
+// dry run: it goes through the webhook to real SMS + push.
+const OUTLOOK_LOOKAHEAD_DAYS = 3;
+let lastMockOutlookSig = null;
+
+async function saveMockForecastSnapshot(forecast) {
+  const upcoming = (forecast ?? []).slice(0, OUTLOOK_LOOKAHEAD_DAYS);
+  if (upcoming.length === 0) return;
+
+  const worst = upcoming.reduce((max, d) =>
+    (d.flood_probability ?? 0) > (max.flood_probability ?? 0) ? d : max
+  );
+  const worstProbability = worst.flood_probability ?? 0;
+  const worstDate = String(worst.date);
+
+  // Several components can mount this hook; the signature (set before any
+  // await) keeps them from all writing the same snapshot.
+  const sig = `${worstDate}:${worstProbability}`;
+  if (sig === lastMockOutlookSig) return;
+  lastMockOutlookSig = sig;
+
+  const { data: latest, error: readError } = await supabase
+    .from('forecast_snapshots')
+    .select('worst_date, worst_probability')
+    .eq('source', 'mock')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (readError) { logger.warn('Mock forecast snapshot read failed:', readError.message); return; }
+
+  if (latest && latest.worst_date === worstDate && Number(latest.worst_probability) === Number(worstProbability)) return;
+
+  const { error } = await supabase.from('forecast_snapshots').insert({
+    source: 'mock',
+    days: upcoming.map(d => ({ date: d.date, flood_probability: d.flood_probability ?? 0 })),
+    worst_date: worstDate,
+    worst_probability: worstProbability,
+    checked: !latest, // first mock snapshot = baseline, not an alert trigger
+  });
+  if (error) { logger.warn('Mock forecast snapshot save failed:', error.message); return; }
+  if (!latest) return;
+
+  const { data: result, error: invokeError } = await supabase.functions.invoke('check-forecast');
+  if (invokeError) { logger.warn('check-forecast invoke failed:', invokeError.message); return; }
+  logger.debug('check-forecast result:', result);
+
+  if (typeof result === 'string' && result.includes('mock: OUTLOOK alert created')) {
+    Swal.fire({
+      title: 'Mock outlook alert dispatched',
+      text: 'The mock forecast crossed from NORMAL to above NORMAL within 3 days.',
+      icon: 'info',
+      background: '#0d1f3c', color: '#e2eaf5',
+      confirmButtonColor: '#0ea5e9',
+      timer: 6000, timerProgressBar: true,
+      footer: 'Alert sent to residents.',
+    });
+  }
+}
+
 // ── 14-day forecast (single source of truth = the selected model) ───────
 // modelKey selects which trained algorithm ('gru' | 'lstm' | 'cnn') the
 // backend runs. Defaults to 'gru' to match the backend's DEFAULT_MODEL_KEY.
@@ -258,6 +326,13 @@ export function useFloodForecast14Day(modelKey = 'gru') {
   useEffect(() => {
     if (query.error) logger.error('14-day forecast fetch error:', query.error.message);
   }, [query.error]);
+
+  useEffect(() => {
+    if (!isMock || !query.data?.forecast?.length) return;
+    saveMockForecastSnapshot(query.data.forecast).catch(err =>
+      logger.warn('Mock forecast snapshot error:', err.message)
+    );
+  }, [query.data, isMock]);
 
   return {
     forecast14: query.data?.forecast ?? [],
