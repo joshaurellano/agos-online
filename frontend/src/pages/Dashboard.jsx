@@ -36,7 +36,6 @@ import RainOverlay from '../components/RainOverlay';
 import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
 import WeatherForecast from '../components/WeatherForecast';
 import AlertDeliveryStatus from '../components/AlertDeliveryStatus';
-import ModelTransparencyPanel from '../components/ModelTransparencyPanel';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -2201,9 +2200,6 @@ export default function Dashboard() {
           />
         </CollapsibleSection>
       </div>
-
-      {/* ── 11. Model Transparency ───────────────────── */}
-      <ModelTransparencyPanel area={TRIANGULO_AREA} weatherCache={forecastCache} />
 
       {/* ── 10. Standing Disclaimer ───────────────────────────────── */}
       <DisclaimerFooter />

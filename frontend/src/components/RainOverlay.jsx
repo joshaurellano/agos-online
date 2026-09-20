@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useAccessibility } from '../hooks/useAccessibility';
 
 // ─── Backend signal -> visual intensity ────────────────────────────────────
 // `condition` (e.g. "Heavy Rain", "Thunderstorm", "Cloudy") is the primary
@@ -116,7 +117,7 @@ function buildCloudSprite() {
  * callers lift it above a Leaflet map's own internal panes (200-700), which
  * sit in the same stacking context; the maplibre 3D map doesn't need this.
  */
-export default function RainOverlay({ rainfallMm, condition, windSignal = 0, zIndex = 2 }) {
+function RainOverlayCanvas({ rainfallMm, condition, windSignal = 0, zIndex = 2 }) {
   const canvasRef = useRef(null);
   const liveRef = useRef({ tier: 'none', strength: 0, isStorm: false, isOvercast: false, isFog: false, windSignal: 0 });
 
@@ -322,4 +323,11 @@ export default function RainOverlay({ rainfallMm, condition, windSignal = 0, zIn
       }}
     />
   );
+}
+
+// Canvas weather effect is JS-driven, so the CSS reduce-motion rule can't reach
+// it -- skip it entirely when the person has asked for less motion.
+export default function RainOverlay(props) {
+  const { reduceMotion } = useAccessibility();
+  return reduceMotion ? null : <RainOverlayCanvas {...props} />;
 }

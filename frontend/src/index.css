@@ -593,3 +593,145 @@ body {
 .form-control {
   color: var(--text-primary) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACCESSIBILITY
+   Toggled from Settings via classes on <html> (see hooks/useAccessibility).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Skip link: first Tab stop on every page, visible only when focused. */
+.skip-link {
+  position: absolute; left: 8px; top: -60px; z-index: 10000;
+  padding: 10px 16px; border-radius: var(--radius-sm);
+  background: var(--accent2); color: #fff; font-weight: 700; text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-link:focus { top: 8px; }
+#main-content:focus { outline: none; }
+
+/* Baseline keyboard focus ring for everyone (the app had none of its own). */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Strong focus */
+:root.a11y-focus :focus-visible {
+  outline: 4px solid #facc15;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px #000;
+}
+
+/* High contrast */
+:root.a11y-contrast {
+  --text-primary:   #ffffff;
+  --text-secondary: #e8eff9;
+  --text-muted:     #cddaeb;
+  --blue-border:    #86adde;
+  --accent:         #7dd3fc;
+  --accent2:        #38bdf8;
+}
+:root.light.a11y-contrast {
+  --text-primary:   #000000;
+  --text-secondary: #0d1c2f;
+  --text-muted:     #1d3350;
+  --blue-border:    #2d4c78;
+  --accent:         #00568f;
+  --accent2:        #003f6b;
+}
+:root.a11y-contrast .card { border-width: 2px; }
+
+/* Reduce motion (CSS-driven animation; JS effects check the setting too) */
+:root.a11y-reduce-motion *,
+:root.a11y-reduce-motion *::before,
+:root.a11y-reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+:root.a11y-reduce-motion .card:hover { transform: none; }
+
+/* Easy-to-read font: swap the two font tokens the app already uses. */
+:root.a11y-readable {
+  --font-body:    'Atkinson Hyperlegible', Verdana, 'Segoe UI', sans-serif;
+  --font-display: 'Atkinson Hyperlegible', Verdana, 'Segoe UI', sans-serif;
+}
+
+/* Extra text spacing (WCAG 1.4.12 values) */
+:root.a11y-spacing body {
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+  word-spacing: 0.12em;
+}
+:root.a11y-spacing p { margin-bottom: 1.5em; }
+
+/* Underline links */
+:root.a11y-underline a:not(.btn):not(.skip-link) {
+  text-decoration: underline !important;
+  text-underline-offset: 3px;
+}
+
+/* Larger tap targets */
+:root.a11y-targets button,
+:root.a11y-targets .btn,
+:root.a11y-targets select,
+:root.a11y-targets input:not([type="checkbox"]):not([type="radio"]),
+:root.a11y-targets .sidebar-nav-link,
+:root.a11y-targets .settings-seg {
+  min-height: 44px;
+}
+:root.a11y-targets button,
+:root.a11y-targets .btn { min-width: 44px; }
+:root.a11y-targets .theme-toggle { min-height: 0; min-width: 0; height: 32px; width: 58px; }
+:root.a11y-targets .theme-toggle-knob { width: 26px; height: 26px; }
+:root.a11y-targets .theme-toggle[aria-checked="true"] .theme-toggle-knob { transform: translateX(26px); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SETTINGS PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
+.settings-grid { display: grid; gap: 18px; max-width: 860px; }
+.settings-section:hover { transform: none !important; }
+
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 14px 0; border-top: 1px solid var(--blue-border);
+}
+.settings-row:first-of-type { border-top: none; }
+.settings-row-text { min-width: 0; flex: 1 1 auto; }
+.settings-label {
+  display: block; font-size: 0.92rem; font-weight: 600;
+  color: var(--text-primary); margin: 0 0 2px;
+}
+.settings-desc { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; }
+
+.settings-input {
+  min-width: 160px; padding: 9px 12px; font: inherit; font-size: 0.88rem;
+  color: var(--text-primary); background: var(--blue-mid);
+  border: 1px solid var(--blue-border); border-radius: var(--radius-sm);
+}
+
+.settings-segmented {
+  display: inline-flex; flex-shrink: 0; overflow: hidden;
+  border: 1px solid var(--blue-border); border-radius: var(--radius-sm);
+  background: var(--blue-mid);
+}
+.settings-seg {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 8px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  color: var(--text-secondary); user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.settings-seg + .settings-seg { border-left: 1px solid var(--blue-border); }
+.settings-seg:hover { color: var(--text-primary); }
+.settings-seg.active { background: var(--accent2); color: #fff; }
+.settings-seg:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+:root.a11y-focus .settings-seg:focus-within { outline: 4px solid #facc15; }
+
+.settings-account { display: grid; gap: 8px; margin: 0; }
+.settings-account > div { display: flex; gap: 12px; font-size: 0.88rem; }
+.settings-account dt { width: 60px; color: var(--text-muted); font-weight: 600; }
+.settings-account dd { margin: 0; color: var(--text-primary); }
+
+@media (max-width: 640px) {
+  .settings-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .settings-segmented { flex-wrap: wrap; }
+}
+.settings-desc a { color: var(--accent); font-weight: 600; }
