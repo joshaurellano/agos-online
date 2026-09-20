@@ -246,6 +246,7 @@ export default function RegisterPage() {
   // riding along in `form` with fields it doesn't need.
   const [residentForm, setResidentForm] = useState({ name: '', phone: '' });
   const [smsAck, setSmsAck] = useState(false);
+  const [consent, setConsent] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -298,6 +299,10 @@ export default function RegisterPage() {
       setLocalError('Enter a valid 11-digit PH mobile number (starts with 09).');
       return;
     }
+    if (!consent) {
+      setLocalError('Confirm that the resident agreed to receive SMS alerts before registering them.');
+      return;
+    }
     if (needsSmsAck && !smsAck) {
       setLocalError('Please confirm you understand this number may not receive SMS alerts before continuing.');
       return;
@@ -311,6 +316,7 @@ export default function RegisterPage() {
       network: residentNetwork?.network ?? 'unknown',
       sms_deliverable: residentNetwork?.deliverable ?? false,
       added_by: user?.id ?? null,
+      consent_given: true,
     });
 
     setLoading(false);
@@ -328,6 +334,7 @@ export default function RegisterPage() {
     setSuccess(true);
     setResidentForm({ name: '', phone: '' });
     setSmsAck(false);
+    setConsent(false);
   };
 
   const handleSubmit = async (e) => {
@@ -490,6 +497,18 @@ export default function RegisterPage() {
                   )}
                 </div>
 
+                <div className="reg-field">
+                  <label className="reg-checkbox-row">
+                    <input
+                      type="checkbox" checked={consent}
+                      onChange={e => setConsent(e.target.checked)}
+                    />
+                    <span>
+                      This resident is here in person, has been identified, and has agreed (consent form signed) to receive AGOS SMS alerts and to have this number stored.
+                    </span>
+                  </label>
+                </div>
+
                 {needsSmsAck && (
                   <div className="reg-field">
                     <label className="reg-checkbox-row">
@@ -509,7 +528,7 @@ export default function RegisterPage() {
                 )}
 
                 <button type="submit" className="reg-btn"
-                  disabled={loading || !residentPhoneValid || (needsSmsAck && !smsAck)}>
+                  disabled={loading || !residentPhoneValid || !consent || (needsSmsAck && !smsAck)}>
                   {loading
                     ? <><Spinner as="span" animation="grow" size="sm" role="status" aria-hidden="true" /> Registering...</>
                     : <><FaHome size={13} /> Register resident</>}

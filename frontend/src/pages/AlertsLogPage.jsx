@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { SectionLabel, ErrorBanner } from '../components/ui';
+import { ErrorBanner } from '../components/ui';
 import { ALERT_LEVELS } from '../data/mockData';
 import { reportTimeAgo as timeAgo } from '../lib/incidentReports';
 import { logger } from '../lib/logger';
@@ -12,7 +12,7 @@ import { logger } from '../lib/logger';
 // `alerts` table -- `sent_by` (the dispatching officer's name/email) is
 // intentionally left out of the query so no individual official's identity
 // is published here.
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 // Short headline per severity -- this is the resident-facing counterpart of
 // what an alert *is*, shown bold above the actual dispatched message, the
@@ -119,16 +119,61 @@ function NotificationCard({ alert, expanded, onToggle }) {
   );
 }
 
+// Page numbers with ellipses: 1 … 4 5 6 … 12
+function pageItems(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const items = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) items.push('gap-start');
+  for (let p = start; p <= end; p++) items.push(p);
+  if (end < total - 1) items.push('gap-end');
+  items.push(total);
+  return items;
+}
+
+function Pagination({ page, totalPages, onChange }) {
+  if (totalPages <= 1) return null;
+  return (
+    <nav className="pager" aria-label="Alert log pages">
+      <button type="button" className="pager-btn" onClick={() => onChange(page - 1)} disabled={page === 1}>
+        Previous
+      </button>
+      {pageItems(page, totalPages).map(item =>
+        typeof item === 'number' ? (
+          <button
+            key={item}
+            type="button"
+            className="pager-btn"
+            aria-current={item === page ? 'page' : undefined}
+            aria-label={`Page ${item}`}
+            onClick={() => onChange(item)}
+          >
+            {item}
+          </button>
+        ) : (
+          <span key={item} className="pager-gap" aria-hidden="true">…</span>
+        )
+      )}
+      <button type="button" className="pager-btn" onClick={() => onChange(page + 1)} disabled={page === totalPages}>
+        Next
+      </button>
+    </nav>
+  );
+}
+
 export default function AlertsLogPage() {
   const [alerts, setAlerts]     = useState([]);
+  const [total, setTotal]       = useState(0);
+  const [page, setPage]         = useState(1);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
-  const [limit, setLimit]       = useState(PAGE_SIZE);
-  const [hasMore, setHasMore]   = useState(true);
   const [typeFilter, setTypeFilter] = useState('ALL');
   // Cards default to expanded (matches the log's old always-visible-message
   // behavior) -- this set tracks which ones the visitor has collapsed.
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
+  const topRef = useRef(null);
+  const firstRender = useRef(true);
 
   const toggleCollapsed = (id) => {
     setCollapsedIds(prev => {
@@ -138,60 +183,76 @@ export default function AlertsLogPage() {
     });
   };
 
-  const load = useCallback(async (currentLimit) => {
-    const { data, error: fetchErr } = await supabase
+  // Filtering happens in the query (not on the loaded rows) so page numbers
+  // and the total always describe the filtered list.
+  const load = useCallback(async (pageNum, type) => {
+    const from = (pageNum - 1) * PAGE_SIZE;
+    let query = supabase
       .from('alerts')
-      .select('id, type, message, created_at')
+      .select('id, type, message, created_at', { count: 'exact' })
       .order('created_at', { ascending: false })
-      .limit(currentLimit + 1); // +1 lookahead to know if a next page exists
+      .order('id', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+    if (type !== 'ALL') query = query.eq('type', type);
+
+    const { data, count, error: fetchErr } = await query;
 
     if (fetchErr) {
+      // PGRST103: the page we asked for no longer exists (alerts were
+      // deleted while it was open) -- fall back to the first page.
+      if (fetchErr.code === 'PGRST103' && pageNum > 1) {
+        setPage(1);
+        return;
+      }
       logger.error('alerts log fetch error:', fetchErr.message);
       setError(fetchErr.message);
       setLoading(false);
       return;
     }
 
-    setHasMore((data ?? []).length > currentLimit);
-    setAlerts((data ?? []).slice(0, currentLimit));
+    setAlerts(data ?? []);
+    setTotal(count ?? 0);
     setError(null);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    load(limit);
+    load(page, typeFilter);
 
     // New dispatches should show up here immediately without a refresh --
     // same realtime pattern the rest of the app uses for the `alerts` /
     // `incident_reports` tables.
     const channel = supabase
       .channel('alerts_log_public')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alerts' }, () => load(limit))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alerts' }, () => load(page, typeFilter))
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [limit, load]);
+  }, [page, typeFilter, load]);
 
-  const visibleAlerts = typeFilter === 'ALL' ? alerts : alerts.filter(a => a.type === typeFilter);
+  // Bring the top of the list back into view when the page changes.
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return; }
+    topRef.current?.scrollIntoView({ block: 'start' });
+  }, [page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const firstShown = (page - 1) * PAGE_SIZE + 1;
+  const lastShown = Math.min(page * PAGE_SIZE, total);
 
   return (
-    <div className="fade-in">
-      <div className="card-title" style={{ marginBottom: 4 }}>
-        Public Alert Log
-      </div>
-      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 16, maxWidth: 640 }}>
-        A public record of every flood advisory, warning, and critical alert dispatched for Barangay Triangulo.
-        For live SMS/push delivery status, barangay officials and admins can check the delivery panel on the Dashboard.
-      </p>
-
-      {error && <ErrorBanner>Could not load the alert log — {error}</ErrorBanner>}
+    <div className="fade-in" ref={topRef} style={{ scrollMarginTop: 12 }}>
+      {error && <ErrorBanner>Could not load alerts: {error}</ErrorBanner>}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <SectionLabel>Dispatched Alerts</SectionLabel>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+          {total > 0 ? `Showing ${firstShown}–${lastShown} of ${total}` : ''}
+        </span>
         <select
           value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          className="form-select"
-          style={{ width: 'auto', fontSize: '0.78rem' }}
+          onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+          className="settings-input"
+          aria-label="Filter by severity"
+          style={{ minWidth: 0 }}
         >
           <option value="ALL">All severities</option>
           <option value="OUTLOOK">3-Day Outlook</option>
@@ -202,16 +263,16 @@ export default function AlertsLogPage() {
       </div>
 
       {loading && alerts.length === 0 ? (
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '20px 0', textAlign: 'center' }}>
-          Loading alert history…
+        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', padding: '32px 0', textAlign: 'center' }}>
+          Loading…
         </div>
-      ) : visibleAlerts.length === 0 ? (
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '20px 0', textAlign: 'center' }}>
-          No alerts have been dispatched{typeFilter !== 'ALL' ? ` at this severity` : ''} yet.
+      ) : alerts.length === 0 ? (
+        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', padding: '32px 0', textAlign: 'center' }}>
+          {typeFilter !== 'ALL' ? 'No alerts at this severity.' : 'No alerts yet.'}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {visibleAlerts.map(alert => (
+          {alerts.map(alert => (
             <NotificationCard
               key={alert.id}
               alert={alert}
@@ -222,17 +283,9 @@ export default function AlertsLogPage() {
         </div>
       )}
 
-      {!loading && hasMore && visibleAlerts.length > 0 && (
-        <button
-          onClick={() => setLimit(l => l + PAGE_SIZE)}
-          className="btn btn-outline-secondary"
-          style={{ width: '100%', marginTop: 14, fontSize: '0.8rem' }}
-        >
-          Load older alerts
-        </button>
-      )}
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
 
-      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: 14 }}>
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: 18 }}>
         This log lists what was sent, not whether every resident received it. Always follow instructions from
         the Barangay and the City Disaster Risk Reduction and Management Office during an actual emergency.
       </div>

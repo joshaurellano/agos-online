@@ -19,6 +19,7 @@ const PAGE_TITLES = {
   '/settings':        'Settings',
   '/register':        'Register Page',
   '/add-resident':    'Add Resident',
+  '/residents':       'Residents',
 };
 
 // Screen-reader announcement when the alert level changes. Sighted users see
@@ -79,6 +80,7 @@ export default function MainLayout() {
         <Topbar
           title={PAGE_TITLES[location.pathname] ?? 'AGOS'}
           onMenuClick={() => setSidebarOpen(true)}
+          menuOpen={sidebarOpen}
           alertLevel={alertLevel}
         />
         <main id="main-content" tabIndex={-1} className="page-body">

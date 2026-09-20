@@ -18,6 +18,7 @@ import CommunityReportsPage from './pages/CommunityReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import AlertsLogPage from './pages/AlertsLogPage';
 import SettingsPage from './pages/SettingsPage';
+import ResidentRegistryPage from './pages/ResidentRegistryPage';
 
 import MainLayout from './components/MainLayout';
 import AdminRoute from './components/AdminRoute';
@@ -67,6 +68,12 @@ function App() {
                   <AdminRoute>
                     <RegistrationPage />
                   </AdminRoute>
+                } />
+
+                <Route path="/residents" element={
+                  <ResidentRoute>
+                    <ResidentRegistryPage />
+                  </ResidentRoute>
                 } />
 
                 <Route path="/add-resident" element={

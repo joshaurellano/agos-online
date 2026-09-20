@@ -154,9 +154,6 @@ body {
 }
 .alert-glow-pulse { animation: alert-glow-pulse 2.4s ease-in-out infinite; }
 
-/* Sidebar link hover — subtle lift so the nav feels responsive even
-   before a route change lands. */
-.sidebar-nav-link:hover { background: rgba(56,189,248,0.06) !important; color: var(--text-primary) !important; }
 
 /* Mobile bottom quick-action bar — the two things a resident needs most
    in an active flood (report what they see, find the nearest evacuation
@@ -564,17 +561,32 @@ body {
    jumping straight to a single column only at the phone breakpoint. */
 @media (max-width: 1024px) {
   .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); }
+
+  /* Sidebar turns into a slide-out drawer. visibility keeps its links out of
+     the Tab order while it's closed. */
+  .sidebar {
+    transform: translateX(-100%);
+    visibility: hidden;
+    width: 272px;
+    max-width: 86vw;
+    transition: transform 0.28s ease, visibility 0s linear 0.28s;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.45);
+  }
+  .main-content { margin-left: 0; }
+  .hide-tablet { display: none !important; }
 }
 
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); width: 220px; max-width: 80vw; }
-  .sidebar.open { transform: translateX(0); }
-  .main-content { margin-left: 0; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   .page-body { padding: 16px; }
   .hide-mobile { display: none !important; }
-  .topbar { flex-wrap: wrap; row-gap: 10px; padding: 12px 16px; }
-  .topbar-controls { justify-content: flex-start !important; width: 100%; }
+  .topbar { padding: 10px 14px; gap: 10px; }
+  .topbar-sub { display: none; }
 }
 
 /* Small phones — trim padding further and let anything still using the
@@ -674,7 +686,7 @@ body {
 :root.a11y-targets .btn,
 :root.a11y-targets select,
 :root.a11y-targets input:not([type="checkbox"]):not([type="radio"]),
-:root.a11y-targets .sidebar-nav-link,
+:root.a11y-targets .sidebar-link,
 :root.a11y-targets .settings-seg {
   min-height: 44px;
 }
@@ -735,3 +747,149 @@ body {
   .settings-segmented { flex-wrap: wrap; }
 }
 .settings-desc a { color: var(--accent); font-weight: 600; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESIDENTS
+   Bootstrap gives table cells its own dark body color (#212529), which is
+   unreadable on the dark card -- so text color is set explicitly here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.registry-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.registry-search { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.registry-search .settings-input { width: 260px; max-width: 100%; }
+.registry-count { font-size: 0.85rem; color: var(--text-secondary); font-weight: 500; }
+.registry-add { text-decoration: none; }
+.registry-notice { font-size: 0.85rem; color: var(--green); margin-bottom: 10px; font-weight: 500; }
+.registry-empty { padding: 40px 0; text-align: center; color: var(--text-secondary); font-size: 0.95rem; }
+.registry-more { margin-top: 12px; text-align: center; }
+
+.registry-table-wrap { padding: 0; overflow-x: auto; color: var(--text-primary); }
+.registry-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; color: var(--text-primary); }
+.registry-table th {
+  text-align: left; padding: 12px 16px; white-space: nowrap;
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--text-secondary); background: var(--blue-mid);
+  border-bottom: 1px solid var(--blue-border);
+}
+.registry-table td {
+  padding: 12px 16px; vertical-align: middle;
+  color: var(--text-primary); border-bottom: 1px solid var(--blue-border);
+}
+.registry-table tbody tr:last-child td { border-bottom: none; }
+.registry-table tbody tr:hover td { background: rgba(56, 189, 248, 0.07); }
+.registry-name { font-weight: 600; }
+.registry-sub { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+.registry-warn { color: var(--yellow); font-weight: 600; }
+:root.light .registry-warn { color: #a16207; }
+.registry-actions { white-space: nowrap; text-align: right; }
+.registry-btn { padding: 6px 14px; font-size: 0.82rem; }
+.registry-btn + .registry-btn { margin-left: 6px; }
+.registry-btn-danger { color: var(--red); }
+:root.light .registry-btn-danger { color: #b91c1c; }
+
+.registry-dialog {
+  margin: auto; padding: 24px; width: min(440px, 92vw);
+  background: var(--blue-card); color: var(--text-primary);
+  border: 1px solid var(--blue-border); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.registry-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.registry-dialog-title { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; margin-bottom: 16px; }
+.registry-dialog-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+.registry-field-label { display: block; margin-bottom: 5px; font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.registry-field { width: 100%; margin-bottom: 6px; }
+.registry-hint { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 14px; }
+.registry-check { display: flex; gap: 10px; align-items: flex-start; font-size: 0.88rem; color: var(--text-primary); margin-bottom: 14px; line-height: 1.4; }
+.registry-check input { margin-top: 3px; flex-shrink: 0; }
+.registry-error { color: var(--red); font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
+
+/* ── Pagination (Alert Log) ── */
+.pager { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 18px; }
+.pager-btn {
+  min-width: 40px; height: 40px; padding: 0 14px;
+  font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  color: var(--text-primary); background: var(--blue-card);
+  border: 1px solid var(--blue-border); border-radius: var(--radius-sm);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pager-btn:hover:not(:disabled):not([aria-current="page"]) { border-color: var(--accent); background: var(--blue-mid); }
+.pager-btn[aria-current="page"] { background: var(--accent2); border-color: var(--accent2); color: #fff; cursor: default; }
+.pager-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.pager-gap { min-width: 24px; text-align: center; color: var(--text-secondary); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIDEBAR + TOPBAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+.sidebar-overlay {
+  display: none; position: fixed; inset: 0; z-index: 99;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+}
+.sidebar-overlay.show { opacity: 1; visibility: visible; pointer-events: auto; transition-delay: 0s; }
+
+.sidebar-brand { display: flex; align-items: center; gap: 12px; padding: 18px 16px 16px; border-bottom: 1px solid var(--blue-border); }
+.sidebar-brand-mark {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  background: linear-gradient(135deg, var(--accent2), var(--accent));
+}
+.sidebar-brand-text { flex: 1; min-width: 0; }
+.sidebar-brand-name { font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; letter-spacing: -0.02em; line-height: 1.05; color: var(--text-primary); }
+.sidebar-brand-sub { font-size: 0.74rem; color: var(--text-secondary); margin-top: 3px; }
+.sidebar-close {
+  display: none; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 38px; height: 38px; border-radius: 10px; cursor: pointer;
+  background: transparent; border: 1px solid var(--blue-border); color: var(--text-secondary);
+}
+.sidebar-close:hover { color: var(--text-primary); border-color: var(--accent); }
+
+.sidebar-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 12px 12px; }
+.sidebar-group + .sidebar-group { margin-top: 6px; }
+.sidebar-group-label {
+  padding: 16px 12px 8px; font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted);
+}
+.sidebar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sidebar-link {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px;
+  font-size: 0.92rem; font-weight: 500; text-decoration: none; color: var(--text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.sidebar-link svg { width: 20px; height: 20px; flex-shrink: 0; }
+.sidebar-link:hover { background: rgba(56, 189, 248, 0.09); color: var(--text-primary); }
+.sidebar-link.active { background: rgba(56, 189, 248, 0.17); color: var(--accent); font-weight: 600; }
+
+.sidebar-account { padding: 14px 16px 16px; border-top: 1px solid var(--blue-border); }
+.sidebar-user { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.sidebar-avatar {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.95rem; color: var(--accent); background: rgba(56, 189, 248, 0.17);
+}
+.sidebar-user-text { min-width: 0; }
+.sidebar-user-name { font-size: 0.9rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-user-role { font-size: 0.76rem; color: var(--text-secondary); }
+.sidebar-account-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+
+.mobile-menu-btn {
+  display: none; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 10px; cursor: pointer;
+  background: var(--blue-mid); border: 1px solid var(--blue-border); color: var(--text-primary);
+}
+.mobile-menu-btn:hover { border-color: var(--accent); }
+
+.topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1 1 auto; }
+.topbar-titles { min-width: 0; }
+.topbar-titles h1 { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-sub { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; }
+
+/* Narrow-screen overrides for the sidebar/topbar rules above. They live here,
+   after the base rules, so the cascade lets them win. */
+@media (max-width: 1024px) {
+  .sidebar-close { display: inline-flex; }
+  .sidebar-overlay { display: block; }
+  .mobile-menu-btn { display: inline-flex; }
+}
+@media (max-width: 768px) {
+  .topbar-controls { flex-wrap: nowrap; gap: 8px; }
+}

@@ -20,6 +20,15 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders });
   }
 
+  // Internal-only. This function texts every registered number and is
+  // deployed with verify_jwt = false, so without this check anyone holding the
+  // public anon key could send a fake alert to the whole barangay. The
+  // on-alert-change webhook sends the shared secret.
+  const expectedSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET');
+  if (!expectedSecret || req.headers.get('x-internal-secret') !== expectedSecret) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders });
+  }
+
   try {
     const { message, type } = await req.json();
 
@@ -33,14 +42,16 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // Phone numbers now live in two places: `profiles` (staff/admin accounts
-    // that happen to have a phone on file) and `residents` (the dedicated,
-    // account-free table residents are registered into -- see
-    // supabase/residents_schema.sql). Union both so nobody who used to get
-    // alerts via `profiles` stops getting them now that residents moved.
+    // Who gets an SMS:
+    //   - every row in `residents` -- the registry, filled in person at the
+    //     barangay office (see supabase/migrations/
+    //     20260920000000_resident_registry.sql).
+    //   - Staff/admin phones on `profiles` (role_id 7 = mobile-app resident
+    //     accounts are excluded: those people only get SMS if the barangay
+    //     registered their number in the registry).
     const [{ data: profiles, error: profilesError }, { data: residents, error: residentsError }] =
       await Promise.all([
-        supabase.from('profiles').select('phone').not('phone', 'is', null).neq('phone', ''),
+        supabase.from('profiles').select('phone').neq('role_id', 7).not('phone', 'is', null).neq('phone', ''),
         supabase.from('residents').select('phone').not('phone', 'is', null).neq('phone', ''),
       ]);
 
@@ -51,12 +62,21 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: residentsError.message }), { status: 500, headers: corsHeaders });
     }
 
-    // De-dupe by phone -- a staff member could plausibly also be listed as
-    // a resident, and we don't want them getting the same SMS twice.
+    // Convert 09XXXXXXXXX to +639XXXXXXXXX
+    const toInternational = (phone: string): string => {
+      const cleaned = phone.trim();
+      if (cleaned.startsWith('+')) return cleaned;
+      if (cleaned.startsWith('09')) return '+63' + cleaned.slice(1);
+      if (cleaned.startsWith('9')) return '+63' + cleaned;
+      return cleaned;
+    };
+
+    // De-dupe AFTER normalising: "0917..." and "+63917..." are the same
+    // handset and must not be texted twice.
     const phones = Array.from(new Set([
       ...(profiles ?? []).map(p => p.phone),
       ...(residents ?? []).map(r => r.phone),
-    ]));
+    ].filter(Boolean).map(toInternational)));
 
     if (phones.length === 0) {
       return new Response(JSON.stringify({ error: 'No phone numbers found' }), { status: 404, headers: corsHeaders });
@@ -66,15 +86,6 @@ serve(async (req) => {
     const httpsmsFrom    = Deno.env.get('HTTPSMS_FROM')!; // your Android phone number e.g. +639XXXXXXXXX
 
     const smsMessage = `[AGOS ALERT] ${type ?? 'NOTICE'}: ${message}`;
-
-    // Convert 09XXXXXXXXX to +639XXXXXXXXX
-    const toInternational = (phone: string): string => {
-      const cleaned = phone.trim();
-      if (cleaned.startsWith('+')) return cleaned;
-      if (cleaned.startsWith('09')) return '+63' + cleaned.slice(1);
-      if (cleaned.startsWith('9')) return '+63' + cleaned;
-      return cleaned;
-    };
 
     const results = await Promise.allSettled(
       phones.map(async (phone) => {

@@ -73,3 +73,19 @@ export function detectPhoneNetwork(phone) {
   if (DITO_PREFIXES.includes(prefix))      return { network: 'dito',      deliverable: true };
   return { network: 'unknown', deliverable: false };
 }
+
+/**
+ * Normalises the ways a PH mobile number gets typed (0917 123 4567,
+ * +63 917 123 4567, 639171234567, 9171234567) to 09XXXXXXXXX. Mirrors
+ * public.normalize_ph_phone() in the resident_registry migration, so the
+ * form and the database always agree on what a valid number is.
+ * @returns {string|null} canonical number, or null if it isn't a PH mobile.
+ */
+export function normalizePhPhone(raw) {
+  const c = String(raw ?? '').replace(/[\s\-()]/g, '');
+  if (/^\+639\d{9}$/.test(c)) return '0' + c.slice(3);
+  if (/^639\d{9}$/.test(c))   return '0' + c.slice(2);
+  if (/^9\d{9}$/.test(c))     return '0' + c;
+  if (/^09\d{9}$/.test(c))    return c;
+  return null;
+}
