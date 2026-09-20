@@ -17,8 +17,6 @@ Deno.serve(async (req: Request) => {
 
   const authHeader = req.headers.get("Authorization")
 
-  console.log("AUTH HEADER:", authHeader)
-
   if (!authHeader) {
     return new Response("Missing auth header", {
       status: 401,
@@ -36,9 +34,6 @@ Deno.serve(async (req: Request) => {
 const { data: userData, error: userError } =
   await supabaseAdmin.auth.getUser(token)
 
-  console.log("USER ERROR:", userError)
-  console.log("USER DATA:", userData)
-
   if (userError || !userData.user) {
     return new Response("Invalid token", {
       status: 401,
@@ -52,9 +47,6 @@ const { data: userData, error: userError } =
     .select("roles(role_desc)")
     .eq("id", userData.user.id)
     .single()
-
-  console.log("PROFILE:", JSON.stringify(profile))
-  console.log("PROFILE ERROR:", JSON.stringify(profileError))
 
   if (profileError) {
   return new Response("Failed to fetch profile", { status: 500, headers: corsHeaders })
@@ -76,7 +68,6 @@ const { data: userData, error: userError } =
     email_confirm: true
   })
 console.log("CREATE USER ERROR:", JSON.stringify(error))
-console.log("CREATE USER DATA:", JSON.stringify(data))
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), {
       status: 400,
@@ -95,6 +86,9 @@ console.log("CREATE USER DATA:", JSON.stringify(data))
     })
 
   if (insertError) {
+    // Don't leave a login behind with no profile (the username would be
+    // stuck): undo the auth user we just created.
+    await supabaseAdmin.auth.admin.deleteUser(data.user.id)
     return new Response(JSON.stringify({ error: insertError.message }), {
       status: 400,
       headers: corsHeaders

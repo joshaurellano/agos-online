@@ -70,6 +70,16 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Internal-only (see send-alert): deployed with verify_jwt = false, so it
+  // must not be callable with just the public anon key.
+  const expectedSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET');
+  if (!expectedSecret || req.headers.get('x-internal-secret') !== expectedSecret) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const FIREBASE_PROJECT_ID = Deno.env.get('FIREBASE_PROJECT_ID');
     const FIREBASE_SERVICE_ACCOUNT_JSON = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON');

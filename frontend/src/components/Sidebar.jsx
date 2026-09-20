@@ -1,165 +1,157 @@
+import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Nav, Button, Image } from 'react-bootstrap';
+import {
+  LuLayoutDashboard, LuCloudRain, LuMapPinned, LuActivity, LuBellRing, LuSettings,
+  LuClipboardList, LuMegaphone, LuUserCog, LuUsers, LuUserPlus,
+  LuWaves, LuX, LuLogOut, LuLogIn,
+} from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { isAdmin, isResident } from '../lib/roles';
 
-import { FaUserCircle } from "react-icons/fa";
-import { Icon } from '@iconify/react';
-
-import { CgLogOut } from "react-icons/cg";
-
-// Nav items are grouped under a `group` key so the sidebar can render a
-// section label above each cluster. Keeping the everyday, resident-facing
-// pages (Dashboard, Rainfall, Evacuation Map) visually separate from the
-// staff/admin tools means a first-time public visitor sees a short, clear
-// list instead of scanning past moderation and account-management links
+// One icon family (Lucide, bundled -- no network fetch, so the menu still
+// renders on a bad connection) drawn in the link's own color, instead of the
+// mix of emoji and multi-color sets used before.
+//
+// Items are grouped so the sidebar can label the staff cluster. Keeping the
+// everyday, resident-facing pages together means a first-time public visitor
+// sees a short list instead of scanning past moderation and account links
 // that don't apply to them.
 const NAV_ITEMS = [
-  { path: '/dashboard',     label: 'Dashboard',         icon: <Icon icon="fluent-color:calendar-data-bar-16" width={20} />, group: 'community' },
-  { path: '/rainfall',      label: 'Rainfall',          icon: <Icon icon="noto:cloud-with-rain" width={20} />, group: 'community' },
-  { path: '/evacuation-map',label: 'Evacuation Map',    icon: <Icon icon="fluent-color:location-ripple-16" width={20} />, group: 'community' },
-  { path: '/analytics',     label: 'ML Analytics',      icon: <Icon icon="noto:bar-chart" width={20} />, group: 'community' },
-  { path: '/alerts-log',    label: 'Alert Log',         icon: <Icon icon="noto:scroll" width={20} />, group: 'community' },
-  { path: '/settings',      label: 'Settings',          icon: <Icon icon="noto:gear" width={20} />, group: 'community' },
-  { path: '/reports',       label: 'Flood Reports',     icon: <Icon icon="flat-color-icons:overtime" width={20} />, staffOnly: true, group: 'staff' },
-  { path: '/community-reports', label: 'Resident Reports', icon: <Icon icon="fluent-color:megaphone-loud-16" width={20} />, staffOnly: true, group: 'staff' },
-  { path: '/register',      label: 'Register',          icon: <Icon icon="flat-color-icons:businessman" width={20} />, adminOnly: true, group: 'staff' },
-  { path: '/add-resident',  label: 'Add Resident',      icon: <Icon icon="fluent-color:people-community-16" width={20} />, staffOnly: true, group: 'staff' },
+  { path: '/dashboard',         label: 'Dashboard',        icon: LuLayoutDashboard, group: 'community' },
+  { path: '/rainfall',          label: 'Rainfall',         icon: LuCloudRain,       group: 'community' },
+  { path: '/evacuation-map',    label: 'Evacuation Map',   icon: LuMapPinned,       group: 'community' },
+  { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        group: 'community' },
+  { path: '/alerts-log',        label: 'Alert Log',        icon: LuBellRing,        group: 'community' },
+  { path: '/settings',          label: 'Settings',         icon: LuSettings,        group: 'community' },
+  { path: '/reports',           label: 'Flood Reports',    icon: LuClipboardList,   staffOnly: true, group: 'staff' },
+  { path: '/community-reports', label: 'Resident Reports', icon: LuMegaphone,       staffOnly: true, group: 'staff' },
+  { path: '/register',          label: 'Register',         icon: LuUserCog,         adminOnly: true, group: 'staff' },
+  { path: '/residents',         label: 'Residents',        icon: LuUsers,           staffOnly: true, group: 'staff' },
+  { path: '/add-resident',      label: 'Add Resident',     icon: LuUserPlus,        staffOnly: true, group: 'staff' },
 ];
 
 const GROUP_LABELS = {
-  community: null, // no header for the public-facing cluster — it's the default view
+  community: null, // no header for the public-facing cluster -- it's the default view
   staff:     'Staff tools',
 };
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { user, logout } = useAuth();
   const isAdminUser = isAdmin(user);
+  const closeBtnRef = useRef(null);
+  const wasOpen = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Off-canvas drawer behavior (narrow screens only): move focus into the
+  // menu when it opens, close on Escape, stop the page behind from
+  // scrolling, and hand focus back to the menu button when it closes.
+  useEffect(() => {
+    if (!mobileOpen) {
+      if (wasOpen.current) {
+        wasOpen.current = false;
+        document.querySelector('.mobile-menu-btn')?.focus();
+      }
+      return undefined;
+    }
+    wasOpen.current = true;
+    closeBtnRef.current?.focus();
+
+    const onKey = (e) => { if (e.key === 'Escape') onCloseRef.current(); };
+    document.addEventListener('keydown', onKey);
+
+    const narrow = window.matchMedia('(max-width: 1024px)').matches;
+    const previousOverflow = document.body.style.overflow;
+    if (narrow) document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileOpen]);
+
+  // staffOnly/adminOnly items require a signed-in, non-resident (or admin)
+  // account -- not just "isResident(user) is false". With Dashboard,
+  // Rainfall etc. public, isResident(null) is false for a logged-out visitor
+  // too, so these checks must require `user` explicitly or staff-only pages
+  // would leak into the anonymous nav.
+  const visible = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly && !isAdminUser) return false;
+    if (item.staffOnly && (!user || isResident(user))) return false;
+    return true;
+  });
+
+  const groups = [];
+  for (const item of visible) {
+    let group = groups[groups.length - 1];
+    if (!group || group.key !== item.group) {
+      group = { key: item.group, items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+
+  const initial = user?.name?.trim()?.[0]?.toUpperCase() ?? '?';
 
   return (
     <>
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div
-          onClick={onClose}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }}
-        />
-      )}
+      <div className={`sidebar-overlay${mobileOpen ? ' show' : ''}`} onClick={onClose} aria-hidden="true" />
 
-      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
-        {/* Logo */}
-        <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid var(--blue-border)' }}>
-          <div className="d-flex align-items-center gap-2">
-            <span style={{ fontSize: '1.6rem' }}></span>
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.3rem', color: 'var(--accent)', letterSpacing: '-0.02em' }}>AGOS</div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.2 }}>Flood Early Warning<br />Barangay Triangulo</div>
-            </div>
+      <aside id="app-sidebar" className={`sidebar${mobileOpen ? ' open' : ''}`}>
+        <div className="sidebar-brand">
+          <div className="sidebar-brand-mark" aria-hidden="true"><LuWaves size={22} /></div>
+          <div className="sidebar-brand-text">
+            <div className="sidebar-brand-name">AGOS</div>
+            <div className="sidebar-brand-sub">Flood Early Warning</div>
           </div>
+          <button ref={closeBtnRef} type="button" className="sidebar-close" onClick={onClose} aria-label="Close menu">
+            <LuX size={20} aria-hidden="true" />
+          </button>
         </div>
 
-        {/* Nav */}
-        
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          {groups.map((group) => {
+            const label = GROUP_LABELS[group.key];
+            return (
+              <div key={group.key} className="sidebar-group">
+                {label && <div className="sidebar-group-label" id={`nav-group-${group.key}`}>{label}</div>}
+                <ul className="sidebar-list" aria-labelledby={label ? `nav-group-${group.key}` : undefined}>
+                  {group.items.map(({ path, label: text, icon: ItemIcon }) => (
+                    <li key={path}>
+                      <NavLink
+                        to={path}
+                        onClick={onClose}
+                        className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+                      >
+                        <ItemIcon aria-hidden="true" />
+                        <span>{text}</span>
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </nav>
 
-        <Nav className="flex-column flex-grow-1 py-2 overflow-auto">
-          {(() => {
-            const visible = NAV_ITEMS.filter(item => {
-              // staffOnly/adminOnly items require a signed-in, non-resident
-              // (or admin) account — not just "isResident(user) is false".
-              // With Dashboard/Rainfall/etc. now public, isResident(null) is
-              // false for a logged-out visitor too, so these checks must
-              // require `user` explicitly or staff-only pages would leak
-              // into the anonymous nav.
-              if (item.adminOnly && !isAdminUser) return false;
-              if (item.staffOnly && (!user || isResident(user))) return false;
-              return true;
-            });
-
-            let lastGroup = null;
-            return visible.map(item => {
-              const showHeader = item.group !== lastGroup && GROUP_LABELS[item.group];
-              lastGroup = item.group;
-              return (
-                <div key={item.path}>
-                  {showHeader && (
-                    <div style={{
-                      padding: '14px 20px 6px', fontSize: '0.62rem', fontWeight: 800,
-                      letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-muted)',
-                    }}>
-                      {GROUP_LABELS[item.group]}
-                    </div>
-                  )}
-                  <Nav.Link
-                    as={NavLink}
-                    to={item.path}
-                    onClick={onClose}
-                    className="d-flex align-items-center gap-2 px-3 py-2 sidebar-nav-link"
-                    style={({ isActive }) => ({
-                      background:  isActive ? 'rgba(56,189,248,0.1)' : 'transparent',
-                      color:       isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                      borderLeft:  isActive ? '3px solid var(--accent)' : '3px solid transparent',
-                      fontSize:    '0.88rem',
-                      fontWeight:  isActive ? 600 : 400,
-                      transition:  'background 0.15s ease, color 0.15s ease, border-color 0.15s ease',
-                      textDecoration: 'none',
-                    })}
-                  >
-                    <span>{item.icon}</span>
-                    {item.label}
-                  </Nav.Link>
-                </div>
-              );
-            });
-          })()}
-        </Nav>
-
-        {/* Account panel — signed-in user info + sign out, or a sign-in
-            prompt for anonymous visitors (the primary sign-in control is
-            the button in the Topbar; this is a fallback for the mobile
-            slide-out sidebar where the Topbar button may be less visible). */}
-        <div style={{ padding: '16px 20px', borderTop: '1px solid var(--blue-border)' }}>
+        <div className="sidebar-account">
           {user ? (
             <>
-              <div className="mb-3">
-                <div className="text-truncate" style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', display:'flex', height:'100%', width:'100%', justifyContent:'start', alignItem:'center', gap:5 }}>
-                  <div style={{width: '25px', height:'25px', borderRadius:'50%', background:'rgba(56,189,248,0.15)', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                    <Icon icon="glyphs-poly:user" width="20" height="20" />
-                  </div>
-                  <div>
-                    {user?.name}
-                  </div>
-                </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  {user?.roles?.role_desc}
+              <div className="sidebar-user">
+                <div className="sidebar-avatar" aria-hidden="true">{initial}</div>
+                <div className="sidebar-user-text">
+                  <div className="sidebar-user-name">{user.name}</div>
+                  <div className="sidebar-user-role">{user.roles?.role_desc}</div>
                 </div>
               </div>
-              <Button
-                variant="outline-secondary"
-                size="sm"
-                onClick={logout}
-                className="w-100"
-                style={{ fontSize: '0.82rem' }}
-              >
-                <CgLogOut style={{fontSize:20}}/> Sign Out
-              </Button>
+              <button type="button" className="btn btn-ghost sidebar-account-btn" onClick={logout}>
+                <LuLogOut size={17} aria-hidden="true" /> Sign out
+              </button>
             </>
           ) : (
-            <>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: 10 }}>
-                Viewing as public — sign in for staff and admin tools.
-              </div>
-              <Button
-                as={NavLink}
-                to="/login"
-                onClick={onClose}
-                variant="outline-primary"
-                size="sm"
-                className="w-100"
-                style={{ fontSize: '0.82rem' }}
-              >
-                <FaUserCircle style={{ fontSize: 16, marginRight: 6 }} /> Staff / Admin Sign In
-              </Button>
-            </>
+            <NavLink to="/login" onClick={onClose} className="btn btn-primary sidebar-account-btn">
+              <LuLogIn size={17} aria-hidden="true" /> Staff sign in
+            </NavLink>
           )}
         </div>
       </aside>

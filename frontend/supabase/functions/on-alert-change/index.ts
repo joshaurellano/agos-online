@@ -65,7 +65,7 @@ serve(async (req) => {
     console.log('Calling send-push-notification...');
     const pushRes  = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '' },
       body: JSON.stringify({ title, body: message, level: alertType, topic: 'flood_alerts' }),
     });
     const pushText = await pushRes.text();
@@ -81,7 +81,7 @@ serve(async (req) => {
     console.log('Calling send-alert...');
     const smsRes  = await fetch(`${supabaseUrl}/functions/v1/send-alert`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? '' },
       body: JSON.stringify({ message, type: alertType }),
     });
     const smsText = await smsRes.text();

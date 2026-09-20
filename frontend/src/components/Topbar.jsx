@@ -7,8 +7,9 @@ import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { isAdmin } from '../lib/roles';
+import { LuMenu } from 'react-icons/lu';
 
-export default function Topbar({ title, onMenuClick, alertLevel }) {
+export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -57,32 +58,33 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
 
   return (
     <div className="topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div className="topbar-left">
         <button
+          type="button"
           onClick={onMenuClick}
           className="mobile-menu-btn"
           aria-label="Open navigation menu"
-          style={{ display: 'none', background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '1.3rem', cursor: 'pointer', padding: '4px' }}
+          aria-expanded={!!menuOpen}
+          aria-controls="app-sidebar"
         >
-          ☰
+          <LuMenu size={22} aria-hidden="true" />
         </button>
-        <div>
+        <div className="topbar-titles">
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
             {title}
           </h1>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            Barangay Triangulo, Naga City · Bicol Region
-          </div>
+          <div className="topbar-sub">Barangay Triangulo, Naga City · Bicol Region</div>
         </div>
       </div>
 
-      <div className="topbar-controls" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      <div className="topbar-controls">
 
         {/* Algorithm switcher — GRU / LSTM / CNN. All three are trained on
             the same scaler/feature contract, so switching here just tells
             the backend which encoder-decoder to run; every page reading
             from useModelPrediction/useFloodForecast14Day updates to match. */}
         <div
+          className="hide-mobile"
           title="Switch which trained algorithm powers predictions and forecasts"
           style={{
             display: 'flex', gap: 0, background: 'var(--blue-mid)',
@@ -124,7 +126,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
               border: 'none',
             }}
           >
-            {isMock ? 'MOCK DATA' : 'LIVE DATA'}
+            <span>{isMock ? 'MOCK' : 'LIVE'}<span className="hide-mobile"> DATA</span></span>
             <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>⇄</span>
           </button>
         )}
@@ -148,7 +150,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
 
         {/* Dark / Light toggle */}
         <button
-          className="theme-toggle"
+          className="theme-toggle hide-mobile"
           role="switch"
           aria-checked={theme === 'dark'}
           onClick={toggleTheme}
@@ -159,7 +161,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
         </button>
 
         {/* Clock */}
-        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }} className="hide-mobile">
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }} className="hide-mobile hide-tablet">
           <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.05em' }}>
             {time.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </div>
@@ -176,7 +178,7 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
             instead of duplicating it up here. */}
         {!user && (
           <button
-            className="btn"
+            className="btn hide-mobile"
             onClick={() => navigate('/login')}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
@@ -186,14 +188,11 @@ export default function Topbar({ title, onMenuClick, alertLevel }) {
               whiteSpace: 'nowrap',
             }}
           >
-            Staff / Admin Sign In
+            Staff sign in
           </button>
         )}
       </div>
 
-      <style>{`
-        @media (max-width: 768px) { .mobile-menu-btn { display: block !important; } }
-      `}</style>
     </div>
   );
 }
