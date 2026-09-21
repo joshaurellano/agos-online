@@ -3,7 +3,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts';
-import { useModelComparison, probabilityToAlertKey } from '../lib/modelApi';
+import { useModelComparison, useModelExplanation, probabilityToAlertKey } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { ALERT_LEVELS } from '../data/mockData';
 import { ErrorBanner } from '../components/ui';
@@ -20,18 +20,211 @@ const MOCK_14_DAY_FORECAST = [
   { day: 'Day 13', prob: 0.35 }, { day: 'Day 14', prob: 0.20 }
 ];
 
+// Shown ONLY when /api/explain is unreachable — clearly badged
+// "illustrative" below, never silently mixed in with a real SHAP result.
 const MOCK_SHAP_DATA = [
-  { feature: 'Month (cos)', value: 0.07 },
-  { feature: 'Prev-day flood', value: 0.12 },
-  { feature: '6h Cumul. RF', value: 0.14 },
-  { feature: '7d roll. avg', value: 0.15 },
-  { feature: 'Humidity', value: 0.16 },
-  { feature: 'Wind signal', value: 0.19 },
-  { feature: '12h Cumul. RF', value: 0.24 },
-  { feature: 'TCWS level', value: 0.28 },
-  { feature: 'API (5-day)', value: 0.32 },
-  { feature: '24h Cumul. RF', value: 0.43 }
-].reverse();
+  { feature: 'Month (cos)', label: 'Month (cos)', shap_value: 0.07 },
+  { feature: 'prev_flood', label: 'Prev-day flood', shap_value: 0.12 },
+  { feature: 'rain_6h', label: '6h Cumul. RF', shap_value: 0.14 },
+  { feature: 'rain_7d_avg', label: '7d roll. avg', shap_value: 0.15 },
+  { feature: 'humidity', label: 'Humidity', shap_value: 0.16 },
+  { feature: 'wind_signal', label: 'Wind signal', shap_value: 0.19 },
+  { feature: 'rain_12h', label: '12h Cumul. RF', shap_value: 0.24 },
+  { feature: 'typhoon_signal', label: 'TCWS level', shap_value: 0.28 },
+  { feature: 'api_5d', label: 'API (5-day)', shap_value: 0.32 },
+  { feature: 'rain_24h', label: '24h Cumul. RF', shap_value: 0.43 },
+];
+
+const pctSigned = (fraction) => fraction == null ? '—'
+  : `${fraction >= 0 ? '+' : ''}${(fraction * 100).toFixed(1)} pp`;
+
+// ─── SHAP panel ─────────────────────────────────────────────────────────────
+// Real KernelSHAP (see AI_Model/app/models/explain.py) when the backend is
+// reachable; falls back to the old illustrative bars — clearly badged as
+// such — only when it isn't. Never blends the two.
+function ShapPanel({ activeModel, explanation, loading, error, onRefresh }) {
+  const isReal = !!explanation && explanation.features?.length > 0;
+
+  const chartData = useMemo(() => {
+    const source = isReal
+      ? explanation.features.slice(0, 10).map(f => ({
+          feature: f.label, shap_value: f.shap_value, current_value: f.current_value, unit: f.unit,
+        }))
+      : MOCK_SHAP_DATA.map(f => ({ feature: f.label, shap_value: f.shap_value }));
+    return [...source].reverse(); // largest impact ends up at the bottom of the vertical bar chart
+  }, [isReal, explanation]);
+
+  const maxAbs = Math.max(0.05, ...chartData.map(d => Math.abs(d.shap_value)));
+  const riskDelta = isReal ? explanation.predicted_value - explanation.base_value : null;
+
+  return (
+    <div className="card" style={{ marginBottom: '20px' }}>
+      <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <span>🔍 Explainable AI: SHAP Feature Attribution</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {loading && (
+            <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 'normal', textTransform: 'none' }}>
+              ⏳ Computing live SHAP…
+            </span>
+          )}
+          <span style={{
+            fontSize: '0.7rem', fontWeight: 700, padding: '3px 9px', borderRadius: 999,
+            textTransform: 'none', letterSpacing: 0,
+            background: isReal ? `${activeModel.color}22` : 'rgba(148,163,184,0.15)',
+            color: isReal ? activeModel.color : 'var(--text-muted)',
+          }}>
+            {isReal ? `Live KernelSHAP · ${activeModel.fullLabel}` : 'Illustrative — model backend unreachable'}
+          </span>
+          <button
+            className="btn btn-ghost"
+            onClick={onRefresh}
+            disabled={loading}
+            style={{ fontSize: '0.7rem', padding: '4px 10px', opacity: loading ? 0.5 : 1 }}
+            title="Re-run the SHAP computation against the current live input"
+          >
+            🔄 Recompute
+          </button>
+        </div>
+      </div>
+
+      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginTop: 10, marginBottom: 16 }}>
+        {isReal ? (
+          <>
+            Each bar is a real Shapley value: how many percentage points that feature pushed today's Day-1 flood
+            probability up (🔴) or down (🟢) relative to an <strong>average-conditions baseline</strong> — every
+            feature at its training-set mean. <strong>Red = increases risk, green = decreases risk.</strong> Computed
+            fresh from the live {activeModel.fullLabel} model, not a training-time snapshot.
+          </>
+        ) : (
+          <>This visualization illustrates Shapley Additive exPlanations (SHAP) — it will switch to a live computation automatically once the model backend is reachable.</>
+        )}
+      </div>
+
+      {isReal && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          padding: '12px 16px', marginBottom: 16, background: 'var(--blue-mid)',
+          border: '1px solid var(--blue-border)', borderRadius: 'var(--radius-sm)',
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Average-conditions baseline</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: 'var(--text-muted)' }}>
+              {(explanation.base_value * 100).toFixed(1)}%
+            </div>
+          </div>
+          <div style={{ fontSize: '1.4rem', color: riskDelta >= 0 ? '#ef4444' : '#22c55e' }}>→</div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Today's actual prediction</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: activeModel.color }}>
+              {(explanation.predicted_value * 100).toFixed(1)}%
+            </div>
+          </div>
+          <div style={{ marginLeft: 'auto', fontSize: '0.72rem', color: riskDelta >= 0 ? '#ef4444' : '#22c55e', fontWeight: 700 }}>
+            Net effect of live conditions: {pctSigned(riskDelta)}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr', gap: '20px', alignItems: 'start' }}>
+        <div style={{ height: Math.max(280, chartData.length * 30) }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--blue-border)" horizontal={true} vertical={false} />
+              <XAxis
+                type="number" stroke="var(--text-muted)" fontSize={11} tickLine={false}
+                domain={isReal ? [-maxAbs, maxAbs] : [0, 0.5]}
+                tickFormatter={(v) => isReal ? `${(v * 100).toFixed(0)}pp` : v}
+              />
+              <YAxis dataKey="feature" type="category" stroke="var(--text-primary)" fontSize={11} tickLine={false} axisLine={false} width={140} />
+              {isReal && <ReferenceLine x={0} stroke="var(--text-muted)" />}
+              <RechartsTooltip
+                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                contentStyle={{ background: 'var(--bg-dark)', border: '1px solid var(--blue-border)', borderRadius: '8px', color: '#fff' }}
+                formatter={(value, name, props) => isReal
+                  ? [`${pctSigned(value)}${props.payload.unit ? ` · currently ${props.payload.current_value} ${props.payload.unit}` : ''}`, 'SHAP contribution']
+                  : [`${value.toFixed(2)} SHAP Value`, 'Impact Weight']}
+              />
+              <Bar dataKey="shap_value" radius={[0, 4, 4, 0]} barSize={16}>
+                {chartData.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={isReal ? (entry.shap_value >= 0 ? '#ef4444' : '#22c55e') : 'var(--accent)'}
+                    fillOpacity={isReal ? 0.85 : 0.4 + (index * 0.06)}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          {isReal ? (
+            <>
+              <p style={{ marginBottom: 8 }}>
+                <strong style={{ color: 'var(--text-secondary)' }}>Method:</strong> {explanation.method}
+              </p>
+              <p>
+                <strong style={{ color: 'var(--text-secondary)' }}>Baseline:</strong> {explanation.baseline_definition}
+              </p>
+            </>
+          ) : (
+            <p>
+              It proves mathematically that the AI does not rely on sudden rainfall alone — the highest driving
+              factors are typically <strong>24-hour Cumulative Rainfall</strong> and the <strong>Antecedent
+              Precipitation Index (API)</strong>.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {isReal && (
+        <div style={{ marginTop: 18, overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--blue-border)' }}>
+                {['Feature', 'Current Value', 'SHAP Contribution', 'Direction'].map(h => (
+                  <th key={h} style={{
+                    padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)',
+                    fontWeight: 700, textTransform: 'uppercase', fontSize: '0.62rem', letterSpacing: '0.08em',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {explanation.features.map(f => (
+                <tr key={f.feature} style={{ borderBottom: '1px solid rgba(30,58,95,0.4)' }}>
+                  <td style={{ padding: '7px 12px', color: 'var(--text-primary)', fontWeight: 600 }}>{f.label}</td>
+                  <td style={{ padding: '7px 12px', color: 'var(--text-secondary)' }}>
+                    {f.current_value}{f.unit ? ` ${f.unit}` : ''}
+                  </td>
+                  <td style={{
+                    padding: '7px 12px', fontWeight: 700,
+                    color: f.shap_value > 0 ? '#ef4444' : f.shap_value < 0 ? '#22c55e' : 'var(--text-muted)',
+                  }}>
+                    {pctSigned(f.shap_value)}
+                  </td>
+                  <td style={{ padding: '7px 12px', color: 'var(--text-muted)' }}>
+                    {f.shap_value > 0 ? '🔴 Increases risk' : f.shap_value < 0 ? '🟢 Decreases risk' : '⚪ No effect (at baseline)'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: 8, fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+            Values sum exactly to the gap between the baseline and today's prediction (Shapley additivity) — this is
+            a real explanation of this specific forecast, not a static training-time ranking.
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ marginTop: 14, fontSize: '0.72rem', color: '#f87171' }}>
+          ⚠ {error}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Uses the same probabilityToAlertKey() thresholds and ALERT_LEVELS copy as
 // the rest of the app (Dashboard, Topbar, modelApi.js). This page used to
@@ -52,6 +245,9 @@ export default function AnalyticsPage() {
     perModel, comparisonDays, modelsCompared,
     loadingCompare, errorCompare,
   } = useModelComparison();
+  const {
+    explanation, loadingExplain, errorExplain, refetchExplanation,
+  } = useModelExplanation(modelKey);
 
   const [selectedForecastIndex, setSelectedForecastIndex] = useState(0);
 
@@ -77,25 +273,27 @@ export default function AnalyticsPage() {
   // Real per-algorithm cards, built straight from /api/forecast-flood/compare
   // (per_model[key].meta.model_reliability + per_model[key].forecast[0]).
   // No hardcoded accuracy numbers or client-side probability offsets.
-  const algorithmCards = modelOptions.map((opt) => {
-    const modelData = perModel[opt.key];
-    const reliability = modelData?.meta?.model_reliability;
-    const day1Prob = modelData?.forecast?.[0]?.flood_probability;
+const algorithmCards = modelOptions.map((opt) => {
+  const modelData = perModel[opt.key];
+  const reliability = modelData?.meta?.model_reliability;
+  const day1Prob = modelData?.forecast?.[0]?.flood_probability;
 
-    return {
-      ...opt,
-      isLoaded: !!modelData,
-      isSelected: opt.key === modelKey,
-      avgAccuracy: reliability?.avg_accuracy,
-      avgPrecision: reliability?.avg_precision,
-      avgRecall: reliability?.avg_recall,
-      avgF1: reliability?.avg_f1,
-      avgFalseAlarm: reliability?.avg_false_alarm_rate,
-      avgMissedEvent: reliability?.avg_missed_event_rate,
-      day1ProbPct: day1Prob != null ? Math.round(day1Prob * 100) : null,
-      measuredOn: reliability?.measured_on,
-    };
-  });
+  return {
+    ...opt,
+    isLoaded: !!modelData,
+    isSelected: opt.key === modelKey,
+
+    avgAccuracy: reliability?.avg_accuracy,
+    avgPrecision: reliability?.avg_precision,
+    avgRecall: reliability?.avg_recall,
+    avgF1: reliability?.avg_f1,
+    avgFalseAlarm: reliability?.avg_false_alarm_rate,
+    avgMissedEvent: reliability?.avg_missed_event_rate,
+
+    day1ProbPct: day1Prob != null ? Math.round(day1Prob * 100) : null,
+    measuredOn: reliability?.measured_on,
+  };
+});
 
   return (
     <div className="fade-in">
@@ -111,7 +309,7 @@ export default function AnalyticsPage() {
       <div style={{ marginBottom: '20px', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
         <div className="card">
           <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span>14-Day Predictive Alert Curve</span>
+            <span>📈 14-Day Predictive Alert Curve</span>
             <span style={{
               fontSize: '0.7rem', fontWeight: 700, padding: '3px 9px', borderRadius: 999,
               background: `${activeModel.color}22`, color: activeModel.color,
@@ -157,53 +355,23 @@ export default function AnalyticsPage() {
           </div>
           <div style={{ background: 'var(--blue-mid)', padding: '16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue-border)' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 600 }}>
-              Recommended LGU Action Plan
+              📋 Recommended LGU Action Plan
             </div>
             <div style={{ fontSize: '1rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>{selectedAlert.action}</div>
           </div>
         </div>
       </div>
 
-      {/* 2. SHAP FEATURE IMPORTANCE — illustrative; the backend does not
-          currently expose live per-request SHAP values */}
-      <div className="card" style={{ marginBottom: '20px' }}>
-        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Explainable AI: Global Feature Importance (SHAP)</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal', textTransform: 'none' }}>Illustrative — from training-time analysis</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2.5fr', gap: '20px', alignItems: 'center', marginTop: '16px' }}>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            <p style={{ marginBottom: '10px' }}>
-              <strong>How to read this chart:</strong> This visualization uses Shapley Additive exPlanations (SHAP) to break down the model logic.
-            </p>
-            <p style={{ marginBottom: '10px' }}>
-              It proves mathematically that the AI does not rely on sudden rainfall alone. The highest driving factors are <strong>24-hour Cumulative Rainfall</strong> and the <strong>Antecedent Precipitation Index (API)</strong>.
-            </p>
-            <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(251,191,36,0.05)', borderLeft: '3px solid var(--accent)', borderRadius: '4px', fontSize: '0.75rem' }}>
-              <strong>Insight:</strong> Flooding is heavily driven by prolonged soil saturation rather than brief downpours.
-            </div>
-          </div>
-          <div style={{ height: 320, width: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={MOCK_SHAP_DATA} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--blue-border)" horizontal={true} vertical={false} />
-                <XAxis type="number" stroke="var(--text-muted)" fontSize={11} tickLine={false} domain={[0, 0.5]} />
-                <YAxis dataKey="feature" type="category" stroke="var(--text-primary)" fontSize={11} tickLine={false} axisLine={false} />
-                <RechartsTooltip
-                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                  contentStyle={{ background: 'var(--bg-dark)', border: '1px solid var(--blue-border)', borderRadius: '8px', color: '#fff' }}
-                  formatter={(value) => [`${value.toFixed(2)} SHAP Value`, 'Impact Weight']}
-                />
-                <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
-                  {MOCK_SHAP_DATA.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill="var(--accent)" fillOpacity={0.4 + (index * 0.06)} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+      {/* 2. SHAP FEATURE ATTRIBUTION — real KernelSHAP computed live against
+          the active model (AI_Model/app/models/explain.py), falls back to
+          clearly-labeled illustrative data only if the backend is unreachable. */}
+      <ShapPanel
+        activeModel={activeModel}
+        explanation={explanation}
+        loading={loadingExplain}
+        error={errorExplain}
+        onRefresh={refetchExplanation}
+      />
 
       {/* 3. MULTI-ALGORITHM BENCHMARK PANEL — real per-model reliability
           metrics and live day-1 probabilities from /api/forecast-flood/compare.

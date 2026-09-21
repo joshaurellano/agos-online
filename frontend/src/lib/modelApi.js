@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Swal from 'sweetalert2';
 import { supabase } from './supabaseClient';
@@ -379,4 +379,40 @@ export function useModelComparison() {
     errorCompare:   query.error?.message ?? null,
     refetchCompare: query.refetch,
   };
+}
+
+// ── SHAP explanation (AnalyticsPage transparency panel) ──────────────────
+// Hits /api/explain/{model}, which runs a genuine KernelSHAP computation
+// against the live model (see AI_Model/app/models/explain.py) — real
+// per-feature Shapley contributions to today's prediction, not a canned
+// or client-side-approximated importance ranking. Deliberately NOT polled
+// like the hooks above: it's a heavier on-demand computation, fetched once
+// per page view / model switch / manual refresh instead of every 30s.
+export function useModelExplanation(modelKey = 'gru') {
+  const { apiBaseUrl } = useDataSource();
+  const [explanation, setExplanation] = useState(null);
+  const [loadingExplain, setLoadingExplain] = useState(true);
+  const [errorExplain, setErrorExplain]     = useState(null);
+
+  const fetchExplanation = useCallback(async () => {
+    setLoadingExplain(true);
+    try {
+      const data = await fetchModelJson(apiBaseUrl, `/api/explain/${modelKey}`);
+      if (data.status !== 'success') throw new Error(data.message || 'Explanation unavailable');
+      setExplanation(data);
+      setErrorExplain(null);
+    } catch (err) {
+      logger.error('SHAP explanation fetch error:', err.message);
+      setErrorExplain(err.message || 'Could not compute SHAP explanation');
+      setExplanation(null);
+    } finally {
+      setLoadingExplain(false);
+    }
+  }, [apiBaseUrl, modelKey]);
+
+  useEffect(() => {
+    fetchExplanation();
+  }, [fetchExplanation]);
+
+  return { explanation, loadingExplain, errorExplain, refetchExplanation: fetchExplanation };
 }
