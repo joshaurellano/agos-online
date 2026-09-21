@@ -36,7 +36,7 @@ export const STRINGS = {
       analytics: 'ML Analytics',
       status: 'Status',
     },
-    disclaimer: 'This dashboard supports, but does not replace, official announcements from the Barangay and the City Disaster Risk Reduction and Management Office. Always follow instructions from local authorities during an emergency.',
+    disclaimer: 'For official advisories, check with the Barangay or CDRRMO. In an emergency, follow their instructions.',
   },
   fil: {
     dashboardTitle: 'Dashboard ng Babalang Pambaha',
@@ -60,7 +60,7 @@ export const STRINGS = {
       analytics: 'ML Analytics',
       status: 'Kalagayan',
     },
-    disclaimer: 'Ang dashboard na ito ay tumutulong, ngunit hindi kapalit ng opisyal na anunsyo mula sa Barangay at sa City Disaster Risk Reduction and Management Office. Laging sundin ang mga tagubilin ng lokal na pamahalaan sa oras ng emergency.',
+    disclaimer: 'Para sa opisyal na abiso, makipag-ugnayan sa Barangay o CDRRMO. Sa oras ng emergency, sundin ang kanilang mga tagubilin.',
   },
   bcl: {
     dashboardTitle: 'Dashboard kan Ampat na Babala sa Baha',
@@ -82,7 +82,7 @@ export const STRINGS = {
       analytics: 'ML Analytics',
       status: 'Kamugtakan',
     },
-    disclaimer: 'An dashboard na ini nagtatabang, alagad bakong kasalida kan opisyal na anunsyo hale sa Barangay asin sa City Disaster Risk Reduction and Management Office. Sunuron pirmi an mga instruksyon kan lokal na awtoridad durante nin emergency.',
+    disclaimer: 'Para sa opisyal na anunsyo, magkonsulta sa Barangay o CDRRMO. Durante nin emergency, sunuron an mga instruksyon ninda.',
   },
 };
 

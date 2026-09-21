@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
-import { SectionLabel, ErrorBanner, ExpandableMapFrame, MapRecenterButton } from '../components/ui';
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
+import { SectionLabel, ErrorBanner, ExpandableMapFrame, MapRecenterButton, TabBar } from '../components/ui';
 import Swal from 'sweetalert2';
 import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -437,7 +437,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           </span>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'center', padding: '26px 24px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', padding: '18px 22px' }}>
           {typeof probabilityPct === 'number' && (
             <div style={{ position: 'relative', flexShrink: 0 }}>
               <div aria-hidden="true" style={{
@@ -445,7 +445,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
                 background: `radial-gradient(circle, ${hexToRgba(alertColor, 0.16)} 0%, transparent 70%)`,
                 pointerEvents: 'none',
               }} />
-              <RadialGauge value={probabilityPct} color={alertColor} size={168} strokeWidth={14} />
+              <RadialGauge value={probabilityPct} color={alertColor} size={140} strokeWidth={12} />
             </div>
           )}
 
@@ -680,7 +680,7 @@ function DisclaimerFooter() {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
         <span>
-          Forecasts are model-generated (no physical water-level sensor) and intended for situational awareness only
+          Forecasts are predictions and can change.
         </span>
         <span style={{ whiteSpace: 'nowrap' }}>Sources: Open-Meteo</span>
       </div>
@@ -1813,6 +1813,62 @@ export default function Dashboard() {
   // don't end up with two independent pollers racing to dispatch alerts.
   const { prediction, modelLoading, modelError } = useOutletContext();
 
+  // Everything under the status header used to be one long column. It now
+  // lives in tabs so each view is about one screen. The active tab is kept
+  // in the URL (?tab=forecast) so a link or refresh lands on the same tab.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showStaffTab = !!user && !userIsResident;
+  const tabs = [
+    { key: 'map',      label: 'Map' },
+    { key: 'forecast', label: 'Forecast' },
+    { key: 'weather',  label: 'Weather' },
+    ...(showStaffTab ? [{ key: 'staff', label: 'Staff' }] : []),
+  ];
+  const requestedTab = searchParams.get('tab');
+  const activeTab = tabs.some(t => t.key === requestedTab) ? requestedTab : 'map';
+  const tabAnchorRef = useRef(null);
+
+  const selectTab = useCallback((key) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (key === 'map') next.delete('tab'); else next.set('tab', key);
+      return next;
+    }, { replace: true });
+    // If the tab bar is already stuck to the top, start the new tab from
+    // its top instead of leaving the reader halfway down the old one.
+    const anchor = tabAnchorRef.current;
+    if (anchor) {
+      const topbarH = document.querySelector('.topbar')?.offsetHeight ?? 0;
+      const y = anchor.getBoundingClientRect().top + window.scrollY - topbarH;
+      if (window.scrollY > y) window.scrollTo({ top: y });
+    }
+  }, [setSearchParams]);
+
+  // A tab is mounted the first time it's opened, then kept (just hidden) so
+  // switching back is instant and the map/chart state isn't lost. Maps and
+  // charts measure their container, so nudge them to re-measure on switch.
+  const visitedTabs = useRef(new Set());
+  visitedTabs.current.add(activeTab);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    return () => cancelAnimationFrame(id);
+  }, [activeTab]);
+
+  const renderPanel = (key, children) => (
+    visitedTabs.current.has(key) ? (
+      <div
+        key={key}
+        id={`dash-panel-${key}`}
+        role="tabpanel"
+        aria-labelledby={`dash-tab-${key}`}
+        className="tab-panel"
+        hidden={activeTab !== key}
+      >
+        {children}
+      </div>
+    ) : null
+  );
+
   const prevAlertDisplay = useRef(null);
 
   useEffect(() => {
@@ -1949,13 +2005,14 @@ export default function Dashboard() {
       // send-alert / send-push-notification here too (that was firing
       // both notifications twice).
 
+      selectTab('staff');
       Swal.fire({
         title: 'Alert Queued',
         html: `<p style="color:#8da4be;margin-bottom:12px">Evacuation alert saved and dispatch triggered.</p>
           <div style="background:#112240;border-radius:8px;padding:12px;text-align:left;font-size:0.85rem">
             <div style="color:#8da4be;margin-bottom:4px">SMS dispatch to all residents in progress</div>
             <div style="color:#8da4be;margin-top:4px">Push notification dispatch in progress</div>
-            <div style="color:#0ea5e9;margin-top:8px;font-size:0.75rem">Check the delivery status panel below in a few seconds to confirm both went through.</div>
+            <div style="color:#0ea5e9;margin-top:8px;font-size:0.75rem">Delivery status is in the Staff tab.</div>
           </div>`,
         icon: 'success', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9',
       });
@@ -1998,16 +2055,6 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Delivery status is admin/staff-only, same gate as the send-alert
-          button itself -- residents don't need to see SMS provider errors
-          or FCM error payloads. */}
-      {!!user && !userIsResident && <AlertDeliveryStatus />}
-
-      {/* Community reporting activity is admin/staff-only, same gate as
-          AlertDeliveryStatus above -- residents see their own reports on
-          CommunityReportsPage but don't need the moderation-queue stats. */}
-      {!!user && !userIsResident && <CommunityTrustStrip />}
-
       {/* ── 3. Current Conditions Strip ─────────────────────────── */}
       {/* Same two cards for every role -- residents used to see Alert
           Level + Rainfall (Alert Level is already shown above in the
@@ -2049,157 +2096,185 @@ export default function Dashboard() {
         ]}
       />
 
-      {/* ── 4. Flood Status Map ──────────────────────────────────── */}
-      <div ref={mapCardRef} className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
-        <div className="title-band-bar" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-          padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
-        }}>
-          <div>
-            <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                Flood Status Map — Barangay Triangulo
+      <div ref={tabAnchorRef} />
+      <TabBar idPrefix="dash" label="Dashboard sections" tabs={tabs} active={activeTab} onChange={selectTab} />
+
+      {renderPanel('map', (
+        <>
+          {/* ── 4. Flood Status Map ──────────────────────────────────── */}
+          <div ref={mapCardRef} className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+            <div className="title-band-bar" style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+              padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
+            }}>
+              <div>
+                <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                    Flood Status Map — Barangay Triangulo
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
+                  Tap a pin to see a report.
+                </div>
+              </div>
+              {mapView === '2d' && (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Pending report</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Verified report</span>
+                  </div>
+                </div>
+              )}
+              <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+                {['2d', '3d'].map(v => (
+                  <button key={v} className="toggle-pill" onClick={() => setMapView(v)} style={{
+                    padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+                    letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+                    background: mapView === v ? 'var(--accent)' : 'transparent',
+                    color: mapView === v ? '#fff' : 'var(--text-muted)',
+                    transition: 'all 0.2s',
+                  }}>
+                    {v === '2d' ? '2D View' : '3D View'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <ExpandableMapFrame height={480}>
+            {mapView === '2d' ? (
+              <FloodMap
+                currentAlert={currentAlert}
+                rainfallMm={rainfallMm}
+                windSignal={prediction?.live_metrics?.wind_signal}
+                windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
+                condition={weatherCondition}
+                focusRequest={focusRequest}
+                showFacilities={showFacilities}
+                setShowFacilities={setShowFacilities}
+              />
+            ) : (
+              <FloodMap3D
+                currentAlert={currentAlert}
+                boundary={TRIANGULO_BOUNDARY}
+                alertColors={ALERT_COLORS}
+                rainfallMm={rainfallMm}
+                windSignal={prediction?.live_metrics?.wind_signal}
+                windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
+                condition={weatherCondition}
+                minutely={minutelyForecast}
+                focusRequest={focusRequest}
+                showFacilities={showFacilities}
+                setShowFacilities={setShowFacilities}
+              />
+            )}
+            </ExpandableMapFrame>
+
+            {/* Cartographic legend — swatch, classification, threshold — rather
+                than a row of dots, so the map reads like a hazard map rather
+                than a status badge. */}
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px',
+              padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
+            }}>
+              <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                Legend
+              </span>
+              {[
+                ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
+              ].map(([key, range]) => (
+                <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem' }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: 2,
+                    background: ALERT_COLORS[key], opacity: currentAlert === key ? 1 : 0.35,
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
+                    {key}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
+                </span>
+              ))}
+              <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                Approximate barangay boundary · &copy; OpenStreetMap contributors
               </span>
             </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
-              Boundary overlay, color-coded to current alert classification. Tap a pin to view a resident report.
-            </div>
           </div>
-          {mapView === '2d' && (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Pending report</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Verified report</span>
-              </div>
-            </div>
+
+          {/* ── 5. Critical Facilities Near You ─────────────────────── */}
+          {/* Only shown while the Facilities layer is toggled on (same toggle
+              used on both maps) -- one switch controls whether the layer exists
+              at all, on the map and in this list. */}
+          {showFacilities && (
+            <CollapsibleSection
+              title="Critical Facilities Near You"
+              subtitle="Hospitals, clinics, schools, responders"
+            defaultOpen={false}
+            >
+              <CriticalFacilitiesPanel onSelectFacility={handleSelectFacility} />
+            </CollapsibleSection>
           )}
-          <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
-            {['2d', '3d'].map(v => (
-              <button key={v} className="toggle-pill" onClick={() => setMapView(v)} style={{
-                padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
-                letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
-                background: mapView === v ? 'var(--accent)' : 'transparent',
-                color: mapView === v ? '#fff' : 'var(--text-muted)',
-                transition: 'all 0.2s',
-              }}>
-                {v === '2d' ? '2D View' : '3D View'}
-              </button>
-            ))}
+
+          {/* ── 6. Alert Classification Reference ───────────────────── */}
+          <CollapsibleSection
+            title="Alert Classification Reference"
+            subtitle="Thresholds and what to do"
+            defaultOpen={false}
+          >
+            <AlertLevelTable currentAlert={currentAlert} />
+          </CollapsibleSection>
+        </>
+      ))}
+
+      {renderPanel('forecast', (
+        <>
+          {/* ── 7. Flood Forecast Chart ───────────────────── */}
+          <div style={{ marginBottom: 18 }}>
+            <FloodForecast14Day />
           </div>
-        </div>
 
-        <ExpandableMapFrame height={480}>
-        {mapView === '2d' ? (
-          <FloodMap
-            currentAlert={currentAlert}
-            rainfallMm={rainfallMm}
-            windSignal={prediction?.live_metrics?.wind_signal}
-            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
-            condition={weatherCondition}
-            focusRequest={focusRequest}
-            showFacilities={showFacilities}
-            setShowFacilities={setShowFacilities}
-          />
-        ) : (
-          <FloodMap3D
-            currentAlert={currentAlert}
-            boundary={TRIANGULO_BOUNDARY}
-            alertColors={ALERT_COLORS}
-            rainfallMm={rainfallMm}
-            windSignal={prediction?.live_metrics?.wind_signal}
-            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
-            condition={weatherCondition}
-            minutely={minutelyForecast}
-            focusRequest={focusRequest}
-            showFacilities={showFacilities}
-            setShowFacilities={setShowFacilities}
-          />
-        )}
-        </ExpandableMapFrame>
+          {/* ── 8. GRU Flood Probability Chart ───────────────────── */}
+          {/* Trend chart is staff/admin/resident-only — kept out of the public
+              view. Current status (bulletin, conditions strip, map, alert
+              reference) stays public; the historical/predicted probability
+              trend is reserved for signed-in accounts. */}
+          {user && <FloodForecastChart />}
+        </>
+      ))}
 
-        {/* Cartographic legend — swatch, classification, threshold — rather
-            than a row of dots, so the map reads like a hazard map rather
-            than a status badge. */}
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px',
-          padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
-        }}>
-          <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-            Legend
-          </span>
-          {[
-            ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
-          ].map(([key, range]) => (
-            <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem' }}>
-              <span style={{
-                width: 10, height: 10, borderRadius: 2,
-                background: ALERT_COLORS[key], opacity: currentAlert === key ? 1 : 0.35,
-                flexShrink: 0,
-              }} />
-              <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
-                {key}
-              </span>
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
-            </span>
-          ))}
-          <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--text-muted)' }}>
-            Approximate barangay boundary · &copy; OpenStreetMap contributors
-          </span>
-        </div>
-      </div>
+      {renderPanel('weather', (
+        <>
+          {/* ── 9. Weather Forecast ───────────── */}
+          <div style={{ marginBottom: 18 }}>
+            <CollapsibleSection title="Weather Forecast" defaultOpen={true}>
+              <WeatherForecast
+                hourly={forecast}
+                daily={dailyForecast}
+                loading={forecastLoading}
+                generatedAt={forecastGeneratedAt}
+                outlook={forecastOutlook}
+                weatherCache={forecastCache}
+                pagasaCalibration={pagasaCalibration}
+              />
+            </CollapsibleSection>
+          </div>
+        </>
+      ))}
 
-      {/* ── 5. Critical Facilities Near You ─────────────────────── */}
-      {/* Only shown while the Facilities layer is toggled on (same toggle
-          used on both maps) -- one switch controls whether the layer exists
-          at all, on the map and in this list. */}
-      {showFacilities && (
-        <CollapsibleSection
-          title="Critical Facilities Near You"
-          subtitle="Hospitals, clinics, schools, and emergency responders in Barangay Triangulo — filter by type or find the nearest to your location"
-        >
-          <CriticalFacilitiesPanel onSelectFacility={handleSelectFacility} />
-        </CollapsibleSection>
-      )}
-
-      {/* ── 6. Alert Classification Reference ───────────────────── */}
-      <CollapsibleSection
-        title="Alert Classification Reference"
-        subtitle="How probability thresholds map to alert levels and recommended actions"
-        defaultOpen={false}
-      >
-        <AlertLevelTable currentAlert={currentAlert} />
-      </CollapsibleSection>
-
-      {/* ── 7. Flood Forecast Chart ───────────────────── */}
-      <div style={{ marginBottom: 18 }}>
-        <FloodForecast14Day />
-      </div>
-
-      {/* ── 8. GRU Flood Probability Chart ───────────────────── */}
-      {/* Trend chart is staff/admin/resident-only — kept out of the public
-          view. Current status (bulletin, conditions strip, map, alert
-          reference) stays public; the historical/predicted probability
-          trend is reserved for signed-in accounts. */}
-      {user && <FloodForecastChart />}
-
-      {/* ── 9. Weather Forecast ───────────── */}
-      <div style={{ marginBottom: 18 }}>
-        <CollapsibleSection title="Weather Forecast" defaultOpen={true}>
-          <WeatherForecast
-            hourly={forecast}
-            daily={dailyForecast}
-            loading={forecastLoading}
-            generatedAt={forecastGeneratedAt}
-            outlook={forecastOutlook}
-            weatherCache={forecastCache}
-            pagasaCalibration={pagasaCalibration}
-          />
-        </CollapsibleSection>
-      </div>
+      {/* Staff-only: delivery results and the moderation queue. Kept off the
+          main view so they don't push the map down for staff accounts. */}
+      {showStaffTab && renderPanel('staff', (
+        <>
+          <AlertDeliveryStatus />
+          <CommunityTrustStrip />
+          {/* Both panels above render nothing when there's nothing to show;
+              CSS hides this note as soon as either one appears. */}
+          <div className="card tab-empty">Nothing to review right now.</div>
+        </>
+      ))}
 
       {/* ── 10. Standing Disclaimer ───────────────────────────────── */}
       <DisclaimerFooter />

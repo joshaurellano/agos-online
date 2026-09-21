@@ -4,3 +4,4 @@ export { default as StatusDot } from './StatusDot';
 export { default as ErrorBanner } from './ErrorBanner';
 export { default as ExpandableMapFrame } from './ExpandableMapFrame';
 export { default as MapRecenterButton } from './MapRecenterButton';
+export { default as TabBar } from './TabBar';

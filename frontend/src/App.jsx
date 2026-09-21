@@ -48,7 +48,11 @@ function App() {
                 <Route path="/dashboard"     element={<Dashboard />} />
                 <Route path="/rainfall"      element={<RainfallPage />} />
                 <Route path="/evacuation-map" element={<FloodMapPage />} />
-                <Route path="/analytics"     element={<AnalyticsPage />} />
+                <Route path="/analytics" element={
+                  <AdminRoute>
+                    <AnalyticsPage />
+                  </AdminRoute>
+                } />
                 <Route path="/alerts-log"    element={<AlertsLogPage />} />
                 <Route path="/settings"      element={<SettingsPage />} />
 
