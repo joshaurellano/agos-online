@@ -3,9 +3,10 @@ import { NavLink } from 'react-router-dom';
 import {
   LuLayoutDashboard, LuCloudRain, LuMapPinned, LuActivity, LuBellRing, LuSettings,
   LuClipboardList, LuMegaphone, LuUserCog, LuUsers, LuUserPlus,
-  LuWaves, LuX, LuLogOut, LuLogIn,
+  LuX, LuLogOut, LuLogIn,
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
+import agosLogo from '../assets/agos-logo.png';
 import { isAdmin, isResident } from '../lib/roles';
 
 // One icon family (Lucide, bundled -- no network fetch, so the menu still
@@ -20,11 +21,11 @@ const NAV_ITEMS = [
   { path: '/dashboard',         label: 'Dashboard',        icon: LuLayoutDashboard, group: 'community' },
   { path: '/rainfall',          label: 'Rainfall',         icon: LuCloudRain,       group: 'community' },
   { path: '/evacuation-map',    label: 'Evacuation Map',   icon: LuMapPinned,       group: 'community' },
-  { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        group: 'community' },
   { path: '/alerts-log',        label: 'Alert Log',        icon: LuBellRing,        group: 'community' },
   { path: '/settings',          label: 'Settings',         icon: LuSettings,        group: 'community' },
   { path: '/reports',           label: 'Flood Reports',    icon: LuClipboardList,   staffOnly: true, group: 'staff' },
   { path: '/community-reports', label: 'Resident Reports', icon: LuMegaphone,       staffOnly: true, group: 'staff' },
+  { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        adminOnly: true, group: 'staff' },
   { path: '/register',          label: 'Register',         icon: LuUserCog,         adminOnly: true, group: 'staff' },
   { path: '/residents',         label: 'Residents',        icon: LuUsers,           staffOnly: true, group: 'staff' },
   { path: '/add-resident',      label: 'Add Resident',     icon: LuUserPlus,        staffOnly: true, group: 'staff' },
@@ -99,7 +100,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
 
       <aside id="app-sidebar" className={`sidebar${mobileOpen ? ' open' : ''}`}>
         <div className="sidebar-brand">
-          <div className="sidebar-brand-mark" aria-hidden="true"><LuWaves size={22} /></div>
+          <img className="sidebar-brand-mark" src={agosLogo} alt="" width="40" height="40" />
           <div className="sidebar-brand-text">
             <div className="sidebar-brand-name">AGOS</div>
             <div className="sidebar-brand-sub">Flood Early Warning</div>

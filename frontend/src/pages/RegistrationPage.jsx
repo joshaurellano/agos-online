@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Spinner } from 'react-bootstrap';
 
+import agosLogo from '../assets/agos-logo.png';
 import { FaEyeSlash, FaEye, FaUser, FaPhone, FaAt, FaLock, FaUserShield, FaHome, FaCheckCircle, FaExclamationTriangle, FaArrowLeft } from 'react-icons/fa';
 
 import { useAuth } from '../hooks/useAuth';
@@ -100,10 +101,11 @@ const styles = `
   @keyframes reg-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .reg-ring-inner {
     position: absolute; inset: 7px; border-radius: 50%;
-    background: linear-gradient(135deg, #0284c7, #0ea5e9);
     display: flex; align-items: center; justify-content: center;
-    color: #fff; font-size: 1.05rem;
-    box-shadow: 0 0 20px rgba(14,165,233,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .reg-ring-inner img {
+    width: 100%; height: 100%; object-fit: contain;
+    filter: drop-shadow(0 3px 10px rgba(14,165,233,0.45));
   }
 
   .reg-title {
@@ -408,7 +410,7 @@ export default function RegisterPage() {
                 </defs>
               </svg>
               <div className="reg-ring-inner">
-                {isResidentMode ? <FaHome /> : <FaUserShield />}
+                <img src={agosLogo} alt="AGOS logo" />
               </div>
             </div>
             <div>
