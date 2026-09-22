@@ -44,10 +44,13 @@ function weatherIcon(code, isDay = true) {
 
 // Backdrop tint for the hero panel — keyed off condition, not a literal photo,
 // so it stays on-brand with the rest of the (dark navy / accent blue) UI.
+// Rain/storm lean darker and moodier than the rest (near-black at the edges)
+// so the bokeh lights and rain streaks drawn on top of it actually read as
+// a night/wet-glass scene instead of sitting on a flat blue card.
 function heroBackdrop(code, isDay) {
   if (code == null) return 'linear-gradient(135deg, #16305a 0%, #0d1f3c 100%)';
-  if ([95, 96, 99, 82].includes(code)) return 'linear-gradient(135deg, #2a1f4d 0%, #0d1f3c 100%)'; // storm
-  if (code >= 51 && code <= 82) return 'linear-gradient(135deg, #12406b 0%, #0d1f3c 100%)'; // rain
+  if ([95, 96, 99, 82].includes(code)) return 'linear-gradient(160deg, #241a3a 0%, #0a0a16 55%, #050508 100%)'; // storm
+  if (code >= 51 && code <= 82) return 'linear-gradient(160deg, #1a2740 0%, #0a121f 55%, #060a12 100%)'; // rain
   if (code >= 45 && code <= 48) return 'linear-gradient(135deg, #29405c 0%, #0d1f3c 100%)'; // fog
   if (code === 0 || code === 1) return isDay
     ? 'linear-gradient(135deg, #1c5f8f 0%, #0d1f3c 100%)'
@@ -137,24 +140,76 @@ function HeroWeatherArt({ code, isDay }) {
         </g>
       )}
 
-      {bucket === 'rain' && (
-        <g stroke="#bfe3ff" strokeOpacity="0.3" strokeWidth="2" strokeLinecap="round">
-          {Array.from({ length: 18 }).map((_, i) => {
-            const x = (i * 27) % 420 - 10;
-            return <line key={i} x1={x} y1={-10} x2={x - 22} y2={230} />;
-          })}
-        </g>
-      )}
-
-      {bucket === 'storm' && (
+      {(bucket === 'rain' || bucket === 'storm') && (
         <>
-          <g stroke="#9fc9f5" strokeOpacity="0.25" strokeWidth="2" strokeLinecap="round">
-            {Array.from({ length: 20 }).map((_, i) => {
-              const x = (i * 23) % 440 - 20;
-              return <line key={i} x1={x} y1={-10} x2={x - 26} y2={230} />;
+          <defs>
+            <filter id="heroBokehSoft" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="6" />
+            </filter>
+            <filter id="heroBokehStrong" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="13" />
+            </filter>
+            <linearGradient id="heroRainStreak" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#dff1ff" stopOpacity="0" />
+              <stop offset="45%" stopColor="#dff1ff" stopOpacity="0.55" />
+              <stop offset="100%" stopColor="#dff1ff" stopOpacity="0" />
+            </linearGradient>
+            {/* Darkens the lower third so the temperature/condition text
+                stays readable over the bright bokeh, same trick the
+                reference photo uses. */}
+            <linearGradient id="heroBottomVignette" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#000" stopOpacity="0" />
+              <stop offset="60%" stopColor="#000" stopOpacity="0" />
+              <stop offset="100%" stopColor="#000" stopOpacity="0.35" />
+            </linearGradient>
+          </defs>
+
+          {/* Out-of-focus city / brake lights low in frame — the warm, heavily
+              blurred bokeh that reads as "shot through a wet windshield at
+              night". Storm skews redder/dimmer than plain rain. */}
+          <g filter="url(#heroBokehStrong)">
+            <circle cx="55" cy="170" r="26" fill="#ff5a36" fillOpacity={bucket === 'storm' ? 0.4 : 0.55} />
+            <circle cx="118" cy="184" r="19" fill="#ffb020" fillOpacity={bucket === 'storm' ? 0.3 : 0.48} />
+            <circle cx="205" cy="162" r="30" fill="#ff3b30" fillOpacity={bucket === 'storm' ? 0.35 : 0.48} />
+            <circle cx="288" cy="188" r="21" fill="#ffcf4d" fillOpacity={bucket === 'storm' ? 0.28 : 0.42} />
+            <circle cx="352" cy="152" r="25" fill="#ff5a36" fillOpacity={bucket === 'storm' ? 0.3 : 0.38} />
+          </g>
+          <g filter="url(#heroBokehSoft)">
+            <circle cx="36" cy="55" r="9" fill="#bfe3ff" fillOpacity="0.3" />
+            <circle cx="150" cy="38" r="7" fill="#fff" fillOpacity="0.25" />
+            <circle cx="332" cy="66" r="11" fill="#ffd27a" fillOpacity="0.25" />
+          </g>
+
+          {/* Rain streaking down the "glass", varied length/width/opacity so
+              it doesn't read as a uniform hatch pattern */}
+          <g stroke="url(#heroRainStreak)" strokeLinecap="round">
+            {Array.from({ length: 34 }).map((_, i) => {
+              const x = (i * 13.5) % 430 - 15;
+              const len = 44 + (i % 5) * 15;
+              const drift = 14 + (i % 3) * 7;
+              const width = 1.6 + (i % 3) * 0.6;
+              return (
+                <line key={i}
+                  x1={x} y1={-20} x2={x - drift} y2={-20 + len + 190}
+                  strokeWidth={width}
+                  opacity={0.22 + (i % 4) * 0.11}
+                />
+              );
             })}
           </g>
-          <path d="M244 18 L210 106 L240 106 L200 198 L266 92 L232 92 Z" fill="#ffe066" fillOpacity="0.7" />
+
+          {/* A few larger, softly-blurred droplets up close for depth */}
+          <g filter="url(#heroBokehSoft)" fill="#eaf6ff" fillOpacity="0.16">
+            <ellipse cx="86" cy="118" rx="3" ry="10" />
+            <ellipse cx="258" cy="88" rx="4" ry="14" />
+            <ellipse cx="342" cy="128" rx="3" ry="9" />
+          </g>
+
+          {bucket === 'storm' && (
+            <path d="M244 18 L210 106 L240 106 L200 198 L266 92 L232 92 Z" fill="#ffe066" fillOpacity="0.7" />
+          )}
+
+          <rect x="0" y="0" width="400" height="220" fill="url(#heroBottomVignette)" />
         </>
       )}
 
@@ -225,6 +280,9 @@ function CustomTooltip({ active, payload, label }) {
  */
 export default function WeatherForecast({ hourly = [], daily = [], loading, generatedAt, outlook, weatherCache, pagasaCalibration }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
+  // Which hour (by ISO time string) is pinned into the hero card, or null to
+  // fall back to the "now" / midday default for the selected day.
+  const [selectedHourTime, setSelectedHourTime] = useState(null);
   const { theme } = useTheme() ?? {};
   const isLight = theme === 'light';
   // Light canvas washes out low-alpha tints, so give light mode a stronger
@@ -243,13 +301,26 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
   const hasHourlyDetail = hourlyForSelectedDay.length > 0;
   const isToday = selectedIdx === 0;
 
-  // representative record for the hero panel: "now" for today, a midday
-  // snapshot for tomorrow (still inside the 48h hourly window)
-  const heroRecord = isToday
-    ? hourly[0] ?? null
-    : hasHourlyDetail
-      ? hourlyForSelectedDay[Math.min(Math.floor(hourlyForSelectedDay.length / 2), hourlyForSelectedDay.length - 1)]
-      : null;
+  // Switching days drops any hour pinned on the previous day's strip, so the
+  // hero card falls back to that new day's own default snapshot.
+  const handleSelectDay = (idx) => {
+    setSelectedIdx(idx);
+    setSelectedHourTime(null);
+  };
+
+  // representative record for the hero panel: a clicked hour from the strip
+  // below takes priority; otherwise "now" for today, or a midday snapshot
+  // for other days (still inside the 48h hourly window)
+  const pickedHour = selectedHourTime
+    ? hourlyForSelectedDay.find(h => h.time === selectedHourTime) ?? null
+    : null;
+  const heroRecord = pickedHour
+    ? pickedHour
+    : isToday
+      ? hourly[0] ?? null
+      : hasHourlyDetail
+        ? hourlyForSelectedDay[Math.min(Math.floor(hourlyForSelectedDay.length / 2), hourlyForSelectedDay.length - 1)]
+        : null;
 
   if (loading) {
     return (
@@ -280,6 +351,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
 
   const chartData = hourlyForSelectedDay.map(h => ({
     hour: fmtHour(h.time),
+    time: h.time,
     precipitation: h.precipitation,
     rain_probability_pct: h.rain_probability_pct,
   }));
@@ -300,7 +372,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
           return (
             <button
               key={d.date}
-              onClick={() => setSelectedIdx(idx)}
+              onClick={() => handleSelectDay(idx)}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                 minWidth: 74, flexShrink: 0, cursor: 'pointer',
@@ -341,7 +413,9 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
             <div style={{ padding: '18px 18px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
                 <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>
-                  {isToday ? (heroRecord ? fmtHour(heroRecord.time) : 'Now') : fmtDateShort(selectedDay.date)}
+                  {pickedHour
+                    ? fmtHour(pickedHour.time)
+                    : isToday ? (heroRecord ? fmtHour(heroRecord.time) : 'Now') : fmtDateShort(selectedDay.date)}
                 </span>
               </div>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>
@@ -397,9 +471,18 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
             </div>
           ) : (
             <>
-              <div style={{ height: 120, marginBottom: 4 }}>
+              <div style={{ height: 120, marginBottom: 4, cursor: 'pointer' }} title="Click the chart to show that hour in the panel above">
                 <ResponsiveContainer key={`${selectedDay.date}-${chartData.length}`} width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
+                  <AreaChart
+                    data={chartData}
+                    margin={{ top: 10, right: 8, left: 8, bottom: 0 }}
+                    onClick={(state) => {
+                      const clickedTime = state?.activePayload?.[0]?.payload?.time;
+                      if (clickedTime) {
+                        setSelectedHourTime(prev => (prev === clickedTime ? null : clickedTime));
+                      }
+                    }}
+                  >
                     <defs>
                       <linearGradient id="precipFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.4} />
@@ -409,7 +492,9 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                     {/* No recharts axes at all — no gridlines, no XAxis, no
                         YAxis. Just the shape of the trend. Hour labels are
                         rendered separately below as a plain HTML row, and
-                        exact values show on hover via the tooltip. */}
+                        exact values show on hover via the tooltip. Clicking
+                        anywhere on the chart also pins that hour into the
+                        hero panel, same as clicking its tile below. */}
                     <XAxis dataKey="hour" hide />
                     <YAxis hide domain={[0, (max) => Math.max(2, Math.ceil(max * 1.2))]} />
                     <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#38bdf8', strokeWidth: 1, strokeDasharray: '4 4' }} />
@@ -419,7 +504,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                       stroke="#38bdf8"
                       strokeWidth={2.5}
                       fill="url(#precipFill)"
-                      activeDot={{ r: 4, fill: '#38bdf8', stroke: '#0d1f3c', strokeWidth: 2 }}
+                      activeDot={{ r: 4, fill: '#38bdf8', stroke: '#0d1f3c', strokeWidth: 2, style: { cursor: 'pointer' } }}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -439,24 +524,54 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
               </div>
 
               <div className="weather-hourly-row">
-                {hourlyForSelectedDay.map((h) => (
-                  <div key={h.time} style={{
-                    minWidth: 62, flexShrink: 0, textAlign: 'center',
-                    padding: '8px 4px', borderRadius: 'var(--radius-sm)',
-                  }}>
-                    {h.rain_probability_pct != null && (
-                      <div style={{ fontSize: '0.62rem', color: 'var(--accent)', fontWeight: 700, marginBottom: 4 }}>
-                        {h.rain_probability_pct}%
+                {hourlyForSelectedDay.map((h) => {
+                  const isActive = pickedHour?.time === h.time;
+                  return (
+                    <button
+                      key={h.time}
+                      type="button"
+                      onClick={() => setSelectedHourTime(isActive ? null : h.time)}
+                      aria-pressed={isActive}
+                      title={`Show ${fmtHour(h.time)} in the panel above`}
+                      style={{
+                        minWidth: 62, flexShrink: 0, textAlign: 'center',
+                        padding: '8px 4px', borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        background: isActive ? 'var(--accent)' : 'transparent',
+                        border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                        transition: 'background 0.15s ease, border-color 0.15s ease',
+                      }}
+                    >
+                      {h.rain_probability_pct != null && (
+                        <div style={{ fontSize: '0.62rem', color: isActive ? '#0d1f3c' : 'var(--accent)', fontWeight: 700, marginBottom: 4 }}>
+                          {h.rain_probability_pct}%
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.65rem', color: isActive ? '#0d1f3c' : 'var(--text-muted)', marginBottom: 4 }}>{fmtHour(h.time)}</div>
+                      <div style={{ fontSize: '1.15rem', marginBottom: 4 }}>{weatherIcon(h.weathercode, h.is_day)}</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: isActive ? '#0d1f3c' : 'var(--text-primary)' }}>
+                        {h.temperature_c != null ? `${Math.round(h.temperature_c)}°` : '—'}
                       </div>
-                    )}
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 4 }}>{fmtHour(h.time)}</div>
-                    <div style={{ fontSize: '1.15rem', marginBottom: 4 }}>{weatherIcon(h.weathercode, h.is_day)}</div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {h.temperature_c != null ? `${Math.round(h.temperature_c)}°` : '—'}
-                    </div>
-                  </div>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
+              {pickedHour && (
+                <div style={{ marginTop: 8, fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                  Showing {fmtHour(pickedHour.time)} in the panel above ·{' '}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedHourTime(null)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0,
+                      color: 'var(--accent)', fontWeight: 600, cursor: 'pointer',
+                      fontSize: '0.7rem', textDecoration: 'underline',
+                    }}
+                  >
+                    Back to now
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

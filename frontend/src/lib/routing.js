@@ -158,6 +158,20 @@ function reconstructRoadPoints(graph, dijkstraResult, startSnap, viaKey) {
   return keys.map(k => (k === startSnap.key ? startSnap.point : graph.nodes.get(k)));
 }
 
+// Distance (km) beyond which a snap is treated as "off the mapped network"
+// rather than "close enough to be basically on a road". trianguloRoads.json
+// only covers Barangay Triangulo itself, so a start point in a neighboring
+// barangay (or anywhere outside that ~3km box) snaps to whichever mapped
+// road happens to be nearest -- which can be a genuinely long straight-line
+// jump. That jump is real and worth flagging, not a bug in the pathfinding.
+export const OFF_NETWORK_THRESHOLD_KM = 0.25;
+
+// A bigger gap than OFF_NETWORK_THRESHOLD_KM: past this, the point isn't
+// just "off the nearest street" -- it's realistically outside Barangay
+// Triangulo altogether, so the message shown should say that plainly
+// instead of talking about "mapped roads" in the abstract.
+export const OUTSIDE_BARANGAY_THRESHOLD_KM = 1;
+
 // Full route from an arbitrary point (already-run dijkstra) out to one
 // snapped destination -- total distance plus the polyline to draw.
 function routeTo(graph, dijkstraResult, startSnap, destSnap, originPoint, destPoint) {
@@ -171,9 +185,21 @@ function routeTo(graph, dijkstraResult, startSnap, destSnap, originPoint, destPo
   const roadPoints = reconstructRoadPoints(graph, dijkstraResult, startSnap, viaKey);
   const totalKm = startSnap.snapDistanceKm + roadDist + destSnap.snapDistanceKm;
 
+  // roadPoints already starts at startSnap.point (the origin's projection
+  // onto the network) and ends at a real road node near the destination --
+  // that whole stretch is genuine road-following. The two legs outside it
+  // (originPoint -> startSnap.point, destSnap.point -> destPoint) are
+  // straight-line "how far off the mapped network is this point" jumps,
+  // kept separate so the map can draw them differently instead of letting
+  // them blend into what looks like an unbroken road route.
   return {
     totalKm,
     path: [originPoint, ...roadPoints, destSnap.point, destPoint],
+    roadPath: [...roadPoints, destSnap.point],
+    offNetworkStart: [originPoint, startSnap.point],
+    offNetworkEnd: [destSnap.point, destPoint],
+    startSnapKm: startSnap.snapDistanceKm,
+    destSnapKm: destSnap.snapDistanceKm,
   };
 }
 

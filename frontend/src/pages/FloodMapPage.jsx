@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import EvacuationMap3D from '../components/EvacuationMap3D';
 import { SectionLabel, ExpandableMapFrame, MapRecenterButton } from '../components/ui';
 import trianguloRoads from '../data/trianguloRoads.json';
-import { buildRoadGraph, findNearestCenterByRoad } from '../lib/routing';
+import { buildRoadGraph, findNearestCenterByRoad, OFF_NETWORK_THRESHOLD_KM, OUTSIDE_BARANGAY_THRESHOLD_KM } from '../lib/routing';
 import { formatDistanceKm } from '../lib/geo';
 
 // Shared between the initial 2D map setup and its recenter button.
@@ -267,6 +267,9 @@ export default function FloodMapPage() {
             <LegendItem color="#3b82f6" label="School Evacuation Center" />
             <LegendItem color="#38bdf8" label="Barangay Boundary" shape="line" />
             {route && <LegendItem color="#22c55e" label="Route (via roads)" shape="line" />}
+            {route && (route.startSnapKm > OFF_NETWORK_THRESHOLD_KM || route.destSnapKm > OFF_NETWORK_THRESHOLD_KM) && (
+              <LegendItem color="#94a3b8" label="Off mapped roads (straight line)" shape="line" />
+            )}
             <button
               onClick={handleFindNearest}
               disabled={locating}
@@ -301,20 +304,29 @@ export default function FloodMapPage() {
           <div style={{
             padding: '10px 18px', borderBottom: '1px solid var(--blue-border)',
             background: route ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+            display: 'flex', flexDirection: 'column', gap: 6,
           }}>
             {route ? (
               <>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                  Nearest by road: <strong>{route.center.name}</strong>
-                  <span style={{ color: 'var(--text-muted)' }}> — {formatDistanceKm(route.totalKm)} along streets, ~{route.walkMinutes} min walk</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                    Nearest by road: <strong>{route.center.name}</strong>
+                    <span style={{ color: 'var(--text-muted)' }}> — {formatDistanceKm(route.totalKm)} along streets, ~{route.walkMinutes} min walk</span>
+                  </div>
+                  <button
+                    onClick={() => setRoute(null)}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Clear route
+                  </button>
                 </div>
-                <button
-                  onClick={() => setRoute(null)}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline' }}
-                >
-                  Clear route
-                </button>
+                {route.startSnapKm > OFF_NETWORK_THRESHOLD_KM && (
+                  <div style={{ fontSize: '0.72rem', color: '#eab308' }}>
+                    {route.startSnapKm > OUTSIDE_BARANGAY_THRESHOLD_KM
+                      ? `⚠ You appear to be outside Barangay Triangulo (${formatDistanceKm(route.startSnapKm)} from its mapped streets) — the dashed grey segment is a straight line to the barangay; the dotted green segment is the real walking route once inside it.`
+                      : `⚠ Your location is ${formatDistanceKm(route.startSnapKm)} from the nearest mapped Barangay Triangulo street — the dashed grey segment is a straight line out to that street; the dotted green segment past it follows real roads.`}
+                  </div>
+                )}
               </>
             ) : (
               <div style={{ fontSize: '0.8rem', color: '#f87171' }}>{locateError}</div>
@@ -350,10 +362,29 @@ export default function FloodMapPage() {
 
             {route && (
               <>
+                {/* True road-following stretch — solid green dotted line,
+                    same as before. This is the part that actually traces
+                    mapped streets. */}
                 <Polyline
-                  positions={route.path.map(p => [p.lat, p.lng])}
+                  positions={route.roadPath.map(p => [p.lat, p.lng])}
                   pathOptions={{ color: '#22c55e', weight: 5, opacity: 0.85, dashArray: '1 8', lineCap: 'round' }}
                 />
+                {/* Off-network legs — a straight line between the actual
+                    point (origin or evacuation center) and where it meets
+                    the mapped road network. Drawn thin/dashed/grey so it
+                    reads as "not a real road" rather than a routing bug. */}
+                {route.startSnapKm > OFF_NETWORK_THRESHOLD_KM && (
+                  <Polyline
+                    positions={route.offNetworkStart.map(p => [p.lat, p.lng])}
+                    pathOptions={{ color: '#94a3b8', weight: 3, opacity: 0.75, dashArray: '4 8', lineCap: 'round' }}
+                  />
+                )}
+                {route.destSnapKm > OFF_NETWORK_THRESHOLD_KM && (
+                  <Polyline
+                    positions={route.offNetworkEnd.map(p => [p.lat, p.lng])}
+                    pathOptions={{ color: '#94a3b8', weight: 3, opacity: 0.75, dashArray: '4 8', lineCap: 'round' }}
+                  />
+                )}
                 <Marker position={[route.userPoint.lat, route.userPoint.lng]} icon={USER_LOCATION_ICON}>
                   <Popup>You are here</Popup>
                 </Marker>
