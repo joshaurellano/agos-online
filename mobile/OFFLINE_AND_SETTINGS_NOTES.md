@@ -43,5 +43,5 @@
   manifest (INTERNET, POST_NOTIFICATIONS, VIBRATE, FCM defaults, url_launcher queries, label "AGOS"),
   Crashlytics Gradle plugin, release signing via `android/key.properties`, adaptive + themed launcher icons,
   status-bar notification icon. Read `docs/RELEASE_CHECKLIST.md`: two blockers remain
-  (application ID `com.example.agos` is rejected by Google Play, and you need an upload key).
+  (application ID `com.gr4.agos` is rejected by Google Play, and you need an upload key).
 - iOS is intentionally not covered anywhere.

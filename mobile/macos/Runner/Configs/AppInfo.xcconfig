@@ -8,7 +8,7 @@
 PRODUCT_NAME = agos
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.agos
+PRODUCT_BUNDLE_IDENTIFIER = com.gr4.agos
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.

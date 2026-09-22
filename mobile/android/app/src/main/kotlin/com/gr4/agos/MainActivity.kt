@@ -1,4 +1,4 @@
-package com.example.agos
+package com.gr4.agos
 
 import io.flutter.embedding.android.FlutterActivity
 

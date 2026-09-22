@@ -28,10 +28,10 @@ if (hasReleaseKey) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 android {
-    namespace = "com.example.agos"
+    namespace = "com.gr4.agos"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
-
+    
     compileOptions {
         isCoreLibraryDesugaringEnabled = true          // ← was: coreLibraryDesugaringEnabled true
         sourceCompatibility = JavaVersion.VERSION_17
@@ -43,7 +43,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.agos"
+        applicationId = "com.gr4.agos"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -74,6 +74,15 @@ flutter {
     source = "../.."
 }
 
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            (output as? com.android.build.api.variant.impl.VariantOutputImpl)
+                ?.outputFileName?.set("agos-${variant.name}.apk")
+        }
+    }
+}
+
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")  // ← was: single quotes + no parens
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
