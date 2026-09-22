@@ -213,7 +213,7 @@ function ForecastSection() {
         onChange={setModelKey}
         options={options.map((o) => ({ value: o.key, label: o.label }))}
       />
-      {isAdmin(user) && (
+      {import.meta.env.DEV && isAdmin(user) && (
         <div className="settings-row">
           <div className="settings-row-text">
             <div className="settings-label">Data source</div>

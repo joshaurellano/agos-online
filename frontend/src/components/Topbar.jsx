@@ -109,8 +109,11 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
           ))}
         </div>
 
-        {/* Admin-only: Live / Mock data source toggle */}
-        {isAdmin(user) && (
+        {/* Dev-only, admin-only: Live / Mock data source toggle.
+            import.meta.env.DEV is Vite's build-time flag — true in `npm run dev`
+            and dev-mode builds, false in production builds, so this button
+            (and the ability to flip to mock data) never ships to prod. */}
+        {import.meta.env.DEV && isAdmin(user) && (
           <button
             className="btn"
             onClick={handleToggleDataSource}
