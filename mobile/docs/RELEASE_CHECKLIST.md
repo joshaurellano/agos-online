@@ -5,7 +5,7 @@ AGOS is Android-only for now (no iOS build), so this covers Android only.
 
 ## 1. Blockers before the first Play upload
 
-### ⚠ Change the application ID: `com.example.agos` is rejected by Google Play
+### ⚠ Change the application ID: `com.gr4.agos` is rejected by Google Play
 Google Play does not accept package names starting with `com.example`, and the
 ID can **never be changed after you publish**. Do this first. It has to be done
 together with Firebase, because `google-services.json` is tied to the package name:
@@ -15,7 +15,7 @@ together with Firebase, because `google-services.json` is tied to the package na
 3. Download the new `google-services.json` into `android/app/` (replace the old one).
 4. Run `flutterfire configure` to regenerate `lib/firebase_options.dart`.
 5. In `android/app/build.gradle.kts` change **only** `applicationId`.
-   Leave `namespace = "com.example.agos"` alone; it's internal and changing it
+   Leave `namespace = "com.gr4.agos"` alone; it's internal and changing it
    would mean moving `MainActivity`.
 6. `flutter clean`, rebuild, and confirm push notifications still arrive
    (new app registration means new FCM tokens).

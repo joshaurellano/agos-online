@@ -7,28 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:431037447423:android:ae3aa511c3cfd0a3d5e0ca",
+        "mobilesdk_app_id": "1:431037447423:android:6c94019d1868701fd5e0ca",
         "android_client_info": {
-          "package_name": "com.example.agos"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyBAc6Qt5tzMuxn14InRYRWOErTakYiW3_c"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:431037447423:android:5b53c05cecb343f9d5e0ca",
-        "android_client_info": {
-          "package_name": "com.example.agos_mobile"
+          "package_name": "com.gr4.agos"
         }
       },
       "oauth_client": [],
