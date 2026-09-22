@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { SectionLabel, ErrorBanner, ExpandableMapFrame, MapRecenterButton, TabBar } from '../components/ui';
 import Swal from 'sweetalert2';
@@ -25,6 +26,7 @@ import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
+import { useTheme } from '../hooks/useTheme';
 import { useFloodForecast14Day } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { supabase } from '../lib/supabaseClient';
@@ -1379,18 +1381,24 @@ function FloodForecastChart() {
 
   return (
     <div className="card" style={{ marginBottom: 18 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+      <div className="title-band-bar" style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        margin: '-20px -20px 16px -20px', padding: '14px 20px',
+        borderRadius: 'var(--radius) var(--radius) 0 0',
+        background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
+        flexWrap: 'wrap', gap: 10,
+      }}>
         <div>
-          <SectionLabel>Flood Probability Trend</SectionLabel>
+          <div className="card-title" style={{ marginBottom: 2 }}>Flood Probability Trend</div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
             {lastFetched && (
-              <span style={{ marginLeft: 8, color: '#4a6080' }}>
+              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
                 Synced {lastFetched.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+        <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
           {['hourly', 'daily'].map(v => (
             <button key={v} className="toggle-pill" onClick={() => setView(v)} style={{
               padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
@@ -1544,6 +1552,9 @@ function FloodForecastChart() {
 }
 
 function DriverModal({ day, onClose }) {
+  const { theme } = useTheme() ?? {};
+  const isLight = theme === 'light';
+
   if (!day) return null;
 
   const dateObj = new Date(day.date);
@@ -1559,7 +1570,7 @@ function DriverModal({ day, onClose }) {
     { label: 'Wind Gusts',        value: day.wind_gusts_kph != null ? `${day.wind_gusts_kph} kph` : '—',      icon: '' },
   ];
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
@@ -1571,21 +1582,36 @@ function DriverModal({ day, onClose }) {
       <div
         onClick={e => e.stopPropagation()}
         className="card"
-        style={{ maxWidth: 420, width: '100%', maxHeight: '85vh', overflowY: 'auto' }}
+        style={{ maxWidth: 420, width: '100%', maxHeight: '85vh', overflowY: 'auto', padding: 0, overflow: 'hidden' }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        {/* Colored header band — tinted by this day's risk level so the
+            modal reads as "about" that risk from the first glance, instead
+            of opening on a flat white/navy panel. */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          padding: '16px 20px', gap: 12,
+          background: isLight ? riskColor : `${riskColor}22`,
+          borderBottom: `1px solid ${isLight ? riskColor : riskColor + '55'}`,
+        }}>
           <div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            <div style={{
+              fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+              color: isLight ? 'rgba(255,255,255,0.85)' : riskColor,
+            }}>
               Forecast Drivers
             </div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 800, marginTop: 4,
+              color: isLight ? '#fff' : 'var(--text-primary)',
+            }}>
               {dateObj.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })}
             </div>
           </div>
           <button
             onClick={onClose}
             style={{
-              background: 'transparent', border: 'none', color: 'var(--text-muted)',
+              background: 'transparent', border: 'none',
+              color: isLight ? 'rgba(255,255,255,0.85)' : 'var(--text-muted)',
               fontSize: '1.4rem', lineHeight: 1, cursor: 'pointer', padding: 0,
             }}
             aria-label="Close"
@@ -1594,46 +1620,56 @@ function DriverModal({ day, onClose }) {
           </button>
         </div>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', marginBottom: 16,
-          background: `${riskColor}12`, border: `1px solid ${riskColor}40`, borderRadius: 'var(--radius-sm)',
-        }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 900, color: riskColor, lineHeight: 1 }}>
-            {pct}%
-          </div>
-          <div>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>Flood Probability</div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2, textTransform: 'capitalize' }}>
-              {day.confidence_band === 'outlook-only' ? 'Outlook only' : `${day.confidence_band} confidence`}
+        <div style={{ padding: '16px 20px 20px' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', marginBottom: 16,
+            background: isLight ? `${riskColor}20` : `${riskColor}12`,
+            border: `1px solid ${riskColor}${isLight ? '60' : '40'}`, borderRadius: 'var(--radius-sm)',
+          }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 900, color: riskColor, lineHeight: 1 }}>
+              {pct}%
+            </div>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>Flood Probability</div>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2, textTransform: 'capitalize' }}>
+                {day.confidence_band === 'outlook-only' ? 'Outlook only' : `${day.confidence_band} confidence`}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {drivers.map(({ label, value, icon }, i) => (
-            <div key={label} style={{
-              display: 'grid', gridTemplateColumns: '24px 1fr auto',
-              alignItems: 'center', gap: 10, padding: '9px 10px',
-              background: i % 2 === 0 ? 'var(--blue-mid)' : 'transparent',
-              borderRadius: i === 0 ? '6px 6px 0 0' : i === drivers.length - 1 ? '0 0 6px 6px' : 0,
-            }}>
-              <span style={{ fontSize: '0.9rem', textAlign: 'center' }}>{icon}</span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>{label}</span>
-              <span style={{
-                fontFamily: 'var(--font-display)', fontSize: '0.8rem', fontWeight: 700,
-                color: 'var(--accent)', textAlign: 'right', whiteSpace: 'nowrap',
+          <div style={{
+            border: '1px solid var(--blue-border)', borderRadius: 'var(--radius-sm)',
+            overflow: 'hidden', background: 'var(--blue-card)',
+            boxShadow: isLight ? '0 6px 18px rgba(15,45,90,0.12)' : 'none',
+          }}>
+            {drivers.map(({ label, value, icon }, i) => (
+              <div key={label} style={{
+                display: 'grid', gridTemplateColumns: '24px 1fr auto',
+                alignItems: 'center', gap: 10, padding: '10px 12px',
+                background: i % 2 === 0 ? (isLight ? 'rgba(2,132,199,0.07)' : 'var(--blue-mid)') : 'var(--blue-card)',
+                borderBottom: i === drivers.length - 1 ? 'none' : `1px solid ${isLight ? 'rgba(15,45,90,0.07)' : 'var(--blue-border)'}`,
               }}>
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
+                <span style={{ fontSize: '0.9rem', textAlign: 'center' }}>{icon}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>{label}</span>
+                <span style={{
+                  fontFamily: 'var(--font-display)', fontSize: '0.8rem', fontWeight: 800,
+                  color: isLight ? 'var(--accent2)' : 'var(--accent)', textAlign: 'right', whiteSpace: 'nowrap',
+                  background: isLight ? 'rgba(2,132,199,0.1)' : 'rgba(56,189,248,0.12)',
+                  padding: '2px 8px', borderRadius: 6,
+                }}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
 
-        <div style={{ marginTop: 12, fontSize: '0.62rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          These are the Open-Meteo-sourced inputs the model used (or had available) for this day's forecast. Reliability decreases further into the horizon.
+          <div style={{ marginTop: 12, fontSize: '0.62rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            These are the Open-Meteo-sourced inputs the model used (or had available) for this day's forecast. Reliability decreases further into the horizon.
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1642,9 +1678,15 @@ function FloodForecast14Day() {
   const { forecast14, meta14, loading14, error14 } = useFloodForecast14Day(activeModel.key);
   const [rangeDays, setRangeDays] = useState(7);
   const [selectedDay, setSelectedDay] = useState(null);
+  const { theme } = useTheme() ?? {};
+  const isLight = theme === 'light';
+  // Same tint/border alpha the weather forecast day tabs use — light fill
+  // for the un-selected days, solid fill reserved for "today".
+  const fillAlpha = isLight ? '26' : '18';
+  const borderAlpha = isLight ? '70' : '55';
 
   const bandColor = (band) =>
-    band === 'high' ? '#38bdf8' : band === 'moderate' ? '#a78bfa' : '#64748b';
+    band === 'high' ? '#22c55e' : band === 'moderate' ? '#a78bfa' : '#64748b';
 
   const riskColor = (pct) =>
     pct >= 75 ? '#ef4444' : pct >= 50 ? '#f97316' : pct >= 25 ? '#eab308' : '#22c55e';
@@ -1653,14 +1695,20 @@ function FloodForecast14Day() {
 
   return (
     <div className="card">
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+      <div className="title-band-bar" style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        margin: '-20px -20px 14px -20px', padding: '14px 20px',
+        borderRadius: 'var(--radius) var(--radius) 0 0',
+        background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
+        flexWrap: 'wrap', gap: 10,
+      }}>
         <div>
-          <SectionLabel>Flood Forecast</SectionLabel>
+          <div className="card-title" style={{ marginBottom: 2 }}>Flood Forecast</div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: -4 }}>
             Tap a day for drivers
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+        <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
           {[3, 7, 14].map(n => (
             <button key={n} className="toggle-pill" onClick={() => setRangeDays(n)} style={{
               padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
@@ -1705,31 +1753,31 @@ function FloodForecast14Day() {
                   onClick={() => setSelectedDay(d)}
                   style={{
                     minWidth: 62, flexShrink: 0, textAlign: 'center',
-                    background: isToday ? `${riskColor(pct)}12` : 'var(--blue-mid)',
-                    border: `1px solid ${isToday ? riskColor(pct) + '50' : bandColor(d.confidence_band) + '40'}`,
+                    background: isToday ? riskColor(pct) : bandColor(d.confidence_band) + fillAlpha,
+                    border: `1px solid ${isToday ? riskColor(pct) : bandColor(d.confidence_band) + borderAlpha}`,
                     borderTop: `2px solid ${isToday ? riskColor(pct) : bandColor(d.confidence_band)}`,
                     borderRadius: 'var(--radius-sm)', padding: '8px 6px',
-                    opacity: d.confidence_band === 'outlook-only' ? 0.65 : 1,
+                    opacity: d.confidence_band === 'outlook-only' ? 0.75 : 1,
                     cursor: 'pointer', font: 'inherit', transition: 'transform 0.15s ease, opacity 0.15s ease',
                   }}
                   onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                 >
-                  <div style={{ fontSize: '0.58rem', color: isToday ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 700, marginBottom: 4 }}>
+                  <div style={{ fontSize: '0.58rem', color: isToday ? 'rgba(255,255,255,0.85)' : 'var(--text-primary)', fontWeight: 700, marginBottom: 4 }}>
                     {isToday ? 'TODAY' : dateObj.toLocaleDateString('en-PH', { weekday: 'short' })}
                   </div>
-                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                  <div style={{ fontSize: '0.6rem', color: isToday ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)', marginBottom: 6 }}>
                     {dateObj.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
                   </div>
                   <div style={{
                     fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 800,
-                    color: riskColor(pct), lineHeight: 1, marginBottom: 3,
+                    color: isToday ? '#fff' : riskColor(pct), lineHeight: 1, marginBottom: 3,
                   }}>
                     {pct}%
                   </div>
                   <div style={{
                     fontSize: '0.52rem', fontWeight: 700, letterSpacing: '0.03em',
-                    color: isToday ? 'var(--accent)' : bandColor(d.confidence_band), textTransform: 'uppercase',
+                    color: isToday ? 'rgba(255,255,255,0.9)' : bandColor(d.confidence_band), textTransform: 'uppercase',
                   }}>
                     {isToday ? 'Live' : d.confidence_band === 'high' ? 'High conf.'
                       : d.confidence_band === 'moderate' ? 'Moderate'
