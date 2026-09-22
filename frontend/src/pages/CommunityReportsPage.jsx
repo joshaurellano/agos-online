@@ -1,17 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  LuMegaphone, LuHourglass, LuCircleCheckBig, LuCircleX,
+  LuDroplets, LuMapPin, LuTriangleAlert,
+} from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
-import { SectionLabel, Badge, ErrorBanner } from '../components/ui';
+import { ErrorBanner, SectionLabel } from '../components/ui';
 import { logger } from '../lib/logger';
 import {
-  REPORT_CATEGORY_ICON as CATEGORY_ICON,
   REPORT_STATUS_COLORS as STATUS_COLORS,
   reportTimeAgo as timeAgo,
   findNearbyDuplicates,
 } from '../lib/incidentReports';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+const STATUS_FILTERS = [
+  { key: 'pending',  label: 'Pending' },
+  { key: 'verified', label: 'Verified' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'ALL',      label: 'All' },
+];
 
 const REJECTION_REASONS = [
   'Duplicate of another report',
@@ -92,7 +102,6 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
   const [expanded, setExpanded]   = useState(false);
   const [updating, setUpdating]   = useState(false);
   const [showReject, setShowReject] = useState(false);
-  const icon = CATEGORY_ICON[report.category] ?? '';
   const duplicates = findNearbyDuplicates(report, allReports);
 
   const handleVerify = async () => {
@@ -127,14 +136,22 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
         style={{ padding: '13px 16px', cursor: 'pointer', display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: '1rem' }}>{icon}</span>
-          <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' }}>
-            {report.category}
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)',
+            background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.3)',
+            borderRadius: 5, padding: '2px 8px 2px 6px',
+          }}>
+            <LuDroplets size={12} aria-hidden="true" /> Flood
           </span>
           <StatusPill status={report.status} />
           {report.location_label && (
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', background: 'var(--blue-card)', border: '1px solid var(--blue-border)', borderRadius: 4, padding: '1px 7px' }}>
-              {report.location_label}
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: '0.68rem', color: 'var(--text-muted)', background: 'var(--blue-card)',
+              border: '1px solid var(--blue-border)', borderRadius: 4, padding: '1px 7px',
+            }}>
+              <LuMapPin size={10} aria-hidden="true" /> {report.location_label}
             </span>
           )}
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
@@ -142,11 +159,12 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
           </span>
           {duplicates.length > 0 && (
             <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
               fontSize: '0.65rem', fontWeight: 700, color: '#f97316',
               background: '#f9731618', border: '1px solid #f9731640',
               borderRadius: 4, padding: '1px 7px',
             }}>
-              {duplicates.length} similar nearby
+              <LuTriangleAlert size={10} aria-hidden="true" /> {duplicates.length} similar nearby
             </span>
           )}
         </div>
@@ -203,7 +221,7 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
               </div>
               {duplicates.map(d => (
                 <div key={d.id} style={{ opacity: 0.85 }}>
-                  • {d.category} · <StatusPill status={d.status} /> · {timeAgo(d.created_at)}
+                  • <StatusPill status={d.status} /> · {timeAgo(d.created_at)}
                   {d.location_label ? ` · ${d.location_label}` : ''}
                 </div>
               ))}
@@ -279,7 +297,6 @@ export default function CommunityReportsPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [filterStatus, setFilterStatus] = useState('pending');
-  const [filterCategory, setFilterCategory] = useState('ALL');
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
@@ -338,60 +355,118 @@ export default function CommunityReportsPage() {
   const handlePromote = (report) => navigate('/reports', { state: { promoteFrom: report } });
 
   const filtered = reports.filter(r => {
-    if (filterStatus   !== 'ALL' && r.status   !== filterStatus)   return false;
-    if (filterCategory !== 'ALL' && r.category !== filterCategory) return false;
+    if (filterStatus !== 'ALL' && r.status !== filterStatus) return false;
     return true;
   });
 
   const pendingCount = reports.filter(r => r.status === 'pending').length;
-  const presentCategories = ['ALL', ...new Set(reports.map(r => r.category).filter(Boolean))];
+  const verifiedCount = reports.filter(r => r.status === 'verified').length;
+  const rejectedCount = reports.filter(r => r.status === 'rejected').length;
 
   return (
     <div className="fade-in">
       {errorMsg && <ErrorBanner>{errorMsg}</ErrorBanner>}
 
-      {/* ── Stat strip ─────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
-        <div className="card" style={{ borderTop: '3px solid #eab308', padding: '12px 16px', minWidth: 140 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 800, color: '#eab308' }}>{pendingCount}</div>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Awaiting Review</div>
+      {/* ── Page header ────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+          background: 'rgba(56,189,248,0.14)', color: 'var(--accent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <LuMegaphone size={19} aria-hidden="true" />
         </div>
-        <div className="card" style={{ borderTop: '3px solid #22c55e', padding: '12px 16px', minWidth: 140 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 800, color: '#22c55e' }}>
-            {reports.filter(r => r.status === 'verified').length}
+        <div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+            Resident Reports
           </div>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Verified</div>
-        </div>
-        <div className="card" style={{ borderTop: '3px solid #ef4444', padding: '12px 16px', minWidth: 140 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 800, color: '#ef4444' }}>
-            {reports.filter(r => r.status === 'rejected').length}
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Flood reports submitted by residents, awaiting review.
           </div>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Rejected</div>
         </div>
       </div>
 
-      {/* ── Filters ────────────────────────────────────────────────── */}
+      {/* ── Stat strip ─────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 12, margin: '18px 0', flexWrap: 'wrap' }}>
+        {[
+          { key: 'pending',  label: 'Awaiting Review', count: pendingCount,  color: '#eab308', Icon: LuHourglass },
+          { key: 'verified', label: 'Verified',         count: verifiedCount, color: '#22c55e', Icon: LuCircleCheckBig },
+          { key: 'rejected', label: 'Rejected',         count: rejectedCount, color: '#ef4444', Icon: LuCircleX },
+        ].map(s => (
+          <div
+            key={s.key}
+            className="card"
+            style={{
+              flex: '1 1 170px', minWidth: 170, padding: '14px 18px',
+              display: 'flex', alignItems: 'center', gap: 14,
+              borderTop: `3px solid ${s.color}`,
+            }}
+          >
+            <div style={{
+              width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+              background: `${s.color}20`, color: s.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <s.Icon size={18} aria-hidden="true" />
+            </div>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 800, color: s.color, lineHeight: 1 }}>
+                {s.count}
+              </div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 3 }}>
+                {s.label}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Filter ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SectionLabel>Resident Reports</SectionLabel>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="form-select" style={{ fontSize: '0.8rem' }}>
-            <option value="pending">Pending</option>
-            <option value="verified">Verified</option>
-            <option value="rejected">Rejected</option>
-            <option value="ALL">All Statuses</option>
-          </select>
-          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="form-select" style={{ fontSize: '0.8rem' }}>
-            {presentCategories.map(c => <option key={c} value={c}>{c === 'ALL' ? 'All Categories' : c}</option>)}
-          </select>
+        <SectionLabel>Reports</SectionLabel>
+        <div
+          className="view-toggle-group"
+          style={{
+            marginLeft: 'auto', display: 'flex', gap: 0,
+            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
+            borderRadius: 8, overflow: 'hidden',
+          }}
+        >
+          {STATUS_FILTERS.map(f => (
+            <button
+              key={f.key}
+              type="button"
+              className="toggle-pill"
+              onClick={() => setFilterStatus(f.key)}
+              style={{
+                padding: '7px 16px', fontSize: '0.76rem', fontWeight: 700,
+                letterSpacing: '0.02em', cursor: 'pointer', border: 'none',
+                background: filterStatus === f.key ? 'var(--accent)' : 'transparent',
+                color: filterStatus === f.key ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* ── List ───────────────────────────────────────────────────── */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Loading reports…</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} className="skeleton" style={{ height: 64 }} />
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-          No reports match this filter.
+        <div className="card" style={{ textAlign: 'center', padding: '40px 24px', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+            No reports match this filter.
+          </div>
+          <div style={{ fontSize: '0.78rem' }}>
+            Try switching to a different status above.
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -5,14 +5,11 @@
 // into elsewhere in this app before they were unified around a single
 // source (see ReportsPage.jsx / AnalyticsPage.jsx comments).
 
+// Residents can only file flood reports now (power outage, road accident,
+// medical emergency, fire, and landslide were removed as report
+// categories), so this only needs one entry.
 export const REPORT_CATEGORY_ICON = {
-  Flood:               '',
-  Fire:                '',
-  Landslide:           '',
-  'Road Accident':     '',
-  'Power Outage':      '',
-  'Medical Emergency': '',
-  Other:               '',
+  Flood: '',
 };
 
 export const REPORT_STATUS_COLORS = {
