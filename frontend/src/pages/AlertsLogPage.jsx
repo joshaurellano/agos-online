@@ -63,7 +63,7 @@ function NotificationCard({ alert, expanded, onToggle }) {
   return (
     <div
       style={{
-        background: 'var(--bg-elevated, #16233b)',
+        background: 'var(--blue-card)',
         border: '1px solid var(--blue-border)',
         borderRadius: 14,
         padding: '14px 14px 12px',

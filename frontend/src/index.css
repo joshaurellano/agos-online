@@ -344,10 +344,12 @@ body {
    label inside the bar (including ones set via inline style) picks up a
    readable light color automatically, without editing each one by hand. */
 :root.light .title-band-bar,
-:root.light .collapse-header {
+:root.light .collapse-header,
+:root.light .card > .card-title {
   --accent: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.92);
   --text-muted: rgba(255, 255, 255, 0.82);
+  --blue-border: rgba(255, 255, 255, 0.4);
 }
 :root.light .collapse-header:hover .card-title { color: #fff; opacity: 0.85; }
 
@@ -359,6 +361,16 @@ body {
 :root.light .title-band-bar .view-toggle-group {
   --accent: #0284c7;
   --text-muted: #5c7699;
+}
+
+/* .section-label sets its own light-mode color/background directly (not
+   through --accent/--text-muted), so it isn't caught by the variable
+   overrides above. When a section-label sits inside a colored band (e.g.
+   the Flood Forecast / Flood Probability Trend card headers), give it a
+   translucent white chip instead so it doesn't blend into the band. */
+:root.light .title-band-bar .section-label {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.18);
 }
 
 
@@ -909,6 +921,22 @@ img.sidebar-brand-mark {
   scrollbar-width: none;
 }
 .tabbar::-webkit-scrollbar { display: none; }
+
+/* Light mode only: --title-band is a translucent rgba() in dark mode, which
+   would let scrolled content show through this sticky bar (it needs to stay
+   fully opaque -- see comment above), but it's a solid opaque hex in light
+   mode, so it's safe to use here without that risk. The tab labels and
+   active underline then need the same readable-on-solid-color treatment as
+   .title-band-bar / .card > .card-title. --text-primary is reset here too
+   (not just in those two) because this is the only band context where an
+   element actually renders with --text-primary. */
+:root.light .tabbar {
+  background: var(--title-band);
+  border-bottom-color: transparent;
+  --accent: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.75);
+  --text-primary: #ffffff;
+}
 .tabbar-tab {
   flex: 0 0 auto;
   padding: 13px 18px 11px;

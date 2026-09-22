@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
+import { useTheme } from '../hooks/useTheme';
 
 // ─── WMO weather-code → icon/label map ─────────────────────────────────────
 // https://open-meteo.com/en/docs (WMO Weather interpretation codes)
@@ -52,6 +53,122 @@ function heroBackdrop(code, isDay) {
     ? 'linear-gradient(135deg, #1c5f8f 0%, #0d1f3c 100%)'
     : 'linear-gradient(135deg, #0e2647 0%, #0d1f3c 100%)'; // clear
   return 'linear-gradient(135deg, #1c3f66 0%, #0d1f3c 100%)'; // cloudy default
+}
+
+// Single accent used for every day tab — a uniform look reads calmer than
+// tinting each day by its own weather condition.
+const WEATHER_TAB_ACCENT = '#7c3aed';
+
+// Simple original SVG art (not emoji, not a stock photo) behind the hero
+// panel — a sun with rays, rain streaks, a lightning bolt, cloud blobs, fog
+// bands, a starry night, or snow dots depending on condition, so the panel
+// reads like a proper weather-app backdrop instead of a flat gradient card.
+function heroArtBucket(code, isDay) {
+  if (code == null) return isDay ? 'sun' : 'clear-night';
+  if ([95, 96, 99].includes(code)) return 'storm';
+  if ([80, 81, 82].includes(code)) return 'rain';
+  if (code >= 61 && code <= 67) return 'rain';
+  if (code >= 51 && code <= 57) return 'rain';
+  if (code >= 71 && code <= 86) return 'snow';
+  if (code === 45 || code === 48) return 'fog';
+  if (code === 2 || code === 3) return 'cloudy';
+  if (code === 0 || code === 1) return isDay ? 'sun' : 'clear-night';
+  return 'cloudy';
+}
+
+function HeroWeatherArt({ code, isDay }) {
+  const bucket = heroArtBucket(code, isDay);
+
+  return (
+    <svg
+      viewBox="0 0 400 220"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden="true"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 0 }}
+    >
+      {bucket === 'sun' && (
+        <>
+          <defs>
+            <radialGradient id="heroSunGlow" cx="80%" cy="18%" r="60%">
+              <stop offset="0%" stopColor="#ffd27a" stopOpacity="0.5" />
+              <stop offset="55%" stopColor="#ffb84d" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#ffb84d" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <rect width="400" height="220" fill="url(#heroSunGlow)" />
+          {Array.from({ length: 12 }).map((_, i) => {
+            const a = (i / 12) * Math.PI * 2;
+            return (
+              <line key={i}
+                x1={320 + Math.cos(a) * 46} y1={42 + Math.sin(a) * 46}
+                x2={320 + Math.cos(a) * 66} y2={42 + Math.sin(a) * 66}
+                stroke="#ffd27a" strokeOpacity="0.35" strokeWidth="3" strokeLinecap="round"
+              />
+            );
+          })}
+          <circle cx="320" cy="42" r="32" fill="#ffd27a" fillOpacity="0.4" />
+        </>
+      )}
+
+      {bucket === 'clear-night' && (
+        <>
+          <circle cx="322" cy="44" r="24" fill="#eef3fb" fillOpacity="0.45" />
+          <circle cx="332" cy="36" r="24" fill="#0e2647" />
+          {[[40,30,1.6,0.5],[90,60,1.2,0.35],[150,20,1.8,0.5],[200,80,1.3,0.4],[250,40,1.5,0.55],
+            [60,110,1.2,0.3],[130,130,1.6,0.45],[300,120,1.4,0.4],[360,70,1.2,0.35],[20,150,1.3,0.3]]
+            .map(([x,y,r,o], i) => <circle key={i} cx={x} cy={y} r={r} fill="#fff" fillOpacity={o} />)}
+        </>
+      )}
+
+      {bucket === 'cloudy' && (
+        <g opacity="0.22" fill="#e2eaf5">
+          <ellipse cx="300" cy="55" rx="95" ry="32" />
+          <ellipse cx="215" cy="88" rx="70" ry="26" />
+          <ellipse cx="355" cy="95" rx="55" ry="22" />
+        </g>
+      )}
+
+      {bucket === 'fog' && (
+        <g opacity="0.16" fill="#cfe0f2">
+          <rect x="0" y="36" width="400" height="12" />
+          <rect x="0" y="72" width="400" height="9" />
+          <rect x="0" y="106" width="400" height="10" />
+          <rect x="0" y="142" width="400" height="8" />
+        </g>
+      )}
+
+      {bucket === 'rain' && (
+        <g stroke="#bfe3ff" strokeOpacity="0.3" strokeWidth="2" strokeLinecap="round">
+          {Array.from({ length: 18 }).map((_, i) => {
+            const x = (i * 27) % 420 - 10;
+            return <line key={i} x1={x} y1={-10} x2={x - 22} y2={230} />;
+          })}
+        </g>
+      )}
+
+      {bucket === 'storm' && (
+        <>
+          <g stroke="#9fc9f5" strokeOpacity="0.25" strokeWidth="2" strokeLinecap="round">
+            {Array.from({ length: 20 }).map((_, i) => {
+              const x = (i * 23) % 440 - 20;
+              return <line key={i} x1={x} y1={-10} x2={x - 26} y2={230} />;
+            })}
+          </g>
+          <path d="M244 18 L210 106 L240 106 L200 198 L266 92 L232 92 Z" fill="#ffe066" fillOpacity="0.7" />
+        </>
+      )}
+
+      {bucket === 'snow' && (
+        <g fill="#fff" fillOpacity="0.45">
+          {Array.from({ length: 26 }).map((_, i) => {
+            const x = (i * 37) % 400;
+            const y = (i * 53) % 220;
+            return <circle key={i} cx={x} cy={y} r={2.4} />;
+          })}
+        </g>
+      )}
+    </svg>
+  );
 }
 
 function fmtHour(iso) {
@@ -108,6 +225,12 @@ function CustomTooltip({ active, payload, label }) {
  */
 export default function WeatherForecast({ hourly = [], daily = [], loading, generatedAt, outlook, weatherCache, pagasaCalibration }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const { theme } = useTheme() ?? {};
+  const isLight = theme === 'light';
+  // Light canvas washes out low-alpha tints, so give light mode a stronger
+  // fill/border than dark mode needs for the same chip to read as "colored".
+  const tabFillAlpha = isLight ? '26' : '18';
+  const tabBorderAlpha = isLight ? '70' : '55';
 
   const days = daily; // full outlook window returned by the backend (currently up to 14 days)
   const selectedDay = days[selectedIdx] ?? null;
@@ -173,6 +296,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
       <div className="weather-day-tabs" style={{ marginBottom: 16 }}>
         {days.map((d, idx) => {
           const active = idx === selectedIdx;
+          const accent = WEATHER_TAB_ACCENT;
           return (
             <button
               key={d.date}
@@ -181,16 +305,17 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                 minWidth: 74, flexShrink: 0, cursor: 'pointer',
                 padding: '10px 10px 8px', borderRadius: 'var(--radius-sm)',
-                border: active ? '1px solid var(--accent2)' : '1px solid var(--blue-border)',
-                background: active ? 'var(--accent2)' : 'var(--blue-mid)',
-                color: active ? '#fff' : 'var(--text-secondary)',
+                border: `1px solid ${active ? accent : accent + tabBorderAlpha}`,
+                borderTop: `2px solid ${accent}`,
+                background: active ? accent : accent + tabFillAlpha,
+                color: active ? '#fff' : 'var(--text-primary)',
                 transition: 'all 0.15s ease',
               }}
             >
               <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.02em' }}>{fmtDayLabel(d.date, idx)}</span>
-              <span style={{ fontSize: '0.62rem', opacity: 0.85 }}>{fmtDateShort(d.date)}</span>
+              <span style={{ fontSize: '0.62rem', opacity: active ? 0.85 : 0.7 }}>{fmtDateShort(d.date)}</span>
               <span style={{ fontSize: '1.2rem', margin: '2px 0' }}>{weatherIcon(d.weathercode, true)}</span>
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: active ? '#fff' : accent }}>
                 {d.temperature_max_c != null ? `${Math.round(d.temperature_max_c)}°` : '—'}
               </span>
             </button>
@@ -203,53 +328,57 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
 
         {/* Hero "now" / day-snapshot panel */}
         <div style={{
-          borderRadius: 'var(--radius)', overflow: 'hidden',
+          borderRadius: 'var(--radius)', overflow: 'hidden', position: 'relative',
           border: '1px solid var(--blue-border)',
           background: heroBackdrop(heroRecord?.weathercode ?? selectedDay?.weathercode, heroRecord?.is_day ?? true),
         }}>
-          <div style={{ padding: '18px 18px 16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-              <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>
-                {isToday ? (heroRecord ? fmtHour(heroRecord.time) : 'Now') : fmtDateShort(selectedDay.date)}
-              </span>
-              <span style={{ fontSize: '2rem' }}>
-                {weatherIcon(heroRecord?.weathercode ?? selectedDay?.weathercode, heroRecord?.is_day ?? true)}
-              </span>
-            </div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>
-              {heroRecord?.temperature_c != null
-                ? `${Math.round(heroRecord.temperature_c)}°`
-                : selectedDay?.temperature_max_c != null ? `${Math.round(selectedDay.temperature_max_c)}°` : '—'}
-            </div>
-            <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.9)', fontWeight: 600, marginTop: 4 }}>
-              {heroRecord?.condition ?? selectedDay?.condition ?? '—'}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>
-              {heroRecord?.feels_like_c != null
-                ? `Feels like ${Math.round(heroRecord.feels_like_c)}°`
-                : hasHourlyDetail ? '' : 'Daily outlook · hourly detail not yet available for this day'}
-            </div>
-          </div>
+          <HeroWeatherArt
+            code={heroRecord?.weathercode ?? selectedDay?.weathercode}
+            isDay={heroRecord?.is_day ?? true}
+          />
 
-          <div className="weather-stat-grid" style={{ padding: '0 14px 14px' }}>
-            <Stat icon="" label="Wind" value={
-              heroRecord ? `${heroRecord.wind_speed_kph ?? '—'} km/h` : selectedDay?.wind_speed_max_kph != null ? `${selectedDay.wind_speed_max_kph} km/h` : '—'
-            } />
-            <Stat icon="" label="Wind Gusts" value={
-              heroRecord?.wind_gusts_kph != null ? `${heroRecord.wind_gusts_kph} km/h` : selectedDay?.wind_gusts_max_kph != null ? `${selectedDay.wind_gusts_max_kph} km/h` : '—'
-            } />
-            <Stat icon="" label="Humidity" value={heroRecord?.humidity != null ? `${heroRecord.humidity}%` : '—'} />
-            <Stat icon="" label="Visibility" value={heroRecord?.visibility_km != null ? `${heroRecord.visibility_km} km` : '—'} />
-            <Stat icon="" label="Pressure" value={
-              heroRecord?.pressure_msl_hpa != null ? `${heroRecord.pressure_msl_hpa} hPa` : selectedDay?.pressure_msl_hpa != null ? `${selectedDay.pressure_msl_hpa} hPa` : '—'
-            } />
-            <Stat icon="" label="UV Index" value={heroRecord?.uv_index ?? '—'} />
-            <Stat icon="" label="Dew Point" value={heroRecord?.dew_point_c != null ? `${heroRecord.dew_point_c}°C` : '—'} />
-            <Stat icon="" label="Soil Moisture" value={
-              heroRecord?.soil_moisture_vwc != null
-                ? `${(heroRecord.soil_moisture_vwc * 100).toFixed(1)}%`
-                : selectedDay?.soil_moisture_vwc != null ? `${(selectedDay.soil_moisture_vwc * 100).toFixed(1)}%` : '—'
-            } />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ padding: '18px 18px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>
+                  {isToday ? (heroRecord ? fmtHour(heroRecord.time) : 'Now') : fmtDateShort(selectedDay.date)}
+                </span>
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>
+                {heroRecord?.temperature_c != null
+                  ? `${Math.round(heroRecord.temperature_c)}°`
+                  : selectedDay?.temperature_max_c != null ? `${Math.round(selectedDay.temperature_max_c)}°` : '—'}
+              </div>
+              <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.9)', fontWeight: 600, marginTop: 4 }}>
+                {heroRecord?.condition ?? selectedDay?.condition ?? '—'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>
+                {heroRecord?.feels_like_c != null
+                  ? `Feels like ${Math.round(heroRecord.feels_like_c)}°`
+                  : hasHourlyDetail ? '' : 'Daily outlook · hourly detail not yet available for this day'}
+              </div>
+            </div>
+
+            <div className="weather-stat-grid" style={{ padding: '0 14px 14px' }}>
+              <Stat icon="" label="Wind" value={
+                heroRecord ? `${heroRecord.wind_speed_kph ?? '—'} km/h` : selectedDay?.wind_speed_max_kph != null ? `${selectedDay.wind_speed_max_kph} km/h` : '—'
+              } />
+              <Stat icon="" label="Wind Gusts" value={
+                heroRecord?.wind_gusts_kph != null ? `${heroRecord.wind_gusts_kph} km/h` : selectedDay?.wind_gusts_max_kph != null ? `${selectedDay.wind_gusts_max_kph} km/h` : '—'
+              } />
+              <Stat icon="" label="Humidity" value={heroRecord?.humidity != null ? `${heroRecord.humidity}%` : '—'} />
+              <Stat icon="" label="Visibility" value={heroRecord?.visibility_km != null ? `${heroRecord.visibility_km} km` : '—'} />
+              <Stat icon="" label="Pressure" value={
+                heroRecord?.pressure_msl_hpa != null ? `${heroRecord.pressure_msl_hpa} hPa` : selectedDay?.pressure_msl_hpa != null ? `${selectedDay.pressure_msl_hpa} hPa` : '—'
+              } />
+              <Stat icon="" label="UV Index" value={heroRecord?.uv_index ?? '—'} />
+              <Stat icon="" label="Dew Point" value={heroRecord?.dew_point_c != null ? `${heroRecord.dew_point_c}°C` : '—'} />
+              <Stat icon="" label="Soil Moisture" value={
+                heroRecord?.soil_moisture_vwc != null
+                  ? `${(heroRecord.soil_moisture_vwc * 100).toFixed(1)}%`
+                  : selectedDay?.soil_moisture_vwc != null ? `${(selectedDay.soil_moisture_vwc * 100).toFixed(1)}%` : '—'
+              } />
+            </div>
           </div>
         </div>
 
