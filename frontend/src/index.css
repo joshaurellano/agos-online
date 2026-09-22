@@ -63,14 +63,24 @@
   --accent:         #5ec8fa;
 }
 
-html { font-size: 16px; overflow-x: hidden; }
+/* `overflow-x: clip` (not `hidden`) on both axes-relevant rules below.
+   Per the CSS overflow spec, setting overflow-x to anything other than
+   'visible' forces the *other* axis ('overflow-y', left unset here) to
+   compute as 'auto' instead of 'visible' -- which turns `html`/`body`
+   themselves into scroll containers. That silently breaks every
+   `position: sticky` element on the page (the Topbar, the sidebar, table
+   headers, etc. all stopped sticking because their nearest "scrolling
+   ancestor" became `body` instead of the viewport). `clip` suppresses the
+   horizontal overflow the same way `hidden` did, without triggering that
+   auto-conversion, so sticky positioning works again. */
+html { font-size: 16px; overflow-x: clip; }
 
 body {
   font-family: var(--font-body);
   background: var(--blue-deep);
   color: var(--text-primary);
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
