@@ -26,16 +26,11 @@ dependencies:
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
 
-  # WebView (for radar/windy)
-  webview_flutter: ^4.7.0
-
   # UI
   google_fonts: ^6.2.1
 
   # Charts
   fl_chart: ^0.69.0
-
-  google_maps_flutter: ^2.6.0
 
   geolocator: ^13.0.0
   image_picker: ^1.2.3
@@ -43,8 +38,26 @@ dependencies:
   firebase_messaging: ^16.3.0
   flutter_local_notifications: ^22.0.0
   flutter_launcher_icons: ^0.14.4
-  maplibre_gl: ^0.27.0
   shared_preferences: ^2.3.2
+
+  # Offline support
+  # connectivity_plus: instant "radio changed" events (airplane mode, Wi-Fi
+  # dropped); services/connectivity_service.dart adds a real reachability
+  # probe on top of it.
+  connectivity_plus: ^6.1.0
+  # On-disk JSON cache, report outbox, and offline map storage.
+  path_provider: ^2.1.4
+  # Map tiles are cached to disk (and pre-downloadable for the barangay).
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.1
+  # Version string on the Settings screen.
+  package_info_plus: ^8.1.0
+
+  # Release readiness
+  # Crash reports (opt-out in Settings; off in debug builds).
+  firebase_crashlytics: ^5.0.0
+  # Opens the privacy policy / feedback email from Settings.
+  url_launcher: ^6.3.0
 
 
 dev_dependencies:
@@ -58,7 +71,18 @@ flutter:
     - .env
     - assets/data/triangulo_roads.json
     - lib/assets/agos_icon.png
+    # Plus Jakarta Sans, bundled so the app's typography renders on a first
+    # launch with no signal. google_fonts prefers files it finds here over
+    # downloading them. (SIL Open Font License — see google_fonts/OFL.txt.)
+    - google_fonts/
 
+# The Android launcher icons are already generated into android/.../res/.
+# Re-run this only if you change the images below:  dart run flutter_launcher_icons
+# assets/icon/ holds icons prepared for this: a padded transparent foreground
+# that stays inside Android's adaptive-icon safe zone, over a navy background,
+# plus a solid full-bleed version for older launchers.
 flutter_icons:
   android: true
-  image_path: "lib/assets/agos_icon.png"
+  image_path: "assets/icon/agos_icon_full.png"
+  adaptive_icon_background: "#091729"
+  adaptive_icon_foreground: "assets/icon/agos_adaptive_foreground.png"

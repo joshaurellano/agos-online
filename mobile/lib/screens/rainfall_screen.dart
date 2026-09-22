@@ -1,13 +1,15 @@
 // rainfall_screen.dart
-import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../main.dart';
+import '../widgets/skeleton.dart';
 import '../theme/panahon_ui.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../services/model_api_client.dart';
+import '../services/cached_api.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_cache.dart';
 
 
 String _requireEnv(String key) {
@@ -119,6 +121,9 @@ class _RainfallScreenState extends State<RainfallScreen> {
   DateTime? _lastFetched;
   bool _loadingHistory = true;
   RealtimeChannel? _channel;
+  // True when what's on screen was loaded from the saved copy.
+  bool _fromSaved = false;
+  StreamSubscription<void>? _reconnectSub;
 
   @override
   void initState() {
@@ -126,10 +131,15 @@ class _RainfallScreenState extends State<RainfallScreen> {
     _fetchRainfall();
     _fetchHistory();
     _subscribeRealtime();
+    _reconnectSub = ConnectivityService.instance.onReconnected.listen((_) {
+      _fetchRainfall();
+      _fetchHistory();
+    });
   }
 
   @override
   void dispose() {
+    _reconnectSub?.cancel();
     final channel = _channel;
     if (channel != null) {
       Supabase.instance.client.removeChannel(channel);
@@ -149,30 +159,38 @@ class _RainfallScreenState extends State<RainfallScreen> {
         .subscribe();
   }
 
-Future<void> _fetchRainfall() async {
-  try {
-    final res = await getWithFallback(_modelUrl);
+  void _applyRainfall(Cached<Map<String, dynamic>> c) {
     if (!mounted) return;
-    debugPrint('RAINFALL STATUS: ${res.statusCode}');
-    debugPrint('RAINFALL BODY: ${res.body}');   // <-- add this
-    if (res.statusCode == 200) {
-      final j = jsonDecode(res.body) as Map<String, dynamic>;
-      final m = j['live_metrics'] as Map<String, dynamic>? ?? {};
-      final v = m['rainfall_mm'];
-      setState(() {
-        _liveRainfall = v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '');
-        _loading = false;
-      });
-    } else {
-      setState(() => _loading = false);
-    }
-  } catch (e, st) {
-    debugPrint('RAINFALL FETCH ERROR: $e');   // <-- add this
-    if (mounted) setState(() => _loading = false);
+    final m = c.data['live_metrics'] as Map<String, dynamic>? ?? {};
+    final v = m['rainfall_mm'];
+    setState(() {
+      _liveRainfall = v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '');
+      _loading = false;
+    });
   }
-}
+
+  Future<void> _fetchRainfall() async {
+    try {
+      final r = await fetchJsonCached(
+        _modelUrl,
+        cacheKey: 'flood_status', // same payload the shared poller saves
+        onSaved: _applyRainfall,
+      );
+      _applyRainfall(r);
+    } catch (e) {
+      debugPrint('RAINFALL FETCH ERROR: $e');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  static const _historyCacheKey = 'rainfall_history';
 
   Future<void> _fetchHistory() async {
+    // Paint the saved copy immediately if there's nothing on screen yet.
+    if (_hourlyLogs.isEmpty && _dailyData.isEmpty) {
+      final saved = await OfflineCache.readJson(_historyCacheKey);
+      if (saved != null && saved.data is Map) _applyHistory(saved.data as Map, saved.savedAt, true);
+    }
     try {
       final since = DateTime.now().toUtc().subtract(const Duration(hours: 24));
 
@@ -180,51 +198,63 @@ Future<void> _fetchRainfall() async {
           .from('flood_snapshots')
           .select('created_at, rainfall_mm')
           .gte('created_at', since.toIso8601String())
-          .order('created_at', ascending: true);
-
-      final sums = <String, double>{};
-      final counts = <String, int>{};
-      final labels = <String, String>{};
-      final order = <String>[];
-
-      for (final row in (hourlyRows as List)) {
-        final dt = DateTime.parse(row['created_at'] as String).toLocal();
-        final key = '${dt.year}-${dt.month}-${dt.day}-${dt.hour}';
-        final rainfall = (row['rainfall_mm'] as num).toDouble();
-        if (!sums.containsKey(key)) {
-          sums[key] = 0;
-          counts[key] = 0;
-          labels[key] = _formatHour(dt);
-          order.add(key);
-        }
-        sums[key] = sums[key]! + rainfall;
-        counts[key] = counts[key]! + 1;
-      }
-
-      final hourlyLogs = order
-          .map((key) => _RainPoint(labels[key]!, _round1(sums[key]! / counts[key]!)))
-          .toList();
+          .order('created_at', ascending: true)
+          .timeout(const Duration(seconds: 15));
 
       final dailyRows = await Supabase.instance.client
-          .rpc('get_daily_rainfall', params: {'days_back': 7});
+          .rpc('get_daily_rainfall', params: {'days_back': 7})
+          .timeout(const Duration(seconds: 15));
 
-      final dailyData = (dailyRows as List).map((r) {
-        final day = r['day'].toString();
-        final rainfall = (r['rainfall'] as num).toDouble();
-        return _RainPoint(_formatDateLabel(day), _round1(rainfall));
-      }).toList();
-
-      if (!mounted) return;
-      setState(() {
-        _hourlyLogs = hourlyLogs;
-        _dailyData = dailyData;
-        _lastFetched = DateTime.now();
-        _loadingHistory = false;
-      });
+      final raw = {'hourly': hourlyRows, 'daily': dailyRows};
+      unawaited(OfflineCache.writeJson(_historyCacheKey, raw));
+      _applyHistory(raw, DateTime.now(), false);
     } catch (e) {
       debugPrint('RAINFALL HISTORY FETCH ERROR: $e');
       if (mounted) setState(() => _loadingHistory = false);
     }
+  }
+
+  // Turns the raw rows (live or saved) into chart points. `at` is when the
+  // data was fetched — for a saved copy that's when it was saved, which is
+  // what drives the "data may be stale" banner.
+  void _applyHistory(Map raw, DateTime at, bool fromSaved) {
+    if (!mounted) return;
+    final sums = <String, double>{};
+    final counts = <String, int>{};
+    final labels = <String, String>{};
+    final order = <String>[];
+
+    for (final row in (raw['hourly'] as List)) {
+      final dt = DateTime.parse(row['created_at'] as String).toLocal();
+      final key = '${dt.year}-${dt.month}-${dt.day}-${dt.hour}';
+      final rainfall = (row['rainfall_mm'] as num).toDouble();
+      if (!sums.containsKey(key)) {
+        sums[key] = 0;
+        counts[key] = 0;
+        labels[key] = _formatHour(dt);
+        order.add(key);
+      }
+      sums[key] = sums[key]! + rainfall;
+      counts[key] = counts[key]! + 1;
+    }
+
+    final hourlyLogs = order
+        .map((key) => _RainPoint(labels[key]!, _round1(sums[key]! / counts[key]!)))
+        .toList();
+
+    final dailyData = (raw['daily'] as List).map((r) {
+      final day = r['day'].toString();
+      final rainfall = (r['rainfall'] as num).toDouble();
+      return _RainPoint(_formatDateLabel(day), _round1(rainfall));
+    }).toList();
+
+    setState(() {
+      _hourlyLogs = hourlyLogs;
+      _dailyData = dailyData;
+      _lastFetched = at;
+      _fromSaved = fromSaved;
+      _loadingHistory = false;
+    });
   }
 
   // ── Derived metrics (mirrors web's derived metrics block) ────────────────
@@ -307,13 +337,18 @@ Future<void> _fetchRainfall() async {
                 child: Row(children: [
                   const Icon(Icons.error_outline_rounded, color: AppColors.red, size: 16),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text.rich(
                       TextSpan(
-                        style: TextStyle(fontSize: 11.5, color: Color(0xFFF87171)),
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFFF87171)),
                         children: [
-                          TextSpan(text: 'Data may be stale', style: TextStyle(fontWeight: FontWeight.w800)),
-                          TextSpan(text: ' — last update was over 5 minutes ago. Check backend connectivity.'),
+                          TextSpan(
+                              text: _fromSaved ? 'Showing saved data' : 'Data may be stale',
+                              style: const TextStyle(fontWeight: FontWeight.w800)),
+                          TextSpan(
+                              text: _fromSaved
+                                  ? ' — last updated ${agoLabel(_lastFetched!)}. It will refresh when you\'re back online.'
+                                  : ' — last update was over 5 minutes ago. Check backend connectivity.'),
                         ],
                       ),
                     ),
@@ -506,8 +541,8 @@ Future<void> _fetchRainfall() async {
                   const SizedBox(height: 12),
                   if (_loadingHistory)
                     const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 30),
-                      child: Center(child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2)),
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Skeleton(height: 170, radius: 12),
                     )
                   else if (_data.isEmpty)
                     const Padding(

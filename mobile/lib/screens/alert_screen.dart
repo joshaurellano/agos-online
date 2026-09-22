@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
+import '../widgets/skeleton.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_cache.dart';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -13,10 +17,12 @@ class _AlertLog {
   final _AlertType type;
   final String message;
   final String sentBy;
+  final DateTime createdAt;
   bool read;
 
   _AlertLog({
     required this.id,
+    required this.createdAt,
     required this.time,
     required this.type,
     required this.message,
@@ -100,7 +106,13 @@ class _AlertScreenState extends State<AlertScreen> {
     if (!mounted) return;
     _fetchAlertsFromDb();
     _subscribeRealtime();
+    // Alerts that arrived while offline never came through realtime, so
+    // re-fetch (and merge) the moment we're back.
+    _reconnectSub = ConnectivityService.instance.onReconnected.listen((_) => _fetchAlertsFromDb());
   }
+
+  StreamSubscription<void>? _reconnectSub;
+  static const _alertsCacheKey = 'alerts_recent';
 
   Future<void> _loadClearedBefore() async {
     try {
@@ -114,6 +126,7 @@ class _AlertScreenState extends State<AlertScreen> {
 
   @override
   void dispose() {
+    _reconnectSub?.cancel();
     _channel?.unsubscribe();
     super.dispose();
   }
@@ -121,46 +134,81 @@ class _AlertScreenState extends State<AlertScreen> {
   // ── Data fetching ────────────────────────────────────────────────────────────
 
   Future<void> _fetchAlertsFromDb() async {
+    // Show the saved list instantly if there's nothing on screen yet, so a
+    // resident with no signal sees the last alerts rather than a spinner.
+    if (_logs.isEmpty) {
+      final saved = await OfflineCache.readJson(_alertsCacheKey);
+      if (saved != null && saved.data is List) _mergeRows(saved.data as List);
+    }
     try {
       final res = await Supabase.instance.client
           .from('alerts')
           .select('id, type, message, sent_by, created_at')
           .order('created_at', ascending: false)
-          .limit(50);
-
-      if (!mounted) return;
-
-      final clearedBefore = _clearedBefore;
-      final rows = (res as List).cast<Map<String, dynamic>>()
-          // Respect a prior "Clear all" on this device — otherwise every
-          // reopen re-fetches the exact alerts the user just cleared.
-          .where((row) {
-            if (clearedBefore == null) return true;
-            final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
-            return createdAt == null || createdAt.isAfter(clearedBefore);
-          });
-
-      final dbLogs = rows.map((row) {
-        final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
-        final timeStr = _formatTime(createdAt);
-        return _AlertLog(
-          id:      row['id'] as int? ?? DateTime.now().millisecondsSinceEpoch,
-          time:    timeStr,
-          type:    _typeFromKey(row['type'] as String? ?? 'INFO'),
-          message: row['message'] as String? ?? '',
-          sentBy:  row['sent_by'] as String? ?? 'System',
-          read:    true, // treat DB records as already read
-        );
-      }).toList();
-
-      setState(() {
-        _logs.addAll(dbLogs);
-        _loading = false;
-      });
+          .limit(50)
+          .timeout(const Duration(seconds: 15));
+      unawaited(OfflineCache.writeJson(_alertsCacheKey, res));
+      _mergeRows(res as List);
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  _AlertLog _logFromRow(Map<String, dynamic> row, {required bool read}) {
+    final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
+    return _AlertLog(
+      id:        row['id'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+      createdAt: createdAt,
+      time:      _formatTime(createdAt),
+      type:      _typeFromKey(row['type'] as String? ?? 'INFO'),
+      message:   row['message'] as String? ?? '',
+      sentBy:    row['sent_by'] as String? ?? 'System',
+      read:      read,
+    );
+  }
+
+  // Merges rows (live or saved) into the list without duplicating entries,
+  // keeps the unread state of alerts that arrived via realtime, and keeps
+  // newest-first order.
+  void _mergeRows(List rows) {
+    if (!mounted) return;
+    final clearedBefore = _clearedBefore;
+    final fresh = rows
+        .cast<Map<String, dynamic>>()
+        // Respect a prior "Clear all" on this device — otherwise every
+        // reopen re-fetches the exact alerts the user just cleared.
+        .where((row) {
+          if (clearedBefore == null) return true;
+          final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
+          return createdAt == null || createdAt.isAfter(clearedBefore);
+        })
+        .map((row) => _logFromRow(row, read: true))
+        .toList();
+    setState(() {
+      final existing = {for (final l in _logs) l.id: l};
+      for (final log in fresh) {
+        final prior = existing[log.id];
+        if (prior != null) log.read = prior.read;
+      }
+      final freshIds = fresh.map((l) => l.id).toSet();
+      _logs.removeWhere((l) => freshIds.contains(l.id));
+      _logs.addAll(fresh);
+      _logs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _loading = false;
+    });
+  }
+
+  // Keep the saved list current with alerts that arrive while the app is
+  // open, so they're still there after the next offline launch.
+  Future<void> _saveRealtimeRow(Map<String, dynamic> row) async {
+    final saved = await OfflineCache.readJson(_alertsCacheKey);
+    final list = saved != null && saved.data is List
+        ? List<dynamic>.from(saved.data as List)
+        : <dynamic>[];
+    list.removeWhere((e) => e is Map && e['id'] == row['id']);
+    list.insert(0, row);
+    await OfflineCache.writeJson(_alertsCacheKey, list.take(50).toList());
   }
 
   void _subscribeRealtime() {
@@ -172,15 +220,8 @@ class _AlertScreenState extends State<AlertScreen> {
           table: 'alerts',
           callback: (payload) {
             final row = payload.newRecord;
-            final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
-            final newLog = _AlertLog(
-              id:      row['id'] as int? ?? DateTime.now().millisecondsSinceEpoch,
-              time:    _formatTime(createdAt),
-              type:    _typeFromKey(row['type'] as String? ?? 'INFO'),
-              message: row['message'] as String? ?? '',
-              sentBy:  row['sent_by'] as String? ?? 'System',
-              read:    false,
-            );
+            unawaited(_saveRealtimeRow(row));
+            final newLog = _logFromRow(row, read: false);
             if (mounted) setState(() => _logs.insert(0, newLog));
           },
         )
@@ -364,7 +405,7 @@ class _AlertScreenState extends State<AlertScreen> {
         // ── Log list ──────────────────────────────────────────
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
+              ? const SingleChildScrollView(physics: NeverScrollableScrollPhysics(), child: SkeletonCardList(count: 5))
               : filtered.isEmpty
                   ? _EmptyState(filter: _filter)
                   : RefreshIndicator(

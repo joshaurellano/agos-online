@@ -9,6 +9,7 @@
 // failed request now just fails.
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'connectivity_service.dart';
 
 /// GETs [primaryUrl]. Throws if the request errors (timeout, DNS,
 /// connection refused, etc.), returns a 5xx, or the JSON body reports
@@ -18,7 +19,19 @@ Future<http.Response> getWithFallback(
   Duration timeout = const Duration(seconds: 15),
 }) async {
   final primary = Uri.parse(primaryUrl);
-  final res = await http.get(primary).timeout(timeout);
+  final http.Response res;
+  try {
+    res = await http.get(primary).timeout(timeout);
+  } catch (e) {
+    // DNS / socket / TLS / timeout — the request never got an answer.
+    // Tell ConnectivityService so it can probe and (if we really are
+    // offline) switch the whole app into saved-data mode.
+    ConnectivityService.instance.reportFailure();
+    rethrow;
+  }
+  // Any HTTP response at all — even a 500 — proves the network path works;
+  // whether the *backend* is healthy is a separate question handled below.
+  ConnectivityService.instance.reportSuccess();
   if (res.statusCode >= 500) {
     throw http.ClientException(
         'Model API returned HTTP ${res.statusCode}', primary);
