@@ -1,7 +1,8 @@
-/// A real-time, resident-submitted report ("flooding on my street right
-/// now", "may sunog", etc.) — distinct from the formal `flood_reports`
-/// staff log used on the web dashboard. These start as `pending` and only
-/// appear in the community feed once a barangay official verifies them.
+/// A real-time, resident-submitted flood report ("flooding on my street
+/// right now", "umaabot na sa tuhod", etc.) — distinct from the formal
+/// `flood_reports` staff log used on the web dashboard. These start as
+/// `pending` and only appear in the community feed once a barangay
+/// official verifies them.
 class IncidentReport {
   final String id;
   final String? reportedBy;
@@ -43,7 +44,7 @@ class IncidentReport {
       reportedBy:      map['reported_by'] as String?,
       reporterName:    map['reporter_name'] as String? ?? 'Resident',
       reporterRole:    map['reporter_role'] as String? ?? 'Resident',
-      category:        map['category'] as String? ?? 'Other',
+      category:        map['category'] as String? ?? 'Flood',
       description:     map['description'] as String? ?? '',
       photoUrl:        map['photo_url'] as String?,
       latitude:        (map['latitude'] as num?)?.toDouble(),
@@ -59,10 +60,8 @@ class IncidentReport {
 /// Report categories a resident can pick from. Kept in one place so the
 /// submission form and any category-based filtering/icon lookups can't
 /// drift out of sync with what the database's CHECK constraint allows.
-const kIncidentCategories = <String>[
-  'Flood',
-  'Road Accident',
-  'Power Outage',
-  'Medical Emergency',
-  'Other',
-];
+///
+/// Residents can only file flood reports — other incident types (power
+/// outages, road accidents, medical emergencies, etc.) were removed so the
+/// community feed stays focused on real-time flood conditions.
+const kIncidentCategories = <String>['Flood'];

@@ -76,7 +76,7 @@ class PendingReport {
         id: j['id'] as String,
         reporterName: j['reporterName'] as String? ?? 'Resident',
         reporterRole: j['reporterRole'] as String? ?? 'Resident',
-        category: j['category'] as String? ?? 'Other',
+        category: j['category'] as String? ?? 'Flood',
         description: j['description'] as String? ?? '',
         photoPath: j['photoPath'] as String?,
         latitude: (j['latitude'] as num?)?.toDouble(),
