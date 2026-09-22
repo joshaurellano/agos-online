@@ -12,14 +12,6 @@ import '../services/connectivity_service.dart';
 import '../services/incident_service.dart';
 import '../services/pending_reports_service.dart';
 
-const _categoryIcons = <String, IconData>{
-  'Flood':              Icons.water_rounded,
-  'Road Accident':      Icons.car_crash_rounded,
-  'Power Outage':       Icons.power_off_rounded,
-  'Medical Emergency':  Icons.medical_services_rounded,
-  'Other':              Icons.report_rounded,
-};
-
 // Remembers the name a resident typed in on this device, so they don't have
 // to retype it on every report — same idea as the anonymous device ID
 // already used for `reported_by`, just for the friendlier display name
@@ -36,7 +28,10 @@ class ReportIncidentScreen extends StatefulWidget {
 class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   final _descriptionCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
-  String _category = kIncidentCategories.first;
+  // Residents can only file flood reports now, so this is fixed rather
+  // than picked from a list — kept as a field (not a literal at the call
+  // site) since `IncidentService.submitReport` still takes a category.
+  final String _category = kIncidentCategories.first;
   File? _photo;
 
   bool _locating = false;
@@ -262,7 +257,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
       backgroundColor: AppColors.bgDeep,
       appBar: AppBar(
         backgroundColor: AppColors.bgDark,
-        title: const Text('Report an Incident', style: TextStyle(color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w700)),
+        title: const Text('Report Flooding', style: TextStyle(color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w700)),
         iconTheme: const IconThemeData(color: AppColors.textPri),
         elevation: 0,
       ),
@@ -285,7 +280,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Barangay officials review every report before it\'s shown to other residents.',
+                        'Barangay officials review every flood report before it\'s shown to other residents.',
                         style: TextStyle(color: AppColors.textSec, fontSize: 12.5),
                       ),
                     ),
@@ -320,39 +315,6 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 'Leave blank to submit as "Anonymous Resident". Your name is shown '
                 'next to your report in the community feed.',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.35),
-              ),
-
-              const SizedBox(height: 20),
-              _sectionLabel('What kind of incident?'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8, runSpacing: 8,
-                children: kIncidentCategories.map((cat) {
-                  final selected = _category == cat;
-                  return GestureDetector(
-                    onTap: () => setState(() => _category = cat),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                      decoration: BoxDecoration(
-                        color: selected ? AppColors.accent.withValues(alpha: 0.16) : AppColors.bgCard,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: selected ? AppColors.accent : AppColors.bgBorder),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(_categoryIcons[cat] ?? Icons.report_rounded,
-                              size: 15, color: selected ? AppColors.accent : AppColors.textMuted),
-                          const SizedBox(width: 6),
-                          Text(cat, style: TextStyle(
-                            color: selected ? AppColors.accent : AppColors.textSec,
-                            fontSize: 12.5, fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                          )),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
               ),
 
               const SizedBox(height: 20),

@@ -11,21 +11,11 @@ import '../services/offline_cache.dart';
 import '../services/pending_reports_service.dart';
 import 'report_incident_screen.dart';
 
-const _categoryIcons = <String, IconData>{
-  'Flood':              Icons.water_rounded,
-  'Road Accident':      Icons.car_crash_rounded,
-  'Power Outage':       Icons.power_off_rounded,
-  'Medical Emergency':  Icons.medical_services_rounded,
-  'Other':              Icons.report_rounded,
-};
-
-const _categoryColors = <String, Color>{
-  'Flood':              AppColors.accent,
-  'Road Accident':      AppColors.yellow,
-  'Power Outage':       AppColors.textSec,
-  'Medical Emergency':  AppColors.red,
-  'Other':              AppColors.textMuted,
-};
+// Residents can only file flood reports now, so there's no category
+// vocabulary left to key off of — every report card just uses these
+// directly instead of looking a category up in a map.
+const _reportIcon  = Icons.water_rounded;
+const _reportColor = AppColors.accent;
 
 class CommunityReportsScreen extends StatefulWidget {
   const CommunityReportsScreen({super.key});
@@ -38,7 +28,6 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
   List<IncidentReport> _reports = [];
   bool _loading = true;
   String? _error;
-  String _filter = 'ALL';
   // Set when the feed on screen is a saved copy rather than live.
   DateTime? _savedAt;
   StreamSubscription<void>? _reconnectSub;
@@ -94,21 +83,15 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
     if (result == ReportSubmitResult.sent) _load();
   }
 
-  List<IncidentReport> get _filtered => _filter == 'ALL'
-      ? _reports
-      : _reports.where((r) => r.category == _filter).toList();
-
   @override
   Widget build(BuildContext context) {
-    final categories = ['ALL', ...{for (final r in _reports) r.category}];
-
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openReportForm,
         backgroundColor: AppColors.accent,
         icon: const Icon(Icons.add_alert_rounded, color: Colors.white),
-        label: const Text('Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        label: const Text('Report Flood', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -117,43 +100,6 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
           onRefresh: _load,
           child: CustomScrollView(
             slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: SizedBox(
-                    height: 34,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: categories.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemBuilder: (_, i) {
-                        final cat = categories[i];
-                        final selected = _filter == cat;
-                        return GestureDetector(
-                          onTap: () => setState(() => _filter = cat),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: selected ? AppColors.accent.withValues(alpha: 0.16) : AppColors.bgCard,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: selected ? AppColors.accent : AppColors.bgBorder),
-                            ),
-                            child: Text(
-                              cat,
-                              style: TextStyle(
-                                color: selected ? AppColors.accent : AppColors.textSec,
-                                fontSize: 12.5,
-                                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
               SliverToBoxAdapter(child: _PendingReportsSection()),
               if (_savedAt != null)
                 SliverToBoxAdapter(
@@ -178,7 +124,7 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
                     ),
                   ),
                 )
-              else if (_filtered.isEmpty)
+              else if (_reports.isEmpty)
                 SliverFillRemaining(
                   child: Center(
                     child: Padding(
@@ -207,9 +153,9 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, i) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: _ReportCard(report: _filtered[i]),
+                        child: _ReportCard(report: _reports[i]),
                       ),
-                      childCount: _filtered.length,
+                      childCount: _reports.length,
                     ),
                   ),
                 ),
@@ -235,8 +181,8 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _categoryColors[report.category] ?? AppColors.textMuted;
-    final icon  = _categoryIcons[report.category] ?? Icons.report_rounded;
+    final color = _reportColor;
+    final icon  = _reportIcon;
 
     return Container(
       decoration: BoxDecoration(
