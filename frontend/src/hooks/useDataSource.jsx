@@ -14,6 +14,11 @@ export const API_BASE_URLS = {
 
 export function DataSourceProvider({ children }) {
   const [dataSource, setDataSourceState] = useState(() => {
+    // Mock mode is a dev-only convenience — never honor a leftover
+    // 'mock' value from localStorage in a production build, so prod
+    // always starts on (and stays on) live data even if this browser
+    // previously ran the dev build with mock selected.
+    if (!import.meta.env.DEV) return 'live';
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored === 'mock' ? 'mock' : 'live';
   });
@@ -23,12 +28,14 @@ export function DataSourceProvider({ children }) {
   }, [dataSource]);
 
   const setDataSource = (source) => {
+    if (!import.meta.env.DEV) return; // dev-only, see note above
     if (source === 'live' || source === 'mock') {
       setDataSourceState(source);
     }
   };
 
   const toggleDataSource = () => {
+    if (!import.meta.env.DEV) return; // dev-only, see note above
     setDataSourceState((prev) => (prev === 'live' ? 'mock' : 'live'));
   };
 
