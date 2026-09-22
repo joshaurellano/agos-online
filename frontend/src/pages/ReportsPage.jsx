@@ -206,7 +206,6 @@ function StatSummary({ reports }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10, marginBottom: 18 }}>
       {items.map(({ label, value, color, icon }) => (
         <div key={label} className="card" style={{
-          borderTop: `3px solid ${color}`,
           display: 'flex', flexDirection: 'column', gap: 4,
           padding: '12px 14px',
         }}>
@@ -711,7 +710,7 @@ function ModelAccuracyPanel({ reports }) {
         ].map(({ label, value, color }) => (
           <div key={label} style={{
             background: 'var(--blue-card)', borderRadius: 6, padding: '10px 14px',
-            border: '1px solid var(--blue-border)', borderTop: `3px solid ${color}`,
+            border: '1px solid var(--blue-border)',
           }}>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
             <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 4 }}>{label}</div>

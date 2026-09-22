@@ -420,9 +420,8 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
         className={`card${isSevere ? ' alert-glow-pulse' : ''}`}
         style={{
           flex: '2 1 420px', minWidth: 320, padding: 0, overflow: 'hidden',
-          borderLeft: `5px solid ${alertColor}`,
           boxShadow: `var(--shadow), 0 0 24px ${hexToRgba(alertColor, 0.18)}`,
-          transition: 'box-shadow 0.6s ease, border-color 0.6s ease',
+          transition: 'box-shadow 0.6s ease',
           '--glow-a': hexToRgba(alertColor, 0.16),
           '--glow-b': hexToRgba(alertColor, 0.5),
         }}
@@ -640,7 +639,6 @@ function ConditionsStrip({ items }) {
             key={it.label}
             className="stat-cell"
             style={{
-              '--stat-color': it.color || 'var(--blue-border)',
               padding: '16px 18px',
               borderLeft: i === 0 ? 'none' : '1px solid var(--blue-border)',
               opacity: it.noData ? 0.55 : 1,

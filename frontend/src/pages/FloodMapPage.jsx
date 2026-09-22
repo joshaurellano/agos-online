@@ -162,7 +162,6 @@ function LegendItem({ color, label, shape = 'circle' }) {
 function EvacuationCenterCard({ center }) {
   return (
     <div className="card" style={{
-      borderTop: `3px solid ${center.color}`,
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
