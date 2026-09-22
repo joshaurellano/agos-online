@@ -366,7 +366,6 @@ export default function RainfallPage() {
           },
         ].map(c => (
           <div key={c.label} className="card" style={{
-            borderTop: `3px solid ${c.color}`,
             position: 'relative', overflow: 'hidden',
           }}>
             <div style={{
@@ -542,7 +541,6 @@ export default function RainfallPage() {
                 padding: '10px 12px',
                 background: isActive ? `${t.color}12` : 'var(--blue-mid)',
                 border: `1px solid ${isActive ? t.color + '50' : 'var(--blue-border)'}`,
-                borderTop: `3px solid ${t.color}`,
                 borderRadius: 'var(--radius-sm)',
                 transition: 'all 0.2s',
               }}>

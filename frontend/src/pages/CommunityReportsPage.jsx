@@ -381,7 +381,7 @@ export default function CommunityReportsPage() {
             Resident Reports
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Flood reports submitted by residents, awaiting review.
+            Flood reports submitted by residents through the mobile app, awaiting review.
           </div>
         </div>
       </div>
@@ -399,7 +399,6 @@ export default function CommunityReportsPage() {
             style={{
               flex: '1 1 170px', minWidth: 170, padding: '14px 18px',
               display: 'flex', alignItems: 'center', gap: 14,
-              borderTop: `3px solid ${s.color}`,
             }}
           >
             <div style={{

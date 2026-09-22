@@ -421,21 +421,12 @@ body {
   .hero-synced { text-align: left; }
 }
 
-/* Stat card -- used by the dashboard's KPI strip (Conditions Strip). Each
-   cell gets a colored top edge and a faint tint of its own metric color
-   instead of a flat divider, so the strip reads as a row of instruments
-   rather than a plain table. */
+/* Stat card -- used by the dashboard's KPI strip (Conditions Strip).
+   Plain divider between cells; the metric's own value/icon color is
+   enough of a signal without also tinting the cell edge. */
 .stat-cell {
   position: relative;
   transition: background 0.2s ease;
-}
-.stat-cell::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: var(--stat-color, transparent);
-  opacity: 0.7;
 }
 .stat-cell:hover { background: rgba(255,255,255,0.015); }
 :root.light .stat-cell:hover { background: rgba(15,45,90,0.025); }
