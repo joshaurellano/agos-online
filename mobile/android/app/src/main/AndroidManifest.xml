@@ -3,15 +3,21 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
+    <!-- Flutter only adds INTERNET to debug/profile builds automatically;
+         being explicit guarantees the release build can reach the network. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Android 13+: without this, the notification permission prompt never
+         appears and flood alerts can't be shown. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Vibration pattern for Critical / Warning alerts. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
     <application
-        android:label="Agos"
+        android:label="AGOS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
-        <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="${GOOGLE_MAPS_KEY}"/>
-            
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,6 +46,22 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- Push notification defaults.
+             - channel: a push that doesn't name a channel lands in
+               agos_alerts (created by the app) instead of Android's generic
+               "Miscellaneous" fallback, which isn't shown as a heads-up.
+             - icon/color: the status-bar icon must be a monochrome
+               silhouette; the coloured launcher icon shows as a white square. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="agos_alerts" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_agos" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/agos_notification_accent" />
+
         <!-- FCM requires this service for background messages -->
         <service
             android:name="com.google.firebase.messaging.FirebaseMessagingService"
@@ -59,6 +81,16 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- url_launcher (Settings → privacy policy / send feedback), which
+             Android 11+ needs declared to see browsers and mail apps. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
         </intent>
     </queries>
 </manifest>

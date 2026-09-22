@@ -5,12 +5,15 @@ import 'package:flutter/services.dart' show rootBundle, HapticFeedback;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import '../main.dart';
 import '../data/critical_facilities.dart';
 import '../models/alert_level.dart';
 import '../theme/panahon_ui.dart';
-import '../services/model_api_client.dart';
+import '../services/cached_api.dart';
+import '../services/connectivity_service.dart';
+import '../services/flood_status_service.dart';
+import '../services/tile_cache.dart';
 import '../widgets/rain_overlay.dart';
 import '../widgets/wind_direction_arrow.dart';
 
@@ -120,22 +123,21 @@ const _baseStyles = {
   'standard': _BaseStyleDef(
     label: 'Standard',
     icon: Icons.map_rounded,
-    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    urlTemplate: kTileUrlStandard,
     attribution: '© OpenStreetMap contributors',
     monochrome: true,
   ),
   'satellite': _BaseStyleDef(
     label: 'Satellite',
     icon: Icons.satellite_alt_rounded,
-    urlTemplate:
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    urlTemplate: kTileUrlSatellite,
     attribution: '© Esri, Maxar, Earthstar Geographics',
     monochrome: false,
   ),
   'terrain': _BaseStyleDef(
     label: 'Terrain',
     icon: Icons.terrain_rounded,
-    urlTemplate: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    urlTemplate: kTileUrlTerrain,
     subdomains: ['a', 'b', 'c'],
     attribution: '© OpenTopoMap contributors (CC-BY-SA) · SRTM',
     monochrome: false,
@@ -229,14 +231,28 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchStatus();
+    // Live status comes from the app-wide FloodStatusService (one shared
+    // poller, saved to disk, honors the Settings refresh interval) instead
+    // of this screen running its own 30 s timer against the same endpoint.
+    final svc = context.read<FloodStatusService>();
+    _statusService = svc;
+    svc.addListener(_onStatusUpdate);
+    _onStatusUpdate();
     _fetchHourly();
     _fetchDailyFlood();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchStatus());
+    _reconnectSub = ConnectivityService.instance.onReconnected.listen((_) {
+      _fetchHourly();
+      _fetchDailyFlood();
+    });
   }
+
+  FloodStatusService? _statusService;
+  StreamSubscription<void>? _reconnectSub;
 
   @override
   void dispose() {
+    _statusService?.removeListener(_onStatusUpdate);
+    _reconnectSub?.cancel();
     _timer?.cancel();
     _timer = null;
     _playTimer?.cancel();
@@ -244,44 +260,70 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     super.dispose();
   }
 
+  void _applyDaily(Cached<Map<String, dynamic>> c) {
+    if (!mounted) return;
+    var list = (c.data['forecast'] as List? ?? []).cast<Map<String, dynamic>>();
+    if (c.fromCache) {
+      // Saved outlook: don't show days that have already passed.
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      list = list.where((d) {
+        final t = DateTime.tryParse(d['date']?.toString() ?? '');
+        return t != null && !t.isBefore(today);
+      }).toList();
+    }
+    final daily = list
+        .where((d) => d['date'] != null && d['flood_probability'] is num)
+        .take(_timelineDays)
+        .toList();
+    setState(() {
+      _dailyFlood = daily;
+      if (_floodDayIndex >= _dailyFlood.length) _floodDayIndex = 0;
+    });
+  }
+
   Future<void> _fetchDailyFlood() async {
     if (!mounted) return;
     try {
-      final res = await getWithFallback(_forecastFloodUrl);
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        final list = (body['forecast'] as List? ?? []).cast<Map<String, dynamic>>();
-        final daily = list
-            .where((d) => d['date'] != null && d['flood_probability'] is num)
-            .take(_timelineDays)
-            .toList();
-        setState(() {
-          _dailyFlood = daily;
-          if (_floodDayIndex >= _dailyFlood.length) _floodDayIndex = 0;
-        });
-      }
+      final result = await fetchJsonCached(
+        _forecastFloodUrl,
+        cacheKey: 'forecast_flood_daily', // shared with the dashboard
+        maxCacheAge: const Duration(hours: 72),
+        onSaved: _applyDaily,
+      );
+      _applyDaily(result);
     } catch (e) {
       debugPrint('AGOS: daily flood forecast fetch failed: $e');
     }
   }
 
+  void _applyHourly(Cached<Map<String, dynamic>> c) {
+    if (!mounted) return;
+    var list = (c.data['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
+    if (c.fromCache) {
+      final cutoff = DateTime.now().subtract(const Duration(minutes: 59));
+      list = list.where((h) {
+        final t = DateTime.tryParse(h['time']?.toString() ?? '');
+        return t != null && t.isAfter(cutoff);
+      }).toList();
+    }
+    setState(() {
+      _hourly = list.take(_timelineHours).toList();
+      _hourlyLoading = false;
+      if (_timelineIndex >= _hourly.length) _timelineIndex = 0;
+    });
+  }
+
   Future<void> _fetchHourly() async {
     if (!mounted) return;
     try {
-      final res = await getWithFallback(_forecastUrl);
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        final list = (body['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
-        setState(() {
-          _hourly = list.take(_timelineHours).toList();
-          _hourlyLoading = false;
-          if (_timelineIndex >= _hourly.length) _timelineIndex = 0;
-        });
-      } else {
-        if (mounted) setState(() => _hourlyLoading = false);
-      }
+      final result = await fetchJsonCached(
+        _forecastUrl,
+        cacheKey: 'forecast_hourly', // shared with the dashboard
+        maxCacheAge: const Duration(hours: 6),
+        onSaved: _applyHourly,
+      );
+      _applyHourly(result);
     } catch (e) {
       debugPrint('AGOS: hourly forecast fetch failed: $e');
       if (mounted) setState(() => _hourlyLoading = false);
@@ -366,47 +408,28 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     return (mm / 20).clamp(0.0, 1.0); // 20mm/hr ≈ top of the scale
   }
 
-  Future<void> _fetchStatus() async {
-    if (!mounted) return;
-    var url = '(unresolved)';
-    try {
-      url = _modelUrl;
-      final res = await getWithFallback(url);
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final j = jsonDecode(res.body) as Map<String, dynamic>;
-        // alert_level is a string enum from the backend ("NORMAL" /
-        // "ADVISORY" / "WARNING" / "CRITICAL" — see
-        // probability_to_alert_level() in backend/app/utils/alerts.py),
-        // never a number. The old `as num?` cast threw
-        // "type 'String' is not a subtype of type 'num?'" on every single
-        // successful response, which is why this screen kept falling
-        // back to "live data unavailable" even when the backend was
-        // perfectly healthy.
-        final rawLevel = j['alert_level']?.toString().toUpperCase();
-        final level = _alertLevelKeys.contains(rawLevel) ? rawLevel! : 'NORMAL';
-        final prob  = (j['probability'] as num?)?.toDouble();
-        final m = j['live_metrics'] as Map<String, dynamic>? ?? {};
-        num? n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '');
-        if (!mounted) return;
-        setState(() {
-          _alertKey            = level;
-          _probability         = prob;
-          _loading             = false;
-          _liveDataStale       = false;
-          _lastUpdated         = DateTime.now();
-          _liveRainfallMm      = n(m['rainfall_mm'])?.toDouble() ?? 0;
-          _liveWindSignal      = n(m['wind_signal'])?.toInt() ?? 0;
-          _liveWindDirectionDeg = n(m['wind_direction_deg'])?.toDouble();
-        });
-      } else {
-        debugPrint('AGOS: _fetchStatus failed ($url): HTTP ${res.statusCode}');
-        if (mounted) setState(() { _loading = false; _liveDataStale = true; });
-      }
-    } catch (e) {
-      debugPrint('AGOS: _fetchStatus failed ($url): $e');
-      if (mounted) setState(() { _loading = false; _liveDataStale = true; });
-    }
+  void _onStatusUpdate() {
+    final svc = _statusService;
+    if (svc == null || !mounted) return;
+    final j = svc.rawJson;
+    num? n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '');
+    setState(() {
+      _loading = svc.loading && j == null;
+      // "Stale" = the most recent refresh failed; what's shown is then the
+      // last good (possibly saved-to-disk) reading, labeled with its age.
+      _liveDataStale = svc.error != null;
+      if (svc.lastUpdated != null) _lastUpdated = svc.lastUpdated;
+      if (j == null) return;
+      // alert_level is a string enum from the backend ("NORMAL" /
+      // "ADVISORY" / "WARNING" / "CRITICAL"), never a number.
+      final rawLevel = j['alert_level']?.toString().toUpperCase();
+      _alertKey = _alertLevelKeys.contains(rawLevel) ? rawLevel! : 'NORMAL';
+      _probability = (j['probability'] as num?)?.toDouble();
+      final m = j['live_metrics'] as Map<String, dynamic>? ?? {};
+      _liveRainfallMm = n(m['rainfall_mm'])?.toDouble() ?? 0;
+      _liveWindSignal = n(m['wind_signal'])?.toInt() ?? 0;
+      _liveWindDirectionDeg = n(m['wind_direction_deg'])?.toDouble();
+    });
   }
 
   String _timeAgo(DateTime dt) {
@@ -731,6 +754,9 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
             urlTemplate: style.urlTemplate,
             subdomains: style.subdomains,
             userAgentPackageName: 'com.agos.floodmonitoring',
+            // Saves every tile viewed to disk (and serves saved tiles with
+            // no signal); shares its cache with the evacuation map.
+            tileProvider: TileCache.provider,
             tileBuilder: style.monochrome
                 ? (context, tileWidget, tile) => ColorFiltered(
                       colorFilter: const ColorFilter.matrix([

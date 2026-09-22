@@ -1,0 +1,9 @@
+# Copy to android/key.properties (NOT committed to git) and fill in.
+# Create the keystore once with:
+#   keytool -genkey -v -keystore ~/agos-upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+# storeFile is relative to android/app/. BACK UP the .jks and its passwords:
+# if you lose them you can't update the app on Google Play.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=upload
+storeFile=../../agos-upload-keystore.jks

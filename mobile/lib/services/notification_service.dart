@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -30,11 +32,70 @@ class NotificationService {
   final _messaging          = FirebaseMessaging.instance;
   final _localNotifications = FlutterLocalNotificationsPlugin();
 
-  // Android needs an explicit high-importance channel for heads-up alerts
-  static const _channel = AndroidNotificationChannel(
-    'agos_alerts',                          // must match channel_id in Edge Function
+  /// FCM topics. Which of these a device is subscribed to is controlled from
+  /// Settings → Notifications (see app_settings.dart).
+  static const topicFloodAlerts     = 'flood_alerts';
+  static const topicCommunityReports = 'community_reports';
+
+  // True once this device's FCM token has been written to Supabase. Stays
+  // false if that first attempt happened offline, so it can be retried when
+  // connectivity returns (see retryTokenRegistration).
+  bool _tokenSaved = false;
+
+  // ── Android notification channels ─────────────────────────────────────────
+  // On Android 8+ a channel's sound/vibration/importance are fixed at
+  // creation (only the user can change them afterwards), so the alert
+  // levels get their own channels rather than one channel for everything:
+  //
+  //   agos_critical — severe flooding imminent. Plays on the ALARM audio
+  //                   stream, so it's heard even with the ringer on silent,
+  //                   with a long repeating vibration.
+  //   agos_warning  — significant flooding expected. Loud heads-up with a
+  //                   distinct vibration, normal notification volume.
+  //   agos_alerts   — everything else (advisories, info, community
+  //                   updates). This is the original channel id, kept so
+  //                   existing installs and the Edge Function still work.
+  //
+  // The channel a *background* push uses is chosen by the server, via
+  // android.notification.channel_id in the FCM payload — see
+  // docs/EDGE_FUNCTION_NOTES.md. The channels must exist on the device
+  // before then, which is why they're all created in initialize().
+  static const channelCritical = 'agos_critical';
+  static const channelWarning  = 'agos_warning';
+  static const channelDefault  = 'agos_alerts';
+
+  static final _criticalVibration = Int64List.fromList([0, 900, 300, 900, 300, 900]);
+  static final _warningVibration  = Int64List.fromList([0, 500, 250, 500]);
+
+  static final _criticalChannel = AndroidNotificationChannel(
+    channelCritical,
+    'Critical flood alerts',
+    description: 'Severe flooding is imminent — evacuate. Plays at alarm volume.',
+    importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
+    vibrationPattern: _criticalVibration,
+    enableLights: true,
+    ledColor: const Color(0xFFEF4444),
+    audioAttributesUsage: AudioAttributesUsage.alarm,
+  );
+
+  static final _warningChannel = AndroidNotificationChannel(
+    channelWarning,
+    'Flood warnings',
+    description: 'Significant flooding is expected — get ready to evacuate.',
+    importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
+    vibrationPattern: _warningVibration,
+    enableLights: true,
+    ledColor: const Color(0xFFF97316),
+  );
+
+  static const _defaultChannel = AndroidNotificationChannel(
+    channelDefault,                         // must match channel_id in Edge Function
     'AGOS Flood Alerts',
-    description: 'Real-time flood alert notifications for Barangay Triangulo',
+    description: 'Flood advisories and updates for Barangay Triangulo',
     importance: Importance.max,
     playSound: true,
     enableVibration: true,
@@ -47,19 +108,21 @@ class NotificationService {
     // 1. Register the background handler
     FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
 
-    // 2. Create the Android notification channel
-    await _localNotifications
+    // 2. Create the Android notification channels (see above)
+    final androidImpl = _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
+            AndroidFlutterLocalNotificationsPlugin>();
+    await androidImpl?.createNotificationChannel(_criticalChannel);
+    await androidImpl?.createNotificationChannel(_warningChannel);
+    await androidImpl?.createNotificationChannel(_defaultChannel);
 
-    // 3. Ask for permission (Android 13+, iOS)
-    final settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    debugPrint('[FCM] Permission: ${settings.authorizationStatus}');
+    // 3. Notification permission is deliberately NOT requested here any
+    // more. A permission prompt on the very first frame, with no context,
+    // gets refused far more often than one shown after a screen that
+    // explains what the alerts are for — so the onboarding flow
+    // (screens/onboarding_screen.dart) asks, and Settings → Notifications
+    // can ask again. requestPermission() below is what both call.
+    debugPrint('[FCM] Permission: ${await permissionStatus()}');
 
     // 4. Show notifications in foreground on iOS too
     await _messaging.setForegroundNotificationPresentationOptions(
@@ -69,7 +132,12 @@ class NotificationService {
     );
 
     // 5. Set up flutter_local_notifications
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // Status-bar icon: a white silhouette in android/app/src/main/res/
+    // drawable-*/ic_stat_agos.png. (The colored launcher icon used here
+    // before rendered as a plain white square in the status bar.) If you
+    // copy the Dart code without the android/ folder, this resource is
+    // missing and initialize() will throw "invalid_icon".
+    const androidSettings = AndroidInitializationSettings('@drawable/ic_stat_agos');
     const iosSettings     = DarwinInitializationSettings(
       requestAlertPermission: false,  // already requested above
       requestBadgePermission: false,
@@ -77,27 +145,38 @@ class NotificationService {
     );
     await _localNotifications.initialize(
       settings: const InitializationSettings(android: androidSettings, iOS: iosSettings),
+      // Taps on a notification we displayed ourselves (foreground alerts on
+      // Android, see step 7). The test alert has payload 'test' and just
+      // dismisses.
+      onDidReceiveNotificationResponse: (response) {
+        if (response.payload == 'test') return;
+        _routeForType(response.payload);
+      },
     );
 
-    // 6. Save this device's FCM token to Supabase
-    await _registerToken();
+    // 6. Save this device's FCM token to Supabase — in the background.
+    // This used to be awaited, but getToken() needs the network on a first
+    // launch and can hang for a long time with no signal, which held the
+    // splash screen (and so the whole app) hostage. Nothing downstream
+    // needs the token before the UI is up; if this attempt fails it's
+    // retried on reconnect via retryTokenRegistration().
+    unawaited(_registerToken());
     // Refresh whenever Firebase rotates the token
     _messaging.onTokenRefresh.listen(_saveToken);
 
-    // 7. Foreground message — deliberately no manual popup here. The app
-    // used to build its own heads-up notification via
-    // flutter_local_notifications on top of whatever the OS/FCM already
-    // shows, which meant two separate alert UIs for one event. Now that
-    // the push carries a real `notification` payload, the system is the
-    // single place that renders it (see setForegroundNotificationPresentationOptions
-    // above for iOS's foreground banner); while the user is already in the
-    // app, the new alert simply shows up live in the Alerts list via the
-    // Supabase realtime subscription in alert_screen.dart. Kept as a log
-    // line for debugging delivery, not display.
+    // 7. Foreground message. Android does NOT display a push's
+    // `notification` payload while the app is open (only iOS does, via
+    // setForegroundNotificationPresentationOptions above) — so without this
+    // a resident with AGOS open would get no sound, vibration or banner
+    // for a Critical alert; it would just quietly appear in the Alerts
+    // list. On Android we therefore show it ourselves, on whichever channel
+    // the server picked, so it looks and sounds exactly like the
+    // background version. iOS is left to the system to avoid a duplicate.
     FirebaseMessaging.onMessage.listen((message) {
-      debugPrint('[FCM] onMessage fired (foreground, no popup by design)');
+      debugPrint('[FCM] onMessage fired (foreground)');
       debugPrint('[FCM] title: ${message.notification?.title}');
       debugPrint('[FCM] data: ${message.data}');
+      if (Platform.isAndroid) unawaited(_showForeground(message));
     });
 
     // 8. User tapped a notification while app was in background (not terminated)
@@ -109,17 +188,60 @@ class NotificationService {
   }
 
   // ── FCM Topic subscription ─────────────────────────────────────────────────
-  Future<void> subscribeToAlerts() async {
-    await _messaging.subscribeToTopic('flood_alerts');
-    debugPrint('[FCM] Subscribed to flood_alerts topic');  // ← add this
+  // Applies ONE topic change and reports whether it went through, so the
+  // caller (AppSettings) can remember what's actually been applied and retry
+  // the rest later. Which topics to be on is decided in Settings, not here.
+  //
+  // Bounded by a timeout: with no signal FCM's topic calls can stall for a
+  // long time rather than failing fast, and a stalled call would block every
+  // later sync. A timed-out call may still land server-side; re-sending it
+  // later is harmless because subscribe/unsubscribe are idempotent.
+  Future<bool> setTopicSubscribed(String topic, bool subscribed) async {
+    try {
+      final call = subscribed
+          ? _messaging.subscribeToTopic(topic)
+          : _messaging.unsubscribeFromTopic(topic);
+      await call.timeout(const Duration(seconds: 20));
+      debugPrint('[FCM] ${subscribed ? 'Subscribed to' : 'Unsubscribed from'} $topic');
+      return true;
+    } catch (e) {
+      debugPrint('[FCM] Topic change failed ($topic → $subscribed): $e');
+      return false;
+    }
+  }
 
-    // Notified when a barangay official verifies a resident-submitted
-    // incident report (see supabase/functions/on-incident-verified).
-    await _messaging.subscribeToTopic('community_reports');
-    debugPrint('[FCM] Subscribed to community_reports topic');
+  // ── Permission ─────────────────────────────────────────────────────────────
+  Future<AuthorizationStatus> permissionStatus() async {
+    try {
+      final settings = await _messaging.getNotificationSettings();
+      return settings.authorizationStatus;
+    } catch (_) {
+      return AuthorizationStatus.notDetermined;
+    }
+  }
+
+  /// Shows the system permission prompt if it can still be shown; otherwise
+  /// just returns the current status (the OS won't re-prompt after a denial).
+  Future<AuthorizationStatus> requestPermission() async {
+    try {
+      final settings = await _messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      return settings.authorizationStatus;
+    } catch (_) {
+      return permissionStatus();
+    }
   }
 
   // ── Token management ───────────────────────────────────────────────────────
+  /// Called on reconnect. No-op if the token already made it to Supabase.
+  Future<void> retryTokenRegistration() async {
+    if (_tokenSaved) return;
+    await _registerToken();
+  }
+
   Future<void> _registerToken() async {
     try {
       if (Platform.isIOS) {
@@ -148,17 +270,93 @@ class NotificationService {
         },
         onConflict: 'token',
       );
+      _tokenSaved = true;
       debugPrint('[FCM] Token saved');
     } catch (e) {
+      _tokenSaved = false;
       debugPrint('[FCM] Failed to save token: $e');
     }
   }
 
+  // ── Showing a notification ourselves ───────────────────────────────────────
+  Future<void> _showForeground(RemoteMessage message) async {
+    final n = message.notification;
+    if (n == null) return;
+    await _show(
+      id: message.hashCode & 0x7fffffff,
+      title: n.title,
+      body: n.body,
+      // Whatever channel the server chose for this push; falls back to the
+      // general one if the payload didn't name any.
+      channelId: n.android?.channelId ?? channelDefault,
+      payload: message.data['type'] as String?,
+    );
+  }
+
+  Future<void> _show({
+    required int id,
+    required String? title,
+    required String? body,
+    required String channelId,
+    String? payload,
+  }) async {
+    try {
+      final AndroidNotificationDetails android;
+      switch (channelId) {
+        case channelCritical:
+          android = AndroidNotificationDetails(
+            channelCritical, 'Critical flood alerts',
+            importance: Importance.max,
+            priority: Priority.max,
+            vibrationPattern: _criticalVibration,
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+            category: AndroidNotificationCategory.alarm,
+            styleInformation: body == null ? null : BigTextStyleInformation(body),
+          );
+        case channelWarning:
+          android = AndroidNotificationDetails(
+            channelWarning, 'Flood warnings',
+            importance: Importance.max,
+            priority: Priority.high,
+            vibrationPattern: _warningVibration,
+            styleInformation: body == null ? null : BigTextStyleInformation(body),
+          );
+        default:
+          android = AndroidNotificationDetails(
+            channelId, 'AGOS Flood Alerts',
+            importance: Importance.max,
+            priority: Priority.high,
+            styleInformation: body == null ? null : BigTextStyleInformation(body),
+          );
+      }
+      await _localNotifications.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: NotificationDetails(android: android),
+        payload: payload,
+      );
+    } catch (e) {
+      debugPrint('[FCM] Could not show notification: $e');
+    }
+  }
+
+  /// Shows a Critical-style test alert so a resident can check — before an
+  /// emergency — that AGOS notifications are allowed and audible on their
+  /// phone. Used by Settings → Notifications → Send test alert.
+  Future<void> showTestAlert() => _show(
+        id: 9001,
+        title: 'AGOS test alert',
+        body: 'If you can see and hear this, critical flood alerts will reach you. This is only a test.',
+        channelId: channelCritical,
+        payload: 'test',
+      );
+
   // ── Notification tap handlers ──────────────────────────────────────────────
-  // Taps on the OS-rendered notification (background/terminated, and now
-  // foreground too since the system owns display) come through here —
-  // flutter_local_notifications' own tap callback is unused since the app
-  // no longer calls _localNotifications.show() anywhere.
+  // Taps on the OS-rendered notification (background/terminated) come
+  // through here. Taps on notifications we display ourselves (Android
+  // foreground alerts, test alert) come through the local-notifications
+  // callback registered in initialize().
   void _onNotificationOpened(RemoteMessage message) {
     _routeForType(message.data['type'] as String?);
   }

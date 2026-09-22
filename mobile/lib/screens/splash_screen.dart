@@ -11,15 +11,21 @@
 // flood-monitoring/radar framing used elsewhere in the app (see
 // MapToolStack, PanahonHeader) — while it works. Once setup finishes it
 // fades into MainShell.
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../firebase_options.dart';
 import '../main.dart';
+import '../services/app_settings.dart';
+import '../services/connectivity_service.dart';
+import '../services/crash_reporting.dart';
 import '../services/notification_service.dart';
 import 'main_shell.dart';
+import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -87,10 +93,17 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     final stillOnSplash = ModalRoute.of(context)?.isCurrent ?? true;
     if (!stillOnSplash) return;
 
+    // First launch → the short onboarding flow (which asks for notification
+    // permission in context, then continues into MainShell). Everyone else
+    // goes straight to the app.
+    final showOnboarding = !await OnboardingScreen.isDone();
+    if (!mounted) return;
+
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 550),
-        pageBuilder: (_, __, ___) => const MainShell(),
+        pageBuilder: (_, __, ___) =>
+            showOnboarding ? const OnboardingScreen() : const MainShell(),
         transitionsBuilder: (_, anim, __, child) => FadeTransition(
           opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
           child: child,
@@ -103,6 +116,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     try {
       _setStatus('Connecting to Firebase…');
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      // Hook up crash reporting first so anything that goes wrong in the
+      // rest of startup is captured too (respects the Settings opt-out).
+      await CrashReporting.init();
 
       _setStatus('Loading configuration…');
       await dotenv.load(fileName: '.env');
@@ -113,20 +129,28 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
       );
 
-      // Silent anonymous session — see main.dart's original comment.
-      // AGOS has no visible login; this just gives incident reports
-      // something to key off.
+      // Silent anonymous session — gives incident reports something to
+      // key off. Bounded by a timeout so a dead connection can't hold the
+      // splash. If it doesn't happen now (first launch offline), the report
+      // outbox and report form retry it when they actually need it.
       if (Supabase.instance.client.auth.currentUser == null) {
         try {
-          await Supabase.instance.client.auth.signInAnonymously();
+          await Supabase.instance.client.auth
+              .signInAnonymously()
+              .timeout(const Duration(seconds: 8));
         } catch (e) {
-          debugPrint('AGOS: anonymous sign-in failed (is it enabled in Supabase Auth settings?): $e');
+          debugPrint('AGOS: anonymous sign-in deferred (offline, or not enabled in Supabase Auth): $e');
         }
       }
 
       _setStatus('Setting up alerts…');
+      if (!mounted) return;
+      final settings = context.read<AppSettings>();
+      await settings.load(); // saved topic choices must be read first
       await NotificationService.instance.initialize();
-      await NotificationService.instance.subscribeToAlerts();
+      // Topic subscriptions now follow Settings → Notifications, and are
+      // applied in the background (retried on reconnect if offline).
+      unawaited(settings.markMessagingReady());
 
       _setStatus('Ready');
     } catch (e) {
@@ -137,7 +161,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       // their own data-loading failures.
       debugPrint('AGOS: startup init error: $e');
       if (mounted) setState(() => _failed = true);
-      _setStatus('Continuing offline…');
+      _setStatus(ConnectivityService.instance.isOffline ? 'Opening saved data…' : 'Continuing…');
     }
   }
 

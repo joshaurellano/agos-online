@@ -8,7 +8,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import '../models/incident_report.dart';
 import '../services/auth_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/incident_service.dart';
+import '../services/pending_reports_service.dart';
 
 const _categoryIcons = <String, IconData>{
   'Flood':              Icons.water_rounded,
@@ -156,60 +158,99 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
     setState(() { _submitting = true; _errorMsg = null; });
 
-    // No login screen anymore — every device has a silent Supabase
-    // anonymous session (see main.dart), whose auth.uid() is what RLS on
-    // incident_reports/incident-photos checks. If that bootstrap sign-in
-    // failed (e.g. anonymous auth isn't enabled on the project yet),
-    // there's nothing to attribute the report to, so surface that plainly
-    // instead of a confusing storage/DB error.
-    final anonId = Supabase.instance.client.auth.currentUser?.id;
-    if (anonId == null) {
-      setState(() {
-        _errorMsg = "Couldn't verify this device — please check your connection and reopen the app.";
-        _submitting = false;
-      });
-      return;
-    }
-
     // Optional display name/role from a profile, if this device ever had
     // one (legacy accounts) — otherwise reports are attributed as an
-    // anonymous resident. Either way `reported_by` is the stable anon
-    // device ID above, so "My Reports" keeps working.
+    // anonymous resident.
     final profile = context.read<AuthService>().currentUser;
-
-    // What the resident typed into "Your Name" on this form takes priority
-    // over the legacy profile name — AGOS has no accounts anymore (see
-    // main_shell.dart), so profile?.name is effectively always null in
-    // practice, but this ordering keeps old data sensible if it's ever not.
     final typedName = _nameCtrl.text.trim();
     final displayName = typedName.isNotEmpty
         ? typedName
-        : (profile?.name ?? 'Anonymous Resident');
+        : (profile?.name ?? 'Resident');
     if (typedName.isNotEmpty) _saveName(typedName); // remember for next time
+    final role = profile?.roleDesc ?? 'Resident';
+    final description = _descriptionCtrl.text.trim();
+    final outbox = context.read<PendingReportsService>();
+
+    // One id for this report, used for BOTH the direct send and (if that
+    // fails) the saved copy. If a send times out after actually reaching
+    // the server, the later retry hits the same id and is recognized as
+    // already delivered instead of creating a duplicate.
+    final reportId = newReportId();
+
+    // Saves the report on the device; it sends itself when signal returns.
+    Future<void> saveForLater() async {
+      await outbox.enqueue(
+        reportId: reportId,
+        reporterName: displayName,
+        reporterRole: role,
+        category: _category,
+        description: description,
+        photo: _photo,
+        latitude: _lat,
+        longitude: _lng,
+        locationLabel: _locationLabel,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(ReportSubmitResult.queued);
+    }
+
+    // Clearly offline: don't make the resident wait out a timeout.
+    if (ConnectivityService.instance.isOffline) {
+      await saveForLater();
+      return;
+    }
 
     try {
+      // The silent anonymous sign-in at startup may not have happened if
+      // the app was first opened offline — try again now.
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser == null) {
+        await client.auth.signInAnonymously().timeout(const Duration(seconds: 10));
+      }
+      final anonId = client.auth.currentUser?.id;
+      if (anonId == null) {
+        setState(() {
+          _errorMsg = "Couldn't verify this device — please check your connection and reopen the app.";
+          _submitting = false;
+        });
+        return;
+      }
+
       String? photoUrl;
       if (_photo != null) {
-        photoUrl = await IncidentService.uploadPhoto(anonId, _photo!);
+        try {
+          photoUrl = await IncidentService.uploadPhotoStrict(anonId, _photo!);
+        } catch (e) {
+          // No signal: keep the photo and save the whole report for later.
+          // Anything else (e.g. a storage policy): send without the photo,
+          // as before — the text and location are still useful.
+          if (isNetworkError(e)) rethrow;
+        }
       }
 
       await IncidentService.submitReport(
+        id:            reportId,
         reportedBy:    anonId,
         reporterName:  displayName,
-        reporterRole:  profile?.roleDesc ?? 'Resident',
+        reporterRole:  role,
         category:      _category,
-        description:   _descriptionCtrl.text.trim(),
+        description:   description,
         photoUrl:      photoUrl,
         latitude:      _lat,
         longitude:     _lng,
         locationLabel: _locationLabel,
-      );
+      ).timeout(const Duration(seconds: 20));
 
       if (!mounted) return;
-      Navigator.of(context).pop(true); // true = submitted successfully
+      Navigator.of(context).pop(ReportSubmitResult.sent);
     } catch (e) {
+      if (isNetworkError(e)) {
+        await saveForLater();
+        return;
+      }
+      if (!mounted) return;
       setState(() {
-        _errorMsg = "Couldn't submit your report. Please check your connection and try again.";
+        _errorMsg = "Couldn't submit your report. Please try again.";
         _submitting = false;
       });
     }

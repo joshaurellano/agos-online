@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../main.dart';
 import '../theme/panahon_ui.dart';
 import '../services/routing_service.dart';
+import '../services/tile_cache.dart';
 
 // ─── Evacuation Centers ────────────────────────────────────────────────────────
 class _EvacCenter {
@@ -397,8 +398,14 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                   // "Standard" basemap in flood_map_screen.dart, for
                   // consistency and so this doesn't silently break again
                   // the same way.
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.agos.app',
+                  urlTemplate: kTileUrlStandard,
+                  // Same package name as the flood map (this used to differ,
+                  // so OSM saw two different apps).
+                  userAgentPackageName: 'com.agos.floodmonitoring',
+                  // Saves viewed tiles to disk and serves them with no
+                  // signal — shared with the flood map and the Settings →
+                  // Offline map download.
+                  tileProvider: TileCache.provider,
                 ),
                 const RichAttributionWidget(
                   alignment: AttributionAlignment.bottomRight,

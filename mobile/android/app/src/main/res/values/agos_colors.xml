@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Named agos_* on purpose: flutter_launcher_icons writes its own
+         ic_launcher_background, and a duplicate name would break the build
+         if you ever re-run it. -->
+    <color name="agos_launcher_background">#091729</color>
+    <color name="agos_notification_accent">#38BDF8</color>
+</resources>

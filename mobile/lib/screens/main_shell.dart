@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
-import '../services/accessibility_settings.dart';
+import '../services/pending_reports_service.dart';
 import '../theme/panahon_ui.dart';
+import '../widgets/offline_banner.dart';
+import 'settings_screen.dart';
 import 'dashboard_screen.dart';
 import 'alert_screen.dart';
 import 'evacuation_screen.dart';
@@ -46,6 +47,16 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialTabIndex;
+    // Send any reports queued while offline in a previous session. init()
+    // resolves once the saved queue has been read from disk; flush() then
+    // quietly does nothing if we're still offline (it also runs on every
+    // reconnect — see PendingReportsService).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final outbox = context.read<PendingReportsService>();
+      await outbox.init();
+      await outbox.flush();
+    });
     if (widget.openAlertsOnStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openAlerts());
     }
@@ -61,95 +72,11 @@ class _MainShellState extends State<MainShell> {
     if (_alertLevel != level) setState(() => _alertLevel = level);
   }
 
-  // Was a profile/sign-out sheet for the old username+password login flow.
-  // AGOS no longer has accounts — this now just shows the anonymous device
-  // identity that incident reports are attributed to (see
-  // report_incident_screen.dart / main.dart's silent anonymous sign-in),
-  // so a resident can see "this is what your reports are tagged with"
-  // without ever having signed in to anything.
-  void _showAccountSheet() {
-    final anonId = Supabase.instance.client.auth.currentUser?.id;
-    final shortId = anonId != null && anonId.length >= 8
-        ? anonId.substring(0, 8)
-        : (anonId ?? 'unavailable');
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.bgDark,
-      // Without this, a bottom sheet is capped at a fixed default height
-      // and its content can't scroll — which is exactly what caused the
-      // overflow once the Display/accessibility section was added below
-      // the device-info block (RenderFlex overflowed by 78 pixels on
-      // smaller screens). isScrollControlled + wrapping the content in a
-      // SingleChildScrollView below lets it size to content up to the
-      // full screen height, and scroll if it's still taller than that.
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            24, 16, 24, 32 + MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-            Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.bgBorder,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Container(
-              width: 64, height: 64,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.accent.withValues(alpha: 0.24),
-                    AppColors.accent.withValues(alpha: 0.08),
-                  ],
-                ),
-                border: Border.all(color: AppColors.accent.withValues(alpha: 0.4), width: 2),
-                boxShadow: [
-                  BoxShadow(color: AppColors.accent.withValues(alpha: 0.2), blurRadius: 18, spreadRadius: -2),
-                ],
-              ),
-              child: const Icon(Icons.shield_rounded, color: AppColors.accent, size: 30),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Anonymous Resident',
-              style: TextStyle(color: AppColors.textPri, fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Device ID: $shortId',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 13, fontFamily: 'monospace'),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'AGOS is fully public — no account needed to view flood, '
-              'rainfall, or evacuation data. This anonymous device ID is '
-              'only used so reports you submit under Reports can be traced '
-              'back to your device (e.g. to show their status), never to '
-              'your identity.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSec, fontSize: 12.5, height: 1.45),
-            ),
-            const SizedBox(height: 22),
-            const Divider(color: AppColors.bgBorder, height: 1),
-            const SizedBox(height: 18),
-            const _AccessibilitySection(),
-            ],
-          ),
-        ),
-      ),
+  // Opens the dedicated settings screen (was a bottom sheet with device
+  // info + accessibility controls — both now live in SettingsScreen).
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
 
@@ -163,7 +90,7 @@ class _MainShellState extends State<MainShell> {
         onAlertChanged: _onAlertChanged,
         onNavigate: (i) => setState(() => _currentIndex = i),
         onOpenAlerts: _openAlerts,
-        onOpenSettings: _showAccountSheet,
+        onOpenSettings: _openSettings,
       ),
       const FloodMapScreen(),
       const RainfallScreen(),
@@ -177,7 +104,14 @@ class _MainShellState extends State<MainShell> {
     // duplicate that chrome. Every other tab keeps the shared header.
     final showSharedHeader = _currentIndex != 0;
 
-    return Scaffold(
+    // Android back: from any other tab go to the Dashboard first, and only
+    // leave the app from there (instead of exiting from, say, Rainfall).
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => _currentIndex = 0);
+      },
+      child: Scaffold(
       backgroundColor: AppColors.bgDeep,
       body: Column(
         children: [
@@ -250,7 +184,7 @@ class _MainShellState extends State<MainShell> {
                   ),
                   PanahonHeaderIcon(
                     icon: Icons.settings_rounded,
-                    onTap: _showAccountSheet,
+                    onTap: _openSettings,
                   ),
                 ],
               ),
@@ -260,7 +194,12 @@ class _MainShellState extends State<MainShell> {
           ),
         ],
       ),
-      bottomNavigationBar: PanahonBottomNav(
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Slim strip: "Offline · showing saved data" / "Back online".
+          const OfflineBanner(),
+          PanahonBottomNav(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
         items: const [
@@ -271,106 +210,9 @@ class _MainShellState extends State<MainShell> {
           PanahonNavItem(icon: Icons.campaign_rounded, label: 'Reports'),
         ],
       ),
-    );
-  }
-}
-
-// ── Accessibility settings (text size + high contrast) ───────────────────────
-// Lives in the device/about sheet above. Reads/writes AccessibilitySettings
-// directly — no local state needed here, since that ChangeNotifier is
-// already the single source of truth the whole app (see main.dart's
-// MaterialApp.builder) rebuilds from.
-class _AccessibilitySection extends StatelessWidget {
-  const _AccessibilitySection();
-
-  @override
-  Widget build(BuildContext context) {
-    final a11y = context.watch<AccessibilitySettings>();
-    final steps = <double>[0.85, 1.0, 1.15, 1.3];
-    // Snap the slider to the nearest of a few sane steps rather than a
-    // continuous drag — easier to hit a specific size with a thumb, and
-    // avoids landing on an odd in-between scale that's hard to reason
-    // about when reporting a display bug.
-    final closestStep = steps.reduce(
-      (a, b) => (a - a11y.textScale).abs() < (b - a11y.textScale).abs() ? a : b,
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('DISPLAY', style: TextStyle(
-            color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
-        const SizedBox(height: 14),
-
-        // ── Text size ──────────────────────────────────────────────────
-        Row(children: [
-          const Icon(Icons.text_fields_rounded, color: AppColors.textSec, size: 16),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text('Text Size', style: TextStyle(
-                color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
-          ),
-          Text('${(a11y.textScale * 100).round()}%',
-              style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
-        ]),
-        Row(children: [
-          Text('A', style: TextStyle(color: AppColors.textMuted, fontSize: 13 * AccessibilitySettings.minScale)),
-          Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                activeTrackColor: AppColors.accent,
-                inactiveTrackColor: AppColors.bgBorder,
-                thumbColor: AppColors.accent,
-                overlayColor: AppColors.accent.withValues(alpha: 0.15),
-                trackHeight: 3,
-              ),
-              child: Slider(
-                value: closestStep,
-                min: steps.first,
-                max: steps.last,
-                divisions: steps.length - 1,
-                onChanged: (v) {
-                  // Snap to nearest defined step even mid-drag.
-                  final nearest = steps.reduce(
-                      (a, b) => (a - v).abs() < (b - v).abs() ? a : b);
-                  context.read<AccessibilitySettings>().setTextScale(nearest);
-                },
-              ),
-            ),
-          ),
-          Text('A', style: TextStyle(color: AppColors.textMuted, fontSize: 13 * AccessibilitySettings.maxScale)),
-        ]),
-        const SizedBox(height: 10),
-
-        // ── High contrast ───────────────────────────────────────────────
-        InkWell(
-          onTap: () => context.read<AccessibilitySettings>().setHighContrast(!a11y.highContrast),
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(children: [
-              const Icon(Icons.contrast_rounded, color: AppColors.textSec, size: 16),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('High Contrast', style: TextStyle(
-                        color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
-                    Text('Boosts contrast across the whole app', style: TextStyle(
-                        color: AppColors.textMuted, fontSize: 11)),
-                  ],
-                ),
-              ),
-              Switch(
-                value: a11y.highContrast,
-                activeColor: AppColors.accent,
-                onChanged: (v) => context.read<AccessibilitySettings>().setHighContrast(v),
-              ),
-            ]),
-          ),
-        ),
-      ],
+        ],
+      ),
+    ),
     );
   }
 }

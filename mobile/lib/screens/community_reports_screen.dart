@@ -1,7 +1,14 @@
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../main.dart';
+import '../widgets/skeleton.dart';
 import '../models/incident_report.dart';
+import '../services/connectivity_service.dart';
 import '../services/incident_service.dart';
+import '../services/offline_cache.dart';
+import '../services/pending_reports_service.dart';
 import 'report_incident_screen.dart';
 
 const _categoryIcons = <String, IconData>{
@@ -32,19 +39,35 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
   bool _loading = true;
   String? _error;
   String _filter = 'ALL';
+  // Set when the feed on screen is a saved copy rather than live.
+  DateTime? _savedAt;
+  StreamSubscription<void>? _reconnectSub;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _reconnectSub = ConnectivityService.instance.onReconnected.listen((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _reconnectSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    // Only show the spinner when there's nothing to show yet — a refresh
+    // shouldn't blank out a list that's already on screen.
+    setState(() { _loading = _reports.isEmpty; _error = null; });
     try {
-      final reports = await IncidentService.fetchVerifiedReports();
+      final result = await IncidentService.fetchVerifiedReportsCached();
       if (!mounted) return;
-      setState(() { _reports = reports; _loading = false; });
+      setState(() {
+        _reports = result.data;
+        _savedAt = result.fromCache ? result.savedAt : null;
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -55,19 +78,20 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
   }
 
   Future<void> _openReportForm() async {
-    final submitted = await Navigator.of(context).push<bool>(
+    final result = await Navigator.of(context).push<ReportSubmitResult>(
       MaterialPageRoute(builder: (_) => const ReportIncidentScreen()),
     );
-    if (submitted == true) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Report submitted — a barangay official will review it shortly.'),
-          backgroundColor: AppColors.bgCard,
-        ),
-      );
-      _load();
-    }
+    if (result == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result == ReportSubmitResult.sent
+            ? 'Report submitted — a barangay official will review it shortly.'
+            : "You're offline — your report is saved on this device and will send automatically when you're back online."),
+        backgroundColor: AppColors.bgCard,
+        duration: Duration(seconds: result == ReportSubmitResult.sent ? 4 : 6),
+      ),
+    );
+    if (result == ReportSubmitResult.sent) _load();
   }
 
   List<IncidentReport> get _filtered => _filter == 'ALL'
@@ -130,10 +154,21 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
                   ),
                 ),
               ),
+              SliverToBoxAdapter(child: _PendingReportsSection()),
+              if (_savedAt != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Row(children: [
+                      const Icon(Icons.history_rounded, size: 13, color: AppColors.orange),
+                      const SizedBox(width: 5),
+                      Text('Saved reports · updated ${agoLabel(_savedAt!)}',
+                          style: const TextStyle(color: AppColors.orange, fontSize: 11, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
               if (_loading)
-                const SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator(color: AppColors.accent)),
-                )
+                const SliverToBoxAdapter(child: SkeletonCardList(count: 4))
               else if (_error != null)
                 SliverFillRemaining(
                   child: Center(
@@ -214,8 +249,8 @@ class _ReportCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (report.photoUrl != null)
-            Image.network(
-              report.photoUrl!,
+            Image(
+              image: CachedNetworkImageProvider(report.photoUrl!),
               height: 160,
               width: double.infinity,
               fit: BoxFit.cover,
@@ -278,6 +313,69 @@ class _ReportCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Reports waiting to send (filed while offline) ─────────────────────────────
+class _PendingReportsSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final outbox = context.watch<PendingReportsService>();
+    if (outbox.items.isEmpty) return const SizedBox.shrink();
+    final online = context.watch<ConnectivityService>().isOnline;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.orange.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.orange.withValues(alpha: 0.35)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.outbox_rounded, size: 16, color: AppColors.orange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('Waiting to send (${outbox.count})',
+                  style: const TextStyle(color: AppColors.orange, fontSize: 12.5, fontWeight: FontWeight.w800)),
+            ),
+            if (online)
+              TextButton(
+                onPressed: outbox.isFlushing ? null : () => outbox.flush(),
+                child: Text(outbox.isFlushing ? 'Sending…' : 'Send now'),
+              ),
+          ]),
+          for (final r in outbox.items)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${r.category} · ${agoLabel(r.queuedAt)}',
+                        style: const TextStyle(color: AppColors.textSec, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                    Text(r.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.textPri, fontSize: 12.5)),
+                    if (r.lastError != null)
+                      Text(r.lastError!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
+                  ]),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.textMuted),
+                  onPressed: () => outbox.discard(r.id),
+                ),
+              ]),
+            ),
+        ]),
       ),
     );
   }

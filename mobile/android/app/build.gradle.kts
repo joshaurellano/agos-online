@@ -5,17 +5,25 @@ plugins {
     // START: FlutterFire Configuration
     id("com.google.gms.google-services")
     // END: FlutterFire Configuration
+    id("com.google.firebase.crashlytics")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// ── Load local.properties ─────────────────────────────────────────────────────
-val localProperties = Properties()
-val localPropertiesFile = rootProject.file("local.properties")
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.inputStream().use { localProperties.load(it) }
+// ── Release signing (android/key.properties) ─────────────────────────────────
+// Google Play only accepts apps signed with YOUR upload key, never the debug
+// key. Create a keystore and android/key.properties as described in
+// docs/RELEASE_CHECKLIST.md. Both are secrets: keep them out of git (see
+// key.properties.example). Without key.properties, release builds fall back
+// to the debug key so local `flutter run --release` still works.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseKey = keystorePropertiesFile.exists()
+if (hasReleaseKey) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+} else {
+    logger.warn("WARNING: android/key.properties not found — release builds are signed with the DEBUG key and cannot be uploaded to Google Play.")
 }
-val googleMapsKey: String = localProperties.getProperty("GOOGLE_MAPS_KEY", "")
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -41,12 +49,23 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        manifestPlaceholders["GOOGLE_MAPS_KEY"] = googleMapsKey
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKey) signingConfigs.getByName("release")
+                            else signingConfigs.getByName("debug")
         }
     }
 }

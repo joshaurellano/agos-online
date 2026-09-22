@@ -1,12 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'services/accessibility_settings.dart';
+import 'services/app_settings.dart';
 import 'services/auth_service.dart';
+import 'services/connectivity_service.dart';
 import 'services/flood_status_service.dart';
 import 'services/notification_service.dart' show navigatorKey;
+import 'services/pending_reports_service.dart';
+import 'services/tile_cache.dart' show OfflineMapService;
 import 'screens/splash_screen.dart';
 import 'screens/main_shell.dart';
 
@@ -14,6 +19,13 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // Start watching the network right away (fire-and-forget: it only needs
+  // to be running by the time the first screen asks "am I online?", and it
+  // never throws). Everything that reacts to going offline/online —
+  // FloodStatusService, the report outbox, push registration, the offline
+  // banner — hangs off this one service.
+  unawaited(ConnectivityService.instance.start());
 
   // Firebase, .env, Supabase, the anonymous session, and FCM registration
   // all used to be awaited right here, before runApp() — meaning nothing
@@ -39,6 +51,22 @@ Future<void> main() async {
         // defaults (scale 1.0, contrast off) apply instantly so there's
         // no blank/loading frame at startup.
         ChangeNotifierProvider(create: (_) => AccessibilitySettings()..load()),
+        // Online/offline state — a singleton (so plain static helpers like
+        // getWithFallback can report into it without a BuildContext),
+        // exposed here so widgets can rebuild when it changes. `.value`
+        // because the provider must not dispose a singleton.
+        ChangeNotifierProvider<ConnectivityService>.value(
+          value: ConnectivityService.instance,
+        ),
+        // Notification preferences (flood alerts / community updates) and
+        // their offline-safe sync to FCM — see services/app_settings.dart.
+        ChangeNotifierProvider(create: (_) => AppSettings()..load()),
+        // Reports written while offline, waiting to be sent — see
+        // services/pending_reports_service.dart. init() loads the saved
+        // queue from disk.
+        ChangeNotifierProvider(create: (_) => PendingReportsService()..init()),
+        // Offline map download state (Settings → Offline map).
+        ChangeNotifierProvider(create: (_) => OfflineMapService()..load()),
       ],
       child: const AgosApp(),
     ),

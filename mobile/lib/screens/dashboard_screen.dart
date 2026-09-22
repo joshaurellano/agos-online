@@ -15,13 +15,16 @@
 //      minute-by-minute precip, current temp, 48h hourly, and the full
 //      wind/pressure/UV/etc. details grid — kept in full, just visually
 //      demoted below the flood content instead of leading the screen.
-import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
+import '../services/cached_api.dart';
+import '../services/connectivity_service.dart';
 import '../services/flood_status_service.dart';
+import '../services/offline_cache.dart';
 import '../services/model_api_client.dart';
 import '../theme/panahon_ui.dart';
 import '../widgets/rain_overlay.dart';
@@ -429,6 +432,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _fetchHourly();
     _fetchDailyFlood();
+    // Refresh the forecasts (the flood status refreshes itself) the moment
+    // connectivity returns instead of waiting for a pull-to-refresh.
+    _reconnectSub = ConnectivityService.instance.onReconnected.listen((_) {
+      _fetchHourly();
+      _fetchDailyFlood();
+    });
     // context.read is safe in initState (unlike context.watch).
     final svc = context.read<FloodStatusService>();
     _statusService = svc;
@@ -439,6 +448,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _statusService?.removeListener(_onStatusUpdate);
+    _reconnectSub?.cancel();
     super.dispose();
   }
 
@@ -461,51 +471,81 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  // Set when the forecast on screen is a saved copy rather than live data.
+  DateTime? _forecastSavedAt;
+  DateTime? _dailySavedAt;
+  StreamSubscription<void>? _reconnectSub;
+
+  void _applyForecast(Cached<Map<String, dynamic>> c) {
+    if (!mounted) return;
+    final body = c.data;
+    var hourly = (body['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
+    var minutely = (body['minutely'] as List? ?? []).cast<Map<String, dynamic>>();
+    if (c.fromCache) {
+      // A saved forecast's first entry is "Now" as of when it was saved.
+      // Drop hours that have already passed so the strip never presents an
+      // old hour as the current one, and drop the 15-minute nowcast
+      // entirely — it's meaningless after a couple of hours.
+      final cutoff = DateTime.now().subtract(const Duration(minutes: 59));
+      hourly = hourly.where((h) {
+        final t = DateTime.tryParse(h['time'] as String? ?? '');
+        return t != null && t.isAfter(cutoff);
+      }).toList();
+      minutely = [];
+    }
+    setState(() {
+      _hourly = hourly;
+      _outlook = body['outlook'] as Map<String, dynamic>?;
+      _minutely = minutely;
+      _hourlyLoading = false;
+      _forecastSavedAt = c.fromCache ? c.savedAt : null;
+    });
+  }
+
   Future<void> _fetchHourly() async {
     try {
-      final res = await getWithFallback(_forecastUrl,
-          timeout: const Duration(seconds: 15));
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {
-            _hourly = (body['hourly'] as List? ?? []).cast<Map<String, dynamic>>();
-            _outlook = body['outlook'] as Map<String, dynamic>?;
-            _minutely = (body['minutely'] as List? ?? []).cast<Map<String, dynamic>>();
-            _hourlyLoading = false;
-          });
-        });
-      } else { throw Exception(); }
+      final result = await fetchJsonCached(
+        _forecastUrl,
+        cacheKey: 'forecast_hourly',
+        // Older than this and the hourly data is too stale to be useful.
+        maxCacheAge: const Duration(hours: 6),
+        onSaved: _applyForecast, // paint saved data instantly, then go live
+      );
+      _applyForecast(result);
     } catch (_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _hourlyLoading = false);
-      });
+      if (mounted) setState(() => _hourlyLoading = false);
     }
+  }
+
+  void _applyDaily(Cached<Map<String, dynamic>> c) {
+    if (!mounted) return;
+    final body = c.data;
+    final list = (body['forecast'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .map(_DailyFloodForecast.fromJson)
+        .toList();
+    setState(() {
+      _dailyFlood = list;
+      _dailyLoading = false;
+      _dailyError = false;
+      _dailySavedAt = c.fromCache ? c.savedAt : null;
+    });
   }
 
   Future<void> _fetchDailyFlood() async {
     try {
-      final res = await getWithFallback(_forecastFloodUrl);
-      if (!mounted) return;
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        if (body['status'] == 'success') {
-          final list = (body['forecast'] as List? ?? [])
-              .cast<Map<String, dynamic>>()
-              .map(_DailyFloodForecast.fromJson)
-              .toList();
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() { _dailyFlood = list; _dailyLoading = false; _dailyError = false; });
-          });
-        } else {
-          throw Exception(body['message']?.toString() ?? 'unknown error');
-        }
-      } else { throw Exception(); }
+      final result = await fetchJsonCached(
+        _forecastFloodUrl,
+        cacheKey: 'forecast_flood_daily',
+        maxCacheAge: const Duration(hours: 72),
+        onSaved: _applyDaily,
+      );
+      if (result.data['status'] != 'success' && !result.fromCache) {
+        throw Exception(result.data['message']?.toString() ?? 'unknown error');
+      }
+      _applyDaily(result);
     } catch (_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() { _dailyLoading = false; _dailyError = true; });
-      });
+      if (mounted) setState(() { _dailyLoading = false; _dailyError = true; });
     }
   }
 
@@ -649,7 +689,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         ),
 
-                        if (_error) ...[_OfflineBanner(lastUpdated: _lastUpdated), const SizedBox(height: 14)],
+                        // The app-wide offline strip (above the nav bar) already covers "no
+                        // connection"; this in-page banner is for "connected, but the
+                        // AGOS backend isn't answering".
+                        if (_error && context.watch<ConnectivityService>().isOnline) ...[_OfflineBanner(lastUpdated: _lastUpdated), const SizedBox(height: 14)],
 
                         if (severe) ...[
                           SizedBox(
@@ -694,6 +737,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const Text('AI model outlook · updated with each Open-Meteo sync',
                             style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
                         const SizedBox(height: 10),
+                        if (_dailySavedAt != null) ...[
+                          _SavedNote('Saved outlook · updated ${agoLabel(_dailySavedAt!)}'),
+                          const SizedBox(height: 8),
+                        ],
                         _DailyFloodForecastList(
                           days: _dailyFlood,
                           loading: _dailyLoading,
@@ -753,6 +800,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         const Text('OpenMeteo · Brgy. Triangulo, Naga City',
                             style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
                         const SizedBox(height: 10),
+                        if (_forecastSavedAt != null) ...[
+                          _SavedNote('Saved forecast · updated ${agoLabel(_forecastSavedAt!)}'),
+                          const SizedBox(height: 8),
+                        ],
                         _HourlyForecastStrip(hourly: _hourly, loading: _hourlyLoading),
                         const SizedBox(height: 16),
 
@@ -1947,4 +1998,20 @@ class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderState
       ),
     ),
   );
+}
+
+/// Small "this is saved data, not live" note shown above forecast sections.
+class _SavedNote extends StatelessWidget {
+  final String text;
+  const _SavedNote(this.text);
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        const Icon(Icons.history_rounded, size: 13, color: AppColors.orange),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(text,
+              style: const TextStyle(color: AppColors.orange, fontSize: 11, fontWeight: FontWeight.w600)),
+        ),
+      ]);
 }
