@@ -118,14 +118,49 @@ class _AmbientPainter extends CustomPainter {
   void _paintSunGlow(Canvas canvas, Size size) {
     final center = Offset(size.width * 0.82, size.height * 0.1);
     final pulse = 0.85 + 0.15 * math.sin(t * 2 * math.pi);
-    final paint = Paint()
+
+    // Wide outer corona — same soft falloff as before, just a bit bigger
+    // so the rays below have somewhere to fade into.
+    final coronaPaint = Paint()
       ..shader = RadialGradient(
         colors: [
           Colors.amber.withValues(alpha: 0.16 * pulse),
           Colors.amber.withValues(alpha: 0.0),
         ],
-      ).createShader(Rect.fromCircle(center: center, radius: 150));
-    canvas.drawCircle(center, 150, paint);
+      ).createShader(Rect.fromCircle(center: center, radius: 190));
+    canvas.drawCircle(center, 190, coronaPaint);
+
+    // Slow-rotating sunburst rays, drawn behind the disc.
+    canvas.save();
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(t * 2 * math.pi * 0.5); // one lazy half-turn per 20s loop
+    const rayCount = 12;
+    final rayPaint = Paint()
+      ..color = Colors.amber.withValues(alpha: 0.10 * pulse)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    for (int i = 0; i < rayCount; i++) {
+      final angle = (2 * math.pi / rayCount) * i;
+      final inner = Offset(math.cos(angle) * 48, math.sin(angle) * 48);
+      final outer = Offset(math.cos(angle) * 78, math.sin(angle) * 78);
+      canvas.drawLine(inner, outer, rayPaint);
+    }
+    canvas.restore();
+
+    // The sun disc itself — warm core fading to a soft edge, with a
+    // gentle pulse in both size and brightness.
+    final discRadius = 34 * pulse;
+    final discPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white.withValues(alpha: 0.85 * pulse),
+          Colors.amber.shade300.withValues(alpha: 0.55 * pulse),
+          Colors.amber.withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.55, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: discRadius));
+    canvas.drawCircle(center, discRadius, discPaint);
   }
 
   void _paintStars(Canvas canvas, Size size) {
