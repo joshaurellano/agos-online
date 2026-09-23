@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LuMegaphone, LuHourglass, LuCircleCheckBig, LuCircleX,
   LuDroplets, LuMapPin, LuTriangleAlert,
@@ -98,8 +98,8 @@ function RejectDialog({ onConfirm, onCancel }) {
   );
 }
 
-function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPromote }) {
-  const [expanded, setExpanded]   = useState(false);
+function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPromote, highlighted }) {
+  const [expanded, setExpanded]   = useState(highlighted);
   const [updating, setUpdating]   = useState(false);
   const [showReject, setShowReject] = useState(false);
   const duplicates = findNearbyDuplicates(report, allReports);
@@ -123,14 +123,18 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
   const handleRejectAsDuplicate = () => handleReject('Duplicate of another report');
 
   return (
-    <div style={{
-      background: 'var(--blue-mid)',
-      border: `1px solid ${expanded ? STATUS_COLORS[report.status] + '60' : 'var(--blue-border)'}`,
-      borderLeft: `4px solid ${STATUS_COLORS[report.status]}`,
-      borderRadius: 'var(--radius-sm)',
-      overflow: 'hidden',
-      transition: 'border-color 0.2s',
-    }}>
+    <div
+      id={`report-${report.id}`}
+      style={{
+        background: 'var(--blue-mid)',
+        border: `1px solid ${expanded ? STATUS_COLORS[report.status] + '60' : 'var(--blue-border)'}`,
+        borderLeft: `4px solid ${STATUS_COLORS[report.status]}`,
+        borderRadius: 'var(--radius-sm)',
+        overflow: 'hidden',
+        transition: 'border-color 0.2s, box-shadow 0.4s',
+        boxShadow: highlighted ? '0 0 0 3px rgba(56,189,248,0.45)' : 'none',
+      }}
+    >
       <div
         onClick={() => setExpanded(e => !e)}
         style={{ padding: '13px 16px', cursor: 'pointer', display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}
@@ -291,7 +295,15 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
 export default function CommunityReportsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const canModerate = user?.roles?.role_desc && user.roles.role_desc !== 'Resident';
+
+  // Deep-link support: TeamChatPage's "linked incident" chip navigates here
+  // with { state: { focusReportId } } so a coordination message can jump
+  // straight to the report it's about, instead of just landing on the
+  // general moderation list.
+  const focusReportId = location.state?.focusReportId ?? null;
+  const appliedFocusFilter = useRef(false);
 
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -315,6 +327,22 @@ export default function CommunityReportsPage() {
   }, []);
 
   useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  // Jump to a specific report when arriving via a deep link (e.g. the
+  // "linked incident" chip in TeamChatPage). The target report might not
+  // be in the current status tab (default is "pending"), so switch to
+  // "ALL" once, then scroll/flash the card once it's rendered.
+  useEffect(() => {
+    if (!focusReportId || appliedFocusFilter.current) return;
+    appliedFocusFilter.current = true;
+    setFilterStatus('ALL');
+  }, [focusReportId]);
+
+  useEffect(() => {
+    if (!focusReportId || reports.length === 0) return;
+    const el = document.getElementById(`report-${focusReportId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusReportId, reports, filterStatus]);
 
   // Live updates: new resident reports appear without a manual refresh.
   useEffect(() => {
@@ -478,6 +506,7 @@ export default function CommunityReportsPage() {
               onVerify={handleVerify}
               onReject={handleReject}
               onPromote={handlePromote}
+              highlighted={r.id === focusReportId}
             />
           ))}
         </div>

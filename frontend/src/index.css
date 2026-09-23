@@ -547,6 +547,15 @@ body {
   .weather-hero-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Team coordination page (TeamChatPage.jsx) -- chat panel wide, status
+   board a fixed narrower rail, same shape as .weather-hero-grid above but
+   the rail sits on the right instead of the left. */
+.team-chat-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: stretch; }
+@media (max-width: 768px) {
+  .team-chat-grid { grid-template-columns: minmax(0, 1fr); }
+  .team-chat-grid > div { height: auto !important; }
+}
+
 /* Topbar */
 .topbar {
   background: var(--blue-panel);

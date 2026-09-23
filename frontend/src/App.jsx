@@ -17,6 +17,7 @@ import ReportsPage from './pages/ReportsPage';
 import CommunityReportsPage from './pages/CommunityReportsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import AlertsLogPage from './pages/AlertsLogPage';
+import TeamChatPage from './pages/TeamChatPage';
 import SettingsPage from './pages/SettingsPage';
 import ResidentRegistryPage from './pages/ResidentRegistryPage';
 
@@ -65,6 +66,12 @@ function App() {
                 <Route path="/community-reports" element={
                   <ResidentRoute>
                     <CommunityReportsPage />
+                  </ResidentRoute>
+                } />
+
+                <Route path="/team-chat" element={
+                  <ResidentRoute>
+                    <TeamChatPage />
                   </ResidentRoute>
                 } />
 
