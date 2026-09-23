@@ -52,7 +52,6 @@ export function alertLevelFromKey(key) {
 }
 
 const LOCATION = 'Barangay Triangulo, Naga City';
-const SOURCE = 'AGOS';
 
 // (2:05 PM, Sep 16) — same shape as an NDRRMC SMS timestamp, in Manila time.
 // Keep in sync with formatTimestamp() in supabase/functions/poll-flood/index.ts.
@@ -62,17 +61,19 @@ function formatTimestamp(date) {
   return `(${time}, ${day})`;
 }
 
-// Message copy: NDRRMC-style source + timestamp + what/where up front, then
-// a plain-language impact + action — the same two-part shape as a Google
-// Weather card's headline + detail line. Keep in sync with
-// buildCurrentMessage() in supabase/functions/poll-flood/index.ts — this is
-// the same wording, just built client-side for the level-change dispatch
-// that fires while the dashboard is open.
+// Message copy: NDRRMC-style timestamp + what/where up front, then a
+// plain-language impact + action — the same two-part shape as a Google
+// Weather card's headline + detail line. The severity label itself (e.g.
+// "FLOOD ADVISORY") is prepended by send-alert, not here, so it isn't
+// repeated twice in the SMS. Keep in sync with buildCurrentMessage() in
+// supabase/functions/poll-flood/index.ts — this is the same wording, just
+// built client-side for the level-change dispatch that fires while the
+// dashboard is open.
 const ALERT_MESSAGES = {
-  ADVISORY: (pct) => `${SOURCE}: ${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Elevated water levels; minor flooding possible in low-lying areas. Residents near waterways should stay alert and prepare emergency go-bags.`,
-  WARNING:  (pct) => `${SOURCE}: ${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
-  CRITICAL: (pct) => `${SOURCE}: ${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
-  NORMAL:   () => `${SOURCE}: ${formatTimestamp(new Date())} Situation in ${LOCATION} has returned to Normal. Flood risk has subsided. Continue monitoring for updates.`,
+  ADVISORY: (pct) => `${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Elevated water levels; minor flooding possible in low-lying areas. Residents near waterways should stay alert and prepare emergency go-bags.`,
+  WARNING:  (pct) => `${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
+  CRITICAL: (pct) => `${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  NORMAL:   () => `${formatTimestamp(new Date())} Situation in ${LOCATION} has returned to Normal. Flood risk has subsided. Continue monitoring for updates.`,
 };
 
 // Push notification titles now live solely in on-alert-change/index.ts —
