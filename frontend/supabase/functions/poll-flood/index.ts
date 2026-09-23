@@ -2,11 +2,27 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { fetchPrediction, fetchForecast } from '../_shared/model-api.ts'
 import { checkOutlook } from '../_shared/outlook.ts'
 
-const ALERT_MESSAGES: Record<string, string> = {
-  ADVISORY: 'AGOS Alert: ADVISORY level reached...',
-  WARNING:  'AGOS Alert: WARNING level reached...',
-  CRITICAL: 'AGOS Alert: CRITICAL level reached. EVACUATE IMMEDIATELY.',
-  NORMAL:   'AGOS Alert: Situation has returned to NORMAL.',
+const LOCATION = 'Barangay Triangulo, Naga City'
+
+// (2:05 PM, Sep 16) — same shape as an NDRRMC SMS timestamp, in Manila time.
+// Keep in sync with formatTimestamp() in src/lib/modelApi.js.
+function formatTimestamp(date: Date) {
+  const time = date.toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', hour12: true })
+  const day  = date.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' })
+  return `(${time}, ${day})`
+}
+
+// The severity label (e.g. "FLOOD ADVISORY") is prepended by send-alert,
+// not here, so it isn't repeated twice in the SMS. Keep in sync with
+// ALERT_MESSAGES in src/lib/modelApi.js -- this used to drift out of sync
+// with a shorter, unbranded-but-vague copy ("ADVISORY level reached..."),
+// which is why real (non-mock) alerts looked different from the dashboard's
+// mock-test ones.
+const ALERT_MESSAGES: Record<string, (pct: number | null) => string> = {
+  ADVISORY: (pct) => `${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Elevated water levels; minor flooding possible in low-lying areas. Residents near waterways should stay alert and prepare emergency go-bags.`,
+  WARNING:  (pct) => `${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
+  CRITICAL: (pct) => `${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  NORMAL:   () => `${formatTimestamp(new Date())} Situation in ${LOCATION} has returned to Normal. Flood risk has subsided. Continue monitoring for updates.`,
 }
 
 // #1 Rapid rise
@@ -165,7 +181,8 @@ Deno.serve(async () => {
 
   // 3a. State-change alert (existing behavior, now forecast-aware on downgrade)
   if (prevAlert !== null && prevAlert !== currentAlert) {
-    let message = ALERT_MESSAGES[currentAlert]
+    const pct = currentAlert === 'NORMAL' ? null : Math.round(currentProbability * 100)
+    let message = ALERT_MESSAGES[currentAlert](pct)
     if (currentAlert === 'NORMAL') {
       message = await buildDowngradeMessage(message)
     }

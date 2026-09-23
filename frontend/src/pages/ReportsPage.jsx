@@ -1,5 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import { isAdmin, isResident } from '../lib/roles';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../hooks/useAuth';
@@ -784,6 +788,143 @@ function ModelAccuracyPanel({ reports }) {
   );
 }
 
+// ─── Trends Panel ─────────────────────────────────────────────────────────────
+// Rolls the (filtered) records up by year so patterns across seasons/typhoons
+// are visible at a glance instead of only readable one card at a time.
+function HistoryTrendsPanel({ reports }) {
+  const yearly = useMemo(() => {
+    const byYear = new Map();
+    for (const r of reports) {
+      const year = r.date_occurred ? new Date(r.date_occurred).getFullYear() : null;
+      if (!year || Number.isNaN(year)) continue;
+      if (!byYear.has(year)) {
+        byYear.set(year, { year, NORMAL: 0, ADVISORY: 0, WARNING: 0, CRITICAL: 0, displaced: 0, damage: 0 });
+      }
+      const entry = byYear.get(year);
+      if (entry[r.severity] !== undefined) entry[r.severity] += 1;
+      entry.displaced += r.displaced_persons || 0;
+      entry.damage += Number(r.estimated_damage_php) || 0;
+    }
+    return [...byYear.values()].sort((a, b) => a.year - b.year);
+  }, [reports]);
+
+  const worstYear = useMemo(() => {
+    if (yearly.length === 0) return null;
+    return yearly.reduce((worst, y) => {
+      const total = y.NORMAL + y.ADVISORY + y.WARNING + y.CRITICAL;
+      const worstTotal = worst.NORMAL + worst.ADVISORY + worst.WARNING + worst.CRITICAL;
+      return total > worstTotal ? y : worst;
+    }, yearly[0]);
+  }, [yearly]);
+
+  // Not enough spread across years for a trend line to mean anything --
+  // stay out of the way rather than draw a chart with one bar on it.
+  if (yearly.length < 2) return null;
+
+  return (
+    <div className="card" style={{ marginBottom: 18 }}>
+      <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <span>Incidents Over Time</span>
+        {worstYear && (
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>
+            Worst year on record: <strong style={{ color: 'var(--text-secondary)' }}>{worstYear.year}</strong>
+            {' '}({worstYear.NORMAL + worstYear.ADVISORY + worstYear.WARNING + worstYear.CRITICAL} incidents
+            {worstYear.displaced > 0 ? `, ${worstYear.displaced.toLocaleString()} displaced` : ''})
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '10px 0 16px' }}>
+        Reported incidents per year, stacked by severity, with total displaced persons overlaid.
+      </div>
+      <div style={{ height: 260 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={yearly} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--blue-border)" />
+            <XAxis dataKey="year" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+            <YAxis
+              yAxisId="left" allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+              label={{ value: 'Incidents', angle: -90, position: 'insideLeft', fontSize: 10, fill: 'var(--text-muted)' }}
+            />
+            <YAxis
+              yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+              label={{ value: 'Displaced', angle: 90, position: 'insideRight', fontSize: 10, fill: 'var(--text-muted)' }}
+            />
+            <RechartsTooltip
+              contentStyle={{ background: 'var(--blue-card)', border: '1px solid var(--blue-border)', borderRadius: 8, fontSize: 12 }}
+              labelStyle={{ color: 'var(--text-primary)', fontWeight: 700 }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar yAxisId="left" dataKey="NORMAL"   stackId="sev" fill={SEVERITY_COLORS.NORMAL}   name="Normal" />
+            <Bar yAxisId="left" dataKey="ADVISORY" stackId="sev" fill={SEVERITY_COLORS.ADVISORY} name="Advisory" />
+            <Bar yAxisId="left" dataKey="WARNING"  stackId="sev" fill={SEVERITY_COLORS.WARNING}  name="Warning" />
+            <Bar yAxisId="left" dataKey="CRITICAL" stackId="sev" fill={SEVERITY_COLORS.CRITICAL} name="Critical" radius={[3, 3, 0, 0]} />
+            <Line yAxisId="right" type="monotone" dataKey="displaced" stroke="#a855f7" strokeWidth={2.5} dot={{ r: 3, fill: '#a855f7' }} name="Displaced Persons" />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Timeline View ────────────────────────────────────────────────────────────
+// Alternative to the flat card list: groups records by year and lays them
+// out along a vertical timeline so chronological/seasonal patterns (e.g.
+// clustering around typhoon season) are visible without reading dates one
+// card at a time. Reuses ReportCard for the actual content so expand/status
+// behavior stays identical between views.
+function HistoryTimeline({ reports, onStatusChange, canEdit }) {
+  const byYear = useMemo(() => {
+    const groups = new Map();
+    for (const r of reports) {
+      const year = r.date_occurred ? new Date(r.date_occurred).getFullYear() : 'Undated';
+      if (!groups.has(year)) groups.set(year, []);
+      groups.get(year).push(r);
+    }
+    return [...groups.entries()].sort((a, b) => {
+      if (a[0] === 'Undated') return 1;
+      if (b[0] === 'Undated') return -1;
+      return b[0] - a[0];
+    });
+  }, [reports]);
+
+  return (
+    <div>
+      {byYear.map(([year, yearReports]) => (
+        <div key={year}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 12px' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {year}
+            </div>
+            <div style={{ flex: 1, height: 1, background: 'var(--blue-border)' }} />
+            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {yearReports.length} incident{yearReports.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {yearReports.map((r, i) => (
+              <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{
+                    width: 11, height: 11, borderRadius: '50%', marginTop: 17, flexShrink: 0,
+                    background: SEVERITY_COLORS[r.severity] || '#8da4be',
+                    boxShadow: `0 0 0 3px ${(SEVERITY_COLORS[r.severity] || '#8da4be')}22`,
+                  }} />
+                  {i !== yearReports.length - 1 && (
+                    <div style={{ flex: 1, width: 2, background: 'var(--blue-border)', minHeight: 12 }} />
+                  )}
+                </div>
+                <div style={{ paddingBottom: 10 }}>
+                  <ReportCard report={r} onStatusChange={onStatusChange} canEdit={canEdit} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function HistoricalPage() {
@@ -801,6 +942,7 @@ export default function HistoricalPage() {
   const [searchText,     setSearchText]     = useState('');
   const [successMsg,     setSuccessMsg]     = useState('');
   const [exporting,      setExporting]      = useState(false);
+  const [viewMode,       setViewMode]       = useState('timeline'); // 'timeline' | 'list'
 
   // Arriving here via CommunityReportsPage's "Promote to Official Report"
   // button: open the form pre-filled, then immediately clear the router
@@ -947,6 +1089,9 @@ export default function HistoricalPage() {
 
       {!loading && reports.length > 0 && <ModelAccuracyPanel reports={reports} />}
 
+      {/* ── Trends ─────────────────────────────────────────────────── */}
+      {!loading && <HistoryTrendsPanel reports={filtered} />}
+
       {/* ── Filters + Search ──────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: 14, padding: '12px 16px' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1030,10 +1175,33 @@ export default function HistoricalPage() {
 
       {/* ── Report List ───────────────────────────────────────────── */}
       <div className="card">
-        <SectionLabel>Incident Records</SectionLabel>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <SectionLabel>Incident Records</SectionLabel>
+          {!loading && filtered.length > 0 && (
+            <div style={{ display: 'flex', gap: 4, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, padding: 3 }}>
+              {[
+                { key: 'timeline', label: 'Timeline' },
+                { key: 'list',     label: 'List' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setViewMode(key)}
+                  style={{
+                    fontSize: '0.7rem', fontWeight: 700, padding: '4px 12px', borderRadius: 4,
+                    border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                    background: viewMode === key ? 'var(--accent)' : 'transparent',
+                    color: viewMode === key ? 'var(--blue-deep)' : 'var(--text-muted)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {[...Array(3)].map((_, i) => (
               <div key={i} style={{
                 height: 56, borderRadius: 'var(--radius-sm)',
@@ -1054,8 +1222,16 @@ export default function HistoricalPage() {
               </div>
             )}
           </div>
+        ) : viewMode === 'timeline' ? (
+          <div style={{ marginTop: 14 }}>
+            <HistoryTimeline
+              reports={filtered}
+              onStatusChange={handleStatusChange}
+              canEdit={!userIsResident}
+            />
+          </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {filtered.map(r => (
               <ReportCard
                 key={r.id}
