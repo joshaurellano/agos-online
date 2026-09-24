@@ -232,6 +232,16 @@ class _Prediction {
   }
 }
 
+// Whole calendar days between today and [d] (0 = today, 1 = tomorrow).
+// Derived from the actual date rather than the backend's `day_ahead`, because
+// the forecast now starts on today (day_ahead 0) and labels must not depend
+// on how the backend numbers its offset.
+int _daysFromToday(DateTime d) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return DateTime(d.year, d.month, d.day).difference(today).inDays;
+}
+
 // ─── Daily flood forecast entry (from GET /api/forecast-flood) ──────────────
 class _DailyFloodForecast {
   final DateTime date;
@@ -1293,8 +1303,9 @@ class _FloodRiskTrendChart extends StatelessWidget {
   const _FloodRiskTrendChart({required this.days, required this.loading});
 
   String _shortDay(_DailyFloodForecast d) {
-    if (d.dayAhead == 0) return 'Today';
-    if (d.dayAhead == 1) return 'Tmrw';
+    final diff = _daysFromToday(d.date);
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tmrw';
     const wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return wdays[d.date.weekday - 1];
   }
@@ -1458,7 +1469,9 @@ class _DailyFloodForecastList extends StatelessWidget {
   const _DailyFloodForecastList({required this.days, required this.loading, required this.error});
 
   String _dayLabel(_DailyFloodForecast d) {
-    if (d.dayAhead == 1) return 'Tomorrow';
+    final diff = _daysFromToday(d.date);
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
     const wdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     return '${wdays[d.date.weekday - 1]} ${d.date.day}/${d.date.month}';
   }
