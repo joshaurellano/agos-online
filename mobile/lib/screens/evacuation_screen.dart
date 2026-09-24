@@ -925,12 +925,8 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: const Color(0xFFf97316).withValues(alpha: 0.07),
-                    border: Border(
-                      left: const BorderSide(color: Color(0xFFf97316), width: 3),
-                      top: BorderSide(color: const Color(0xFFf97316).withValues(alpha: 0.25)),
-                      right: BorderSide(color: const Color(0xFFf97316).withValues(alpha: 0.25)),
-                      bottom: BorderSide(color: const Color(0xFFf97316).withValues(alpha: 0.25)),
-                    ),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFf97316).withValues(alpha: 0.25)),
                   ),
                   child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('⚠️  DURING A FLOOD EVENT',
@@ -967,19 +963,10 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: const Color(0xFF0d1f3c),
-          border: Border(
-            left: BorderSide(
-                color: isNearest ? const Color(0xFF22C55E) : c.color, width: 3),
-            top: BorderSide(
-                color: (isNearest ? const Color(0xFF22C55E) : c.color)
-                    .withValues(alpha: 0.4)),
-            right: BorderSide(
-                color: (isNearest ? const Color(0xFF22C55E) : c.color)
-                    .withValues(alpha: 0.4)),
-            bottom: BorderSide(
-                color: (isNearest ? const Color(0xFF22C55E) : c.color)
-                    .withValues(alpha: 0.4)),
-          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: (isNearest ? const Color(0xFF22C55E) : c.color)
+                  .withValues(alpha: 0.4)),
           boxShadow: [
             BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 16)
           ],
@@ -1136,21 +1123,11 @@ class _CenterCard extends StatelessWidget {
           color: isSelected
               ? const Color(0xFF0d1f3c).withValues(alpha: 1.0)
               : const Color(0xFF0d1f3c),
-          border: Border(
-            left: BorderSide(color: accentColor, width: isSelected ? 4 : 3),
-            top: BorderSide(
-                color: isSelected
-                    ? accentColor.withValues(alpha: 0.4)
-                    : const Color(0xFF1e3a5f)),
-            right: BorderSide(
-                color: isSelected
-                    ? accentColor.withValues(alpha: 0.4)
-                    : const Color(0xFF1e3a5f)),
-            bottom: BorderSide(
-                color: isSelected
-                    ? accentColor.withValues(alpha: 0.4)
-                    : const Color(0xFF1e3a5f)),
-          ),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: isSelected
+                  ? accentColor.withValues(alpha: 0.4)
+                  : const Color(0xFF1e3a5f)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [

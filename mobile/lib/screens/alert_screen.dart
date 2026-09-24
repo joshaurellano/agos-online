@@ -493,12 +493,9 @@ class _AlertCard extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: log.read ? AppColors.bgCard : color.withOpacity(0.07),
-              // borderRadius removed – now handled by ClipRRect
-              border: Border(
-                left: BorderSide(color: color, width: 3),
-                top:    BorderSide(color: log.read ? AppColors.bgBorder : color.withOpacity(0.25)),
-                right:  BorderSide(color: log.read ? AppColors.bgBorder : color.withOpacity(0.25)),
-                bottom: BorderSide(color: log.read ? AppColors.bgBorder : color.withOpacity(0.25)),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: log.read ? AppColors.bgBorder : color.withOpacity(0.25),
               ),
             ),
             child: Column(
