@@ -17,7 +17,7 @@ services:
     healthCheckPath: /
     envVars:
       - key: FLOOD_DEFAULT_MODEL
-        value: gru
+        value: lstm
       - key: WEATHER_CACHE_TTL_MINUTES
         value: "180"
       - key: WEATHER_FAILURE_COOLDOWN_MINUTES
