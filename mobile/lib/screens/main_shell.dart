@@ -127,14 +127,14 @@ class _MainShellState extends State<MainShell> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      AppColors.accent.withValues(alpha: 0.28),
-                      AppColors.accent.withValues(alpha: 0.08),
+                      AppColors.chromeAccent.withValues(alpha: 0.28),
+                      AppColors.chromeAccent.withValues(alpha: 0.08),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(11),
-                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                  border: Border.all(color: AppColors.chromeAccent.withValues(alpha: 0.4)),
                   boxShadow: [
-                    BoxShadow(color: AppColors.accent.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 2)),
+                    BoxShadow(color: AppColors.chromeAccent.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 2)),
                   ],
                 ),
                 child: const Center(child: Text('🌊', style: TextStyle(fontSize: 16))),

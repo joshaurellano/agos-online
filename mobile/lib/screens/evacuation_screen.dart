@@ -416,8 +416,8 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 PolygonLayer(polygons: [
                   Polygon(
                     points: _boundary,
-                    color: const Color(0xFF38bdf8).withValues(alpha: 0.08),
-                    borderColor: const Color(0xFF38bdf8).withValues(alpha: 0.7),
+                    color: AppColors.accent.withValues(alpha: 0.08),
+                    borderColor: AppColors.accent.withValues(alpha: 0.7),
                     borderStrokeWidth: 2,
                   ),
                 ]),
@@ -461,7 +461,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                                 color: const Color(0xFF22C55E),
                                 borderRadius: BorderRadius.circular(4),
                                 boxShadow: [
-                                  BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 4),
+                                  BoxShadow(color: AppColors.shadow(0.4), blurRadius: 4),
                                 ],
                               ),
                               child: const Text('You',
@@ -515,7 +515,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                                   color: isNearest ? const Color(0xFF22C55E) : c.color,
                                   borderRadius: BorderRadius.circular(4),
                                   boxShadow: [
-                                    BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 4),
+                                    BoxShadow(color: AppColors.shadow(0.3), blurRadius: 4),
                                   ],
                                 ),
                                 child: Row(
@@ -588,7 +588,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                     onSubmitted: _search,
                     trailing: GestureDetector(
                       onTap: () => _search(_searchCtrl.text),
-                      child: const Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.accent),
+                      child: Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.accent),
                     ),
                   ),
                   if (_searchError != null)
@@ -602,7 +602,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                           border: Border.all(color: AppColors.red.withValues(alpha: 0.4)),
                         ),
                         child: Text(_searchError!,
-                            style: const TextStyle(color: AppColors.red, fontSize: 10.5)),
+                            style: TextStyle(color: AppColors.ink(AppColors.red), fontSize: 10.5)),
                       ),
                     ),
                 ],
@@ -626,30 +626,30 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF052e16).withValues(alpha: 0.95),
+                          color: AppColors.greenBg.withValues(alpha: 0.95),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.6)),
-                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12)],
+                          boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 12)],
                         ),
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Icon(Icons.navigation_rounded, color: Color(0xFF22C55E), size: 18),
+                          Icon(Icons.navigation_rounded, color: AppColors.greenText, size: 18),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              const Text('NEAREST EVACUATION CENTER',
-                                  style: TextStyle(color: Color(0xFF22C55E), fontSize: 8,
+                              Text('NEAREST EVACUATION CENTER',
+                                  style: TextStyle(color: AppColors.greenText, fontSize: 8,
                                       fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                               const SizedBox(height: 2),
                               Text(_nearest!.name,
-                                  style: const TextStyle(color: Color(0xFFe2eaf5), fontSize: 12, fontWeight: FontWeight.w700)),
+                                  style: TextStyle(color: AppColors.textPri, fontSize: 12, fontWeight: FontWeight.w700)),
                               if (_routeTarget?.id == _nearest!.id && _routeDurationSeconds != null) ...[
                                 const SizedBox(height: 2),
                                 Text('🚶 ${_formatDuration(_routeDurationSeconds!)} by street',
-                                    style: const TextStyle(color: Color(0xFF7fd9a0), fontSize: 10, fontWeight: FontWeight.w600)),
+                                    style: TextStyle(color: AppColors.greenSoft, fontSize: 10, fontWeight: FontWeight.w600)),
                               ] else if (_routeTarget?.id == _nearest!.id && _routing) ...[
                                 const SizedBox(height: 2),
-                                const Text('Finding walking route…',
-                                    style: TextStyle(color: Color(0xFF7fd9a0), fontSize: 10, fontWeight: FontWeight.w600)),
+                                Text('Finding walking route…',
+                                    style: TextStyle(color: AppColors.greenSoft, fontSize: 10, fontWeight: FontWeight.w600)),
                               ],
                             ]),
                           ),
@@ -663,7 +663,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                             ),
                             child: Text(
                               _formatDistance(_nearestDist!),
-                              style: const TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.w800),
+                              style: TextStyle(color: AppColors.greenText, fontSize: 11, fontWeight: FontWeight.w800),
                             ),
                           ),
                           const SizedBox(width: 4),
@@ -672,9 +672,9 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () => setState(() => _nearestBannerDismissed = true),
-                            child: const Padding(
+                            child: Padding(
                               padding: EdgeInsets.only(left: 2, top: 1),
-                              child: Icon(Icons.close_rounded, color: Color(0xFF7fd9a0), size: 16),
+                              child: Icon(Icons.close_rounded, color: AppColors.greenSoft, size: 16),
                             ),
                           ),
                         ]),
@@ -687,19 +687,19 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0d1f3c).withValues(alpha: 0.97),
+                        color: AppColors.surface.withValues(alpha: 0.97),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF1e3a5f)),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 12)],
+                        border: Border.all(color: AppColors.bgBorder),
+                        boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 12)],
                       ),
                       child: Row(children: [
-                        const Icon(Icons.location_on_outlined, color: Color(0xFF4a6080), size: 14),
+                        Icon(Icons.location_on_outlined, color: AppColors.textMuted, size: 14),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             _nearest!.note,
-                            style: const TextStyle(
-                              color: Color(0xFF8da4be),
+                            style: TextStyle(
+                              color: AppColors.textSec,
                               fontSize: 10.5,
                               fontWeight: FontWeight.w500,
                             ),
@@ -724,10 +724,10 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                     color: AppColors.bgDark.withValues(alpha: 0.96),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.bgBorder),
-                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 10)],
+                    boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 10)],
                   ),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('MAP LEGEND',
+                    Text('MAP LEGEND',
                         style: TextStyle(color: AppColors.textMuted, fontSize: 9,
                             fontWeight: FontWeight.w800, letterSpacing: 1)),
                     const SizedBox(height: 8),
@@ -735,7 +735,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                       Container(width: 10, height: 10,
                           decoration: const BoxDecoration(color: _colorPrimary, shape: BoxShape.circle)),
                       const SizedBox(width: 7),
-                      const Expanded(child: Text('Primary Center',
+                      Expanded(child: Text('Primary Center',
                           style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
                     ]),
                     const SizedBox(height: 6),
@@ -743,7 +743,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                       Container(width: 10, height: 10,
                           decoration: const BoxDecoration(color: _colorSchool, shape: BoxShape.circle)),
                       const SizedBox(width: 7),
-                      const Expanded(child: Text('School Center',
+                      Expanded(child: Text('School Center',
                           style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
                     ]),
                     const SizedBox(height: 6),
@@ -751,7 +751,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                       Container(width: 10, height: 10,
                           decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle)),
                       const SizedBox(width: 7),
-                      const Expanded(child: Text('Nearest / You',
+                      Expanded(child: Text('Nearest / You',
                           style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
                     ]),
                     const SizedBox(height: 6),
@@ -763,7 +763,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                             borderRadius: BorderRadius.circular(1),
                           )),
                       const SizedBox(width: 7),
-                      const Expanded(child: Text('Brgy. Boundary',
+                      Expanded(child: Text('Brgy. Boundary',
                           style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
                     ]),
                     const SizedBox(height: 6),
@@ -775,7 +775,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                             borderRadius: BorderRadius.circular(1),
                           )),
                       const SizedBox(width: 7),
-                      const Expanded(child: Text('Route to Center',
+                      Expanded(child: Text('Route to Center',
                           style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
                     ]),
                   ]),
@@ -803,7 +803,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                   activeColor: const Color(0xFF22C55E),
                   onTap: _locating ? null : _locateUser,
                   child: _locating
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16, height: 16,
                           child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2),
                         )
@@ -821,18 +821,18 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF450a0a),
+                    color: AppColors.errorBg,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFef4444).withValues(alpha: 0.5)),
                   ),
                   child: Row(children: [
-                    const Icon(Icons.error_outline_rounded, color: Color(0xFFef4444), size: 16),
+                    Icon(Icons.error_outline_rounded, color: AppColors.ink(AppColors.red), size: 16),
                     const SizedBox(width: 8),
                     Expanded(child: Text(_locError!,
-                        style: const TextStyle(color: Color(0xFFfca5a5), fontSize: 11))),
+                        style: TextStyle(color: AppColors.redTextSoft, fontSize: 11))),
                     GestureDetector(
                       onTap: () => setState(() => _locError = null),
-                      child: const Icon(Icons.close, color: Color(0xFF4a6080), size: 14),
+                      child: Icon(Icons.close, color: AppColors.textMuted, size: 14),
                     ),
                   ]),
                 ),
@@ -845,17 +845,17 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0d1f3c).withValues(alpha: 0.9),
+                    color: AppColors.surface.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF1e3a5f)),
+                    border: Border.all(color: AppColors.bgBorder),
                   ),
                   child: Row(children: [
-                    const Icon(Icons.info_outline_rounded, color: Color(0xFF38bdf8), size: 14),
+                    Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 14),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Tap the locate button to find the nearest evacuation center.',
-                        style: TextStyle(color: Color(0xFF8da4be), fontSize: 11),
+                        style: TextStyle(color: AppColors.textSec, fontSize: 11),
                       ),
                     ),
                     GestureDetector(
@@ -863,12 +863,12 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF38bdf8).withValues(alpha: 0.15),
+                          color: AppColors.accent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF38bdf8).withValues(alpha: 0.4)),
+                          border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
                         ),
-                        child: const Text('Locate',
-                            style: TextStyle(color: Color(0xFF38bdf8),
+                        child: Text('Locate',
+                            style: TextStyle(color: AppColors.accent,
                                 fontSize: 10, fontWeight: FontWeight.w700)),
                       ),
                     ),
@@ -888,8 +888,8 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const _SectionLabel(icon: '🚨', text: 'Evacuation Route Map — Barangay Triangulo'),
               const SizedBox(height: 4),
-              const Text('Tap a marker on the map, or a card below, for details.',
-                  style: TextStyle(color: Color(0xFF4a6080), fontSize: 10.5)),
+              Text('Tap a marker on the map, or a card below, for details.',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
               const SizedBox(height: 12),
 
               // ── Selected center detail card (replaces map popup) ──────────
@@ -928,16 +928,16 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFf97316).withValues(alpha: 0.25)),
                   ),
-                  child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('⚠️  DURING A FLOOD EVENT',
-                        style: TextStyle(color: Color(0xFFf97316), fontSize: 9.5,
+                        style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 9.5,
                             fontWeight: FontWeight.w800, letterSpacing: 1.0)),
                     SizedBox(height: 6),
                     Text(
                       'Proceed immediately to the nearest designated evacuation center. '
                       'Bring essential documents, medicines, and supplies. '
                       'Follow instructions from Barangay Officials.',
-                      style: TextStyle(color: Color(0xFF8da4be), fontSize: 11.5, height: 1.5),
+                      style: TextStyle(color: AppColors.textSec, fontSize: 11.5, height: 1.5),
                     ),
                   ]),
                 ),
@@ -962,13 +962,13 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF0d1f3c),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
               color: (isNearest ? const Color(0xFF22C55E) : c.color)
                   .withValues(alpha: 0.4)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 16)
+            BoxShadow(color: AppColors.shadow(0.4), blurRadius: 16)
           ],
         ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -984,7 +984,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
             ),
             child: Icon(
               isNearest ? Icons.navigation_rounded : Icons.location_on_rounded,
-              color: isNearest ? const Color(0xFF22C55E) : c.color,
+              color: isNearest ? AppColors.greenText : AppColors.ink(c.color),
               size: 20,
             ),
           ),
@@ -1001,12 +1001,12 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                     border: Border.all(
                         color: const Color(0xFF22C55E).withValues(alpha: 0.4)),
                   ),
-                  child: const Text('⚡ NEAREST TO YOU',
-                      style: TextStyle(color: Color(0xFF22C55E), fontSize: 8,
+                  child: Text('⚡ NEAREST TO YOU',
+                      style: TextStyle(color: AppColors.greenText, fontSize: 8,
                           fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                 ),
               Text(c.name,
-                  style: const TextStyle(color: Color(0xFFe2eaf5),
+                  style: TextStyle(color: AppColors.textPri,
                       fontWeight: FontWeight.w700, fontSize: 13)),
               const SizedBox(height: 4),
               Container(
@@ -1018,7 +1018,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 ),
                 child: Text(c.type,
                     style: TextStyle(
-                        color: c.color, fontSize: 9, fontWeight: FontWeight.w700)),
+                        color: AppColors.ink(c.color), fontSize: 9, fontWeight: FontWeight.w700)),
               ),
               const SizedBox(height: 8),
               // Address, as a labeled row in its own info box
@@ -1026,18 +1026,18 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0a1828),
+                  color: AppColors.surfaceDim,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFF1e3a5f)),
+                  border: Border.all(color: AppColors.bgBorder),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('ADDRESS',
-                      style: TextStyle(color: Color(0xFF4a6080), fontSize: 8.5,
+                  Text('ADDRESS',
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 8.5,
                           fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                   const SizedBox(height: 3),
                   Text(c.note,
-                      style: const TextStyle(
-                          color: Color(0xFF8da4be), fontSize: 11.5, height: 1.5)),
+                      style: TextStyle(
+                          color: AppColors.textSec, fontSize: 11.5, height: 1.5)),
                 ]),
               ),
               if (_routing && _selectedCenterId == c.id) ...[
@@ -1048,33 +1048,33 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                     child: CircularProgressIndicator(strokeWidth: 1.6, color: Color(0xFF22C55E)),
                   ),
                   const SizedBox(width: 6),
-                  const Text('Finding walking route…',
-                      style: TextStyle(color: Color(0xFF8da4be), fontSize: 11, fontWeight: FontWeight.w600)),
+                  Text('Finding walking route…',
+                      style: TextStyle(color: AppColors.textSec, fontSize: 11, fontWeight: FontWeight.w600)),
                 ]),
               ] else if (_routeDistanceMeters != null && _selectedCenterId == c.id) ...[
                 const SizedBox(height: 6),
                 Row(children: [
-                  const Icon(Icons.directions_walk_rounded, color: Color(0xFF22C55E), size: 13),
+                  Icon(Icons.directions_walk_rounded, color: AppColors.greenText, size: 13),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       '${_formatDistance(_routeDistanceMeters!)} · ${_formatDuration(_routeDurationSeconds ?? 0)} by street'
                       '${dist != null ? ' (${_formatDistance(dist)} straight-line)' : ''}',
-                      style: const TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.w600),
+                      style: TextStyle(color: AppColors.greenText, fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ]),
               ] else if (dist != null) ...[
                 const SizedBox(height: 6),
                 Row(children: [
-                  const Icon(Icons.directions_walk_rounded,
-                      color: Color(0xFF22C55E), size: 13),
+                  Icon(Icons.directions_walk_rounded,
+                      color: AppColors.greenText, size: 13),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       '${_formatDistance(dist)} away (straight-line — street route unavailable)',
-                      style: const TextStyle(
-                          color: Color(0xFF22C55E),
+                      style: TextStyle(
+                          color: AppColors.greenText,
                           fontSize: 11,
                           fontWeight: FontWeight.w600),
                     ),
@@ -1086,10 +1086,10 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
           // Dismiss button
           GestureDetector(
             onTap: () => _selectCenter(null),
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.all(4),
               child:
-                  Icon(Icons.close, color: Color(0xFF4a6080), size: 16),
+                  Icon(Icons.close, color: AppColors.textMuted, size: 16),
             ),
           ),
         ]),
@@ -1121,20 +1121,20 @@ class _CenterCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: isSelected
-              ? const Color(0xFF0d1f3c).withValues(alpha: 1.0)
-              : const Color(0xFF0d1f3c),
+              ? AppColors.surface.withValues(alpha: 1.0)
+              : AppColors.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
               color: isSelected
                   ? accentColor.withValues(alpha: 0.4)
-                  : const Color(0xFF1e3a5f)),
+                  : AppColors.bgBorder),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
               child: Text('🏫 ${center.name}',
-                  style: const TextStyle(
-                      color: Color(0xFFe2eaf5),
+                  style: TextStyle(
+                      color: AppColors.textPri,
                       fontWeight: FontWeight.w700,
                       fontSize: 13.5)),
             ),
@@ -1147,13 +1147,13 @@ class _CenterCard extends StatelessWidget {
                   border: Border.all(
                       color: const Color(0xFF22C55E).withValues(alpha: 0.4)),
                 ),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.navigation_rounded,
-                      color: Color(0xFF22C55E), size: 10),
+                      color: AppColors.greenText, size: 10),
                   SizedBox(width: 3),
                   Text('NEAREST',
                       style: TextStyle(
-                          color: Color(0xFF22C55E),
+                          color: AppColors.greenText,
                           fontSize: 8,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.5)),
@@ -1171,7 +1171,7 @@ class _CenterCard extends StatelessWidget {
               ),
               child: Text(center.type,
                   style: TextStyle(
-                      color: center.color,
+                      color: AppColors.ink(center.color),
                       fontSize: 9.5,
                       fontWeight: FontWeight.w700)),
             ),
@@ -1182,25 +1182,25 @@ class _CenterCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
             decoration: BoxDecoration(
-              color: const Color(0xFF0a1828),
+              color: AppColors.surfaceDim,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0xFF1e3a5f)),
+              border: Border.all(color: AppColors.bgBorder),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('ADDRESS',
-                  style: TextStyle(color: Color(0xFF4a6080), fontSize: 8.5,
+              Text('ADDRESS',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 8.5,
                       fontWeight: FontWeight.w800, letterSpacing: 0.8)),
               const SizedBox(height: 3),
               Text(center.note,
-                  style: const TextStyle(
-                      color: Color(0xFF8da4be), fontSize: 12, height: 1.5)),
+                  style: TextStyle(
+                      color: AppColors.textSec, fontSize: 12, height: 1.5)),
             ]),
           ),
           if (distanceMeters != null) ...[
             const SizedBox(height: 8),
             Row(children: [
               Icon(Icons.directions_walk_rounded,
-                  color: isNearest ? const Color(0xFF22C55E) : const Color(0xFF8da4be),
+                  color: isNearest ? AppColors.greenText : AppColors.textSec,
                   size: 13),
               const SizedBox(width: 5),
               Expanded(
@@ -1208,8 +1208,8 @@ class _CenterCard extends StatelessWidget {
                   '${_formatDistance(distanceMeters!)} away',
                   style: TextStyle(
                       color: isNearest
-                          ? const Color(0xFF22C55E)
-                          : const Color(0xFF8da4be),
+                          ? AppColors.greenText
+                          : AppColors.textSec,
                       fontSize: 11,
                       fontWeight: FontWeight.w700),
                 ),
@@ -1233,14 +1233,14 @@ class _SectionLabel extends StatelessWidget {
         const SizedBox(width: 6),
         Flexible(
           child: Text(text.toUpperCase(),
-              style: const TextStyle(
-                  color: Color(0xFF4a6080),
+              style: TextStyle(
+                  color: AppColors.textMuted,
                   fontSize: 9.5,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.2)),
         ),
         const SizedBox(width: 8),
-        Expanded(child: Container(height: 1, color: const Color(0xFF1e3a5f))),
+        Expanded(child: Container(height: 1, color: AppColors.bgBorder)),
       ]);
 }
 

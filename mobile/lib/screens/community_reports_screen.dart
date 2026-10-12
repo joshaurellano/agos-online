@@ -15,7 +15,8 @@ import 'report_incident_screen.dart';
 // vocabulary left to key off of — every report card just uses these
 // directly instead of looking a category up in a map.
 const _reportIcon  = Icons.water_rounded;
-const _reportColor = AppColors.accent;
+// A getter, not a const: AppColors.accent follows the light/dark theme.
+Color get _reportColor => AppColors.accent;
 
 class CommunityReportsScreen extends StatefulWidget {
   const CommunityReportsScreen({super.key});
@@ -106,10 +107,10 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: Row(children: [
-                      const Icon(Icons.history_rounded, size: 13, color: AppColors.orange),
+                      Icon(Icons.history_rounded, size: 13, color: AppColors.ink(AppColors.orange)),
                       const SizedBox(width: 5),
                       Text('Saved reports · updated ${agoLabel(_savedAt!)}',
-                          style: const TextStyle(color: AppColors.orange, fontSize: 11, fontWeight: FontWeight.w600)),
+                          style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 11, fontWeight: FontWeight.w600)),
                     ]),
                   ),
                 ),
@@ -120,7 +121,7 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                      child: Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
                     ),
                   ),
                 )
@@ -132,11 +133,11 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.campaign_outlined, color: AppColors.textMuted, size: 40),
+                          Icon(Icons.campaign_outlined, color: AppColors.textMuted, size: 40),
                           const SizedBox(height: 12),
-                          const Text('No verified reports yet', style: TextStyle(color: AppColors.textSec, fontSize: 14, fontWeight: FontWeight.w600)),
+                          Text('No verified reports yet', style: TextStyle(color: AppColors.textSec, fontSize: 14, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 4),
-                          const Text(
+                          Text(
                             'Reports appear here once a barangay official verifies them.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: AppColors.textMuted, fontSize: 12),
@@ -206,7 +207,7 @@ class _ReportCard extends StatelessWidget {
                 return Container(
                   height: 160,
                   color: AppColors.bgMid,
-                  child: const Center(child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2)),
+                  child: Center(child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2)),
                 );
               },
             ),
@@ -220,10 +221,10 @@ class _ReportCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                      child: Icon(icon, size: 16, color: color),
+                      child: Icon(icon, size: 16, color: AppColors.ink(color)),
                     ),
                     const SizedBox(width: 8),
-                    Text(report.category, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700)),
+                    Text(report.category, style: TextStyle(color: AppColors.ink(color), fontSize: 13, fontWeight: FontWeight.w700)),
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -232,27 +233,27 @@ class _ReportCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(color: AppColors.green.withValues(alpha: 0.35)),
                       ),
-                      child: const Text('VERIFIED', style: TextStyle(color: AppColors.green, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                      child: Text('VERIFIED', style: TextStyle(color: AppColors.ink(AppColors.green), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(report.description, style: const TextStyle(color: AppColors.textPri, fontSize: 13.5, height: 1.4)),
+                Text(report.description, style: TextStyle(color: AppColors.textPri, fontSize: 13.5, height: 1.4)),
                 const SizedBox(height: 10),
                 Row(
                   children: [
                     if (report.locationLabel != null) ...[
-                      const Icon(Icons.location_on_rounded, size: 13, color: AppColors.textMuted),
+                      Icon(Icons.location_on_rounded, size: 13, color: AppColors.textMuted),
                       const SizedBox(width: 3),
                       Flexible(
                         child: Text(report.locationLabel!, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
                       ),
                       const SizedBox(width: 10),
                     ],
-                    Text(_timeAgo(report.createdAt), style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+                    Text(_timeAgo(report.createdAt), style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
                     const Spacer(),
-                    Text('by ${report.reporterName}', style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, fontStyle: FontStyle.italic)),
+                    Text('by ${report.reporterName}', style: TextStyle(color: AppColors.textMuted, fontSize: 11.5, fontStyle: FontStyle.italic)),
                   ],
                 ),
               ],
@@ -282,11 +283,11 @@ class _PendingReportsSection extends StatelessWidget {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const Icon(Icons.outbox_rounded, size: 16, color: AppColors.orange),
+            Icon(Icons.outbox_rounded, size: 16, color: AppColors.ink(AppColors.orange)),
             const SizedBox(width: 8),
             Expanded(
               child: Text('Waiting to send (${outbox.count})',
-                  style: const TextStyle(color: AppColors.orange, fontSize: 12.5, fontWeight: FontWeight.w800)),
+                  style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 12.5, fontWeight: FontWeight.w800)),
             ),
             if (online)
               TextButton(
@@ -301,22 +302,22 @@ class _PendingReportsSection extends StatelessWidget {
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('${r.category} · ${agoLabel(r.queuedAt)}',
-                        style: const TextStyle(color: AppColors.textSec, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                        style: TextStyle(color: AppColors.textSec, fontSize: 11.5, fontWeight: FontWeight.w700)),
                     Text(r.description,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textPri, fontSize: 12.5)),
+                        style: TextStyle(color: AppColors.textPri, fontSize: 12.5)),
                     if (r.lastError != null)
                       Text(r.lastError!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
                   ]),
                 ),
                 IconButton(
                   tooltip: 'Delete',
                   visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.textMuted),
+                  icon: Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.textMuted),
                   onPressed: () => outbox.discard(r.id),
                 ),
               ]),

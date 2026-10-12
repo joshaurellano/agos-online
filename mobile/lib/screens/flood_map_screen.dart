@@ -539,10 +539,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                     color: AppColors.accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.map_rounded, color: AppColors.accent, size: 15),
+                  child: Icon(Icons.map_rounded, color: AppColors.accent, size: 15),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Flood Map',
                     style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w800, fontSize: 16),
@@ -559,7 +559,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                 borderRadius: _isFullscreen ? BorderRadius.zero : BorderRadius.circular(14),
                 child: Container(
                   decoration: BoxDecoration(
-                    border: _isFullscreen ? null : Border.all(color: const Color(0xFF1e3a5f)),
+                    border: _isFullscreen ? null : Border.all(color: AppColors.bgBorder),
                   ),
                   child: Stack(children: [
                     Positioned.fill(
@@ -797,10 +797,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                         color: AppColors.bgDark,
                         border: Border.all(color: style.color, width: 2),
                         boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 4),
+                          BoxShadow(color: AppColors.shadow(0.35), blurRadius: 4),
                         ],
                       ),
-                      child: Icon(style.icon, color: style.color, size: 15),
+                      child: Icon(style.icon, color: AppColors.ink(style.color), size: 15),
                     ),
                   ),
                 );
@@ -822,7 +822,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(children: [
-          Icon(style.icon, color: style.color, size: 16),
+          Icon(style.icon, color: AppColors.ink(style.color), size: 16),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -832,12 +832,12 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                 Text(facility.name,
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                 Text(style.label,
-                    style: TextStyle(color: style.color, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                    style: TextStyle(color: AppColors.ink(style.color), fontSize: 10.5, fontWeight: FontWeight.w700)),
               ],
             ),
           ),
         ]),
-        backgroundColor: const Color(0xFF0d1f3c),
+        backgroundColor: AppColors.surface,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -854,38 +854,38 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         color: AppColors.bgDark.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: pillColor.withValues(alpha: 0.5)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: AppColors.shadow(0.35), blurRadius: 10)],
       ),
       child: Row(children: [
         Container(
           width: 22, height: 22,
           decoration: BoxDecoration(shape: BoxShape.circle, color: pillColor.withValues(alpha: 0.18)),
-          child: Icon(_iconForAlertKey(_alertKey), color: pillColor, size: 13),
+          child: Icon(_iconForAlertKey(_alertKey), color: AppColors.ink(pillColor), size: 13),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Brgy. Triangulo · $_alertKey', style: TextStyle(
-                color: pillColor, fontSize: 11.5, fontWeight: FontWeight.w800)),
+                color: AppColors.ink(pillColor), fontSize: 11.5, fontWeight: FontWeight.w800)),
             if (_liveDataStale)
               Text(
                 _lastUpdated != null
                     ? 'Live data unavailable · last update ${_timeAgo(_lastUpdated!)}'
                     : 'Live data unavailable',
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 9.5),
               )
             else if (_probability != null)
               Text('${(_probability! * 100).toStringAsFixed(0)}% flood probability',
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
           ]),
         ),
         if (_loading)
-          const SizedBox(
+          SizedBox(
             width: 12, height: 12,
             child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 1.5),
           )
         else if (_liveDataStale)
-          const Icon(Icons.cloud_off_rounded, color: AppColors.textMuted, size: 14),
+          Icon(Icons.cloud_off_rounded, color: AppColors.textMuted, size: 14),
       ]),
     );
   }
@@ -898,10 +898,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         color: AppColors.bgDark.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.bgBorder),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 10)],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('WATER CODE LEGEND', style: TextStyle(
+        Text('WATER CODE LEGEND', style: TextStyle(
             color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
         const SizedBox(height: 8),
         ..._alertLevelKeys.map((key) {
@@ -910,25 +910,25 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Row(children: [
-              Icon(_iconForAlertKey(key), color: c, size: 13),
+              Icon(_iconForAlertKey(key), color: AppColors.ink(c), size: 13),
               const SizedBox(width: 7),
               Expanded(child: Text(key, style: TextStyle(
-                  color: isCur ? c : AppColors.textSec,
+                  color: isCur ? AppColors.ink(c) : AppColors.textSec,
                   fontSize: 10.5,
                   fontWeight: isCur ? FontWeight.w800 : FontWeight.w500))),
               if (isCur)
-                const Icon(Icons.check_circle_rounded, color: AppColors.textSec, size: 12),
+                Icon(Icons.check_circle_rounded, color: AppColors.textSec, size: 12),
             ]),
           );
         }),
         const SizedBox(height: 2),
-        const Text('Barangay boundary shaded by current level',
+        Text('Barangay boundary shaded by current level',
             style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
         if (_showFacilities) ...[
           const SizedBox(height: 10),
           Container(height: 1, color: AppColors.bgBorder),
           const SizedBox(height: 10),
-          const Text('CRITICAL FACILITIES', style: TextStyle(
+          Text('CRITICAL FACILITIES', style: TextStyle(
               color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
           const SizedBox(height: 8),
           ...kFacilityTypeOrder.map((type) {
@@ -936,9 +936,9 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Row(children: [
-                Icon(style.icon, color: style.color, size: 13),
+                Icon(style.icon, color: AppColors.ink(style.color), size: 13),
                 const SizedBox(width: 7),
-                Expanded(child: Text(style.label, style: const TextStyle(
+                Expanded(child: Text(style.label, style: TextStyle(
                     color: AppColors.textSec, fontSize: 10.5, fontWeight: FontWeight.w500))),
               ]),
             );
@@ -991,7 +991,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         const SizedBox(width: 6),
         Text(
           '${degToCardinal(deg) ?? ''} · ${deg.round()}°',
-          style: const TextStyle(color: AppColors.textPri, fontSize: 10.5, fontWeight: FontWeight.w600),
+          style: TextStyle(color: AppColors.textPri, fontSize: 10.5, fontWeight: FontWeight.w600),
         ),
       ]),
     );
@@ -1041,7 +1041,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         border: Border.all(color: AppColors.bgBorder),
       ),
       child: Column(children: [
-        Text(topLabel, style: const TextStyle(color: AppColors.textMuted, fontSize: 7.5, fontWeight: FontWeight.w700)),
+        Text(topLabel, style: TextStyle(color: AppColors.textMuted, fontSize: 7.5, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Expanded(
           child: Container(
@@ -1057,9 +1057,9 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        Text(midLabel, style: const TextStyle(color: AppColors.textMuted, fontSize: 7.5, fontWeight: FontWeight.w700)),
+        Text(midLabel, style: TextStyle(color: AppColors.textMuted, fontSize: 7.5, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
-        Text(bottomLabel, style: const TextStyle(color: AppColors.textMuted, fontSize: 7.5, fontWeight: FontWeight.w700)),
+        Text(bottomLabel, style: TextStyle(color: AppColors.textMuted, fontSize: 7.5, fontWeight: FontWeight.w700)),
       ]),
     );
   }
@@ -1083,7 +1083,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
       const SizedBox(width: 6),
-      Text(_labelForAlertKey(key), style: TextStyle(color: c, fontSize: 9, fontWeight: FontWeight.w700)),
+      Text(_labelForAlertKey(key), style: TextStyle(color: AppColors.ink(c), fontSize: 9, fontWeight: FontWeight.w700)),
     ]);
   }
 
@@ -1118,7 +1118,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           color: AppColors.bgDark.withValues(alpha: 0.92),
           border: Border(top: BorderSide(color: AppColors.bgBorder)),
         ),
-        child: const Text('Loading 7-day flood outlook…',
+        child: Text('Loading 7-day flood outlook…',
             style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
       );
     }
@@ -1158,7 +1158,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
               Flexible(
                 child: Text(
                   '${_dayLabel(date)} · $readout',
-                  style: const TextStyle(color: AppColors.textPri, fontSize: 11, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: AppColors.textPri, fontSize: 11, fontWeight: FontWeight.w700),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),
@@ -1170,7 +1170,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
             onTap: _togglePlay,
             child: Container(
               width: 30, height: 30,
-              decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
               child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 18),
             ),
           ),
@@ -1207,7 +1207,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
               child: Text(
                 t != null ? _dayLabel(t) : '',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 9),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 9),
               ),
             );
           }).toList(),
@@ -1227,7 +1227,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           color: AppColors.bgDark.withValues(alpha: 0.92),
           border: Border(top: BorderSide(color: AppColors.bgBorder)),
         ),
-        child: const Text('Loading hourly forecast…',
+        child: Text('Loading hourly forecast…',
             style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
       );
     }
@@ -1261,7 +1261,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
               '${_hourLabel(time)} · $readout',
-              style: const TextStyle(color: AppColors.textPri, fontSize: 11, fontWeight: FontWeight.w700),
+              style: TextStyle(color: AppColors.textPri, fontSize: 11, fontWeight: FontWeight.w700),
             ),
           ),
         Row(children: [
@@ -1269,7 +1269,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
             onTap: _togglePlay,
             child: Container(
               width: 30, height: 30,
-              decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
               child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 18),
             ),
           ),
@@ -1306,7 +1306,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                 child: Text(
                   t != null ? _hourLabel(t) : '',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 9),
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 9),
                 ),
               );
             }).toList(),
@@ -1332,10 +1332,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Map controls', style: TextStyle(
+            Text('Map controls', style: TextStyle(
                 color: AppColors.textPri, fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
-            const Text("What each button on the map's right edge does.",
+            Text("What each button on the map's right edge does.",
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
             const SizedBox(height: 16),
             _helpRow(Icons.fullscreen_rounded, 'Fullscreen',
@@ -1372,10 +1372,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(
+            Text(title, style: TextStyle(
                 color: AppColors.textPri, fontSize: 13, fontWeight: FontWeight.w700)),
             const SizedBox(height: 2),
-            Text(description, style: const TextStyle(
+            Text(description, style: TextStyle(
                 color: AppColors.textMuted, fontSize: 11, height: 1.3)),
           ]),
         ),
@@ -1400,10 +1400,10 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Choose what the map shows', style: TextStyle(
+              Text('Choose what the map shows', style: TextStyle(
                   color: AppColors.textPri, fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              const Text('Pick what the barangay is colored by, and what plays on the timeline below.',
+              Text('Pick what the barangay is colored by, and what plays on the timeline below.',
                   style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
               const SizedBox(height: 16),
               _layerOption(
@@ -1475,7 +1475,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
               Text(title, style: TextStyle(
                   color: selected ? AppColors.textPri : AppColors.textSec,
                   fontSize: 13, fontWeight: FontWeight.w700)),
-              Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
+              Text(subtitle, style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
             ]),
           ),
           Icon(

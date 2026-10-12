@@ -79,13 +79,13 @@ class _Bar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(icon, size: 16, color: AppColors.ink(color)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
               style: TextStyle(
-                color: color,
+                color: AppColors.ink(color),
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 height: 1.25,
