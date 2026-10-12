@@ -7,13 +7,13 @@ import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { isAdmin } from '../lib/roles';
-import { LuMenu } from 'react-icons/lu';
+import { LuMenu, LuSun, LuMoon, LuLogIn, LuCpu } from 'react-icons/lu';
 
 export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { lang, setLang, languages } = useLanguage();
+  const { lang, setLang, languages, t } = useLanguage();
   const { isMock, toggleDataSource } = useDataSource();
   const { modelKey, setModelKey, options: modelOptions } = useModelSelection();
   const [time, setTime] = useState(new Date());
@@ -75,6 +75,15 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
           </h1>
           <div className="topbar-sub">Barangay Triangulo, Naga City · Bicol Region</div>
         </div>
+        <span
+          className="topbar-status hide-mobile"
+          style={{ '--lvl': levelColor }}
+          role="status"
+          title={t(`alertLevel.${alertLevel}.desc`)}
+        >
+          <span className="topbar-status-dot" aria-hidden="true" />
+          {t(`alertLevel.${alertLevel}.name`)}
+        </span>
       </div>
 
       <div className="topbar-controls">
@@ -84,25 +93,20 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
             the backend which encoder-decoder to run; every page reading
             from useModelPrediction/useFloodForecast14Day updates to match. */}
         <div
-          className="hide-mobile"
+          className="hide-mobile topbar-model"
+          role="group"
+          aria-label="Forecast model"
           title="Switch which trained algorithm powers predictions and forecasts"
-          style={{
-            display: 'flex', gap: 0, background: 'var(--blue-mid)',
-            border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden',
-          }}
         >
+          <span className="topbar-model-label"><LuCpu size={13} aria-hidden="true" /> Model</span>
           {modelOptions.map((opt) => (
             <button
               key={opt.key}
               onClick={() => setModelKey(opt.key)}
               title={opt.fullLabel}
-              style={{
-                padding: '7px 12px', fontSize: '0.72rem', fontWeight: 700,
-                letterSpacing: '0.04em', cursor: 'pointer', border: 'none',
-                background: modelKey === opt.key ? opt.color : 'transparent',
-                color: modelKey === opt.key ? '#0d1f3c' : 'var(--text-muted)',
-                transition: 'all 0.2s',
-              }}
+              aria-pressed={modelKey === opt.key}
+              className="topbar-model-btn"
+              style={modelKey === opt.key ? { background: opt.color, color: '#0d1f3c' } : undefined}
             >
               {opt.label}
             </button>
@@ -142,11 +146,7 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
           onChange={e => setLang(e.target.value)}
           aria-label="Choose language"
           title="Choose language"
-          style={{
-            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-            color: 'var(--text-secondary)', borderRadius: 6,
-            fontSize: '0.76rem', fontWeight: 600, padding: '7px 8px', cursor: 'pointer',
-          }}
+          className="topbar-select"
         >
           {languages.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
         </select>
@@ -160,6 +160,8 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
+          <LuSun className="theme-ico sun" size={13} aria-hidden="true" />
+          <LuMoon className="theme-ico moon" size={13} aria-hidden="true" />
           <span className="theme-toggle-knob" aria-hidden="true" />
         </button>
 
@@ -181,16 +183,10 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
             instead of duplicating it up here. */}
         {!user && (
           <button
-            className="btn hide-mobile"
+            className="btn topbar-signin hide-mobile"
             onClick={() => navigate('/login')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: 'var(--accent)', color: '#fff',
-              fontSize: '0.78rem', fontWeight: 700,
-              padding: '8px 16px', border: 'none', borderRadius: 6,
-              whiteSpace: 'nowrap',
-            }}
           >
+            <LuLogIn size={15} aria-hidden="true" />
             Staff sign in
           </button>
         )}
