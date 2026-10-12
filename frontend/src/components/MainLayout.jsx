@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import QuickActionsBar from './QuickActionsBar';
+import Footer from './Footer';
 import { useModelPrediction } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { useAccessibility } from '../hooks/useAccessibility';
@@ -17,9 +18,10 @@ const PAGE_TITLES = {
   '/analytics':       'ML Analytics',
   '/alerts-log':      'Alert Log',
   '/settings':        'Settings',
-  '/register':        'Register Page',
+  '/register':        'Create Account',
   '/add-resident':    'Add Resident',
   '/residents':       'Residents',
+  '/privacy':         'Privacy Notice',
 };
 
 // Screen-reader announcement when the alert level changes. Sighted users see
@@ -86,6 +88,7 @@ export default function MainLayout() {
         <main id="main-content" tabIndex={-1} className="page-body">
           <Outlet context={{ prediction, modelLoading, modelError }} />
         </main>
+        <Footer />
         <QuickActionsBar />
       </div>
     </div>
