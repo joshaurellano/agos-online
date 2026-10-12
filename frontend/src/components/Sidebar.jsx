@@ -23,7 +23,7 @@ const NAV_ITEMS = [
   { path: '/evacuation-map',    label: 'Evacuation Map',   icon: LuMapPinned,       group: 'community' },
   { path: '/alerts-log',        label: 'Alert Log',        icon: LuBellRing,        group: 'community' },
   { path: '/settings',          label: 'Settings',         icon: LuSettings,        group: 'community' },
-  { path: '/reports',           label: 'Flood Reports',    icon: LuClipboardList,   staffOnly: true, group: 'staff' },
+  { path: '/reports',           label: 'Flood Log',        icon: LuClipboardList,   staffOnly: true, group: 'staff' },
   { path: '/community-reports', label: 'Resident Reports', icon: LuMegaphone,       staffOnly: true, group: 'staff' },
   { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        adminOnly: true, group: 'staff' },
   { path: '/register',          label: 'Register',         icon: LuUserCog,         adminOnly: true, group: 'staff' },
