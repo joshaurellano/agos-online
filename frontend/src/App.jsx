@@ -19,6 +19,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import AlertsLogPage from './pages/AlertsLogPage';
 import SettingsPage from './pages/SettingsPage';
 import ResidentRegistryPage from './pages/ResidentRegistryPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 import MainLayout from './components/MainLayout';
 import AdminRoute from './components/AdminRoute';
@@ -55,6 +56,7 @@ function App() {
                 } />
                 <Route path="/alerts-log"    element={<AlertsLogPage />} />
                 <Route path="/settings"      element={<SettingsPage />} />
+                <Route path="/privacy"       element={<PrivacyPage />} />
 
                 <Route path="/reports" element={
                   <ResidentRoute>
