@@ -11,6 +11,7 @@
 // "Seen" state is a single SharedPreferences flag. Existing installs that
 // update to this version will see it once.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
@@ -86,12 +87,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: AppColors.systemOverlayOnCanvas,
+        child: _buildScreen(context),
+      );
+
+  Widget _buildScreen(BuildContext context) {
     final isLast = _page == _lastPage;
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
       body: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -110,7 +116,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ? null
                       : TextButton(
                           onPressed: _busy ? null : () => _finish(askForAlerts: false),
-                          child: const Text('Skip', style: TextStyle(color: AppColors.textSec)),
+                          child: Text('Skip', style: TextStyle(color: AppColors.textSec)),
                         ),
                 ),
               ),
@@ -153,7 +159,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         ),
                         TextButton(
                           onPressed: _busy ? null : () => _finish(askForAlerts: false),
-                          child: const Text('Maybe later', style: TextStyle(color: AppColors.textSec)),
+                          child: Text('Maybe later', style: TextStyle(color: AppColors.textSec)),
                         ),
                       ])
                     : _PrimaryButton(label: 'Next', onPressed: _next),
@@ -186,12 +192,12 @@ class _PageFrame extends StatelessWidget {
           const SizedBox(height: 28),
           Text(title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                   color: AppColors.textPri, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2)),
           const SizedBox(height: 12),
           Text(body,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSec, fontSize: 14.5, height: 1.5)),
+              style: TextStyle(color: AppColors.textSec, fontSize: 14.5, height: 1.5)),
           if (extra != null) ...[const SizedBox(height: 22), extra!],
         ],
       ),
@@ -224,7 +230,7 @@ class _LevelsPage extends StatelessWidget {
             color: AppColors.accent.withValues(alpha: 0.12),
             border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
           ),
-          child: const Icon(Icons.speed_rounded, color: AppColors.accent, size: 44),
+          child: Icon(Icons.speed_rounded, color: AppColors.accent, size: 44),
         ),
         title: 'Four levels, one glance',
         body: 'The color and icon always tell you how serious it is.',
@@ -252,15 +258,15 @@ class _LevelChip extends StatelessWidget {
           border: Border.all(color: type.color.withValues(alpha: 0.35)),
         ),
         child: Row(children: [
-          Icon(type.icon, color: type.color, size: 20),
+          Icon(type.icon, color: AppColors.ink(type.color), size: 20),
           const SizedBox(width: 12),
           Text(type.label,
-              style: TextStyle(color: type.color, fontSize: 14, fontWeight: FontWeight.w800)),
+              style: TextStyle(color: AppColors.ink(type.color), fontSize: 14, fontWeight: FontWeight.w800)),
           const Spacer(),
           Flexible(
             child: Text(text,
                 textAlign: TextAlign.right,
-                style: const TextStyle(color: AppColors.textSec, fontSize: 12.5)),
+                style: TextStyle(color: AppColors.textSec, fontSize: 12.5)),
           ),
         ]),
       );
@@ -279,7 +285,7 @@ class _AlertsPage extends StatelessWidget {
             color: AppColors.orange.withValues(alpha: 0.12),
             border: Border.all(color: AppColors.orange.withValues(alpha: 0.35)),
           ),
-          child: const Icon(Icons.notifications_active_rounded, color: AppColors.orange, size: 44),
+          child: Icon(Icons.notifications_active_rounded, color: AppColors.ink(AppColors.orange), size: 44),
         ),
         title: "Alerts you won't miss",
         body: 'Turn on notifications so AGOS can warn you the moment flood risk rises — '
@@ -306,7 +312,7 @@ class _Point extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(text,
-                style: const TextStyle(color: AppColors.textSec, fontSize: 13, height: 1.4)),
+                style: TextStyle(color: AppColors.textSec, fontSize: 13, height: 1.4)),
           ),
         ]),
       );

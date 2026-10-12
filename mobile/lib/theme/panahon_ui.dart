@@ -9,9 +9,13 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import '../main.dart';
 
 /// Curved-bottom gradient header, the AGOS equivalent of PANaHON's blue
-/// "Location Forecast" header. Place a [PanahonHeroCard] (or any widget)
-/// as [overlap] to have it float over the curved bottom edge, mirroring
-/// the "30° Quezon City" card in the reference design.
+/// "Location Forecast" header. It stays deep navy in light mode too (the
+/// AppColors.chrome* tokens), like the web dashboard's sidebar, so the
+/// white title and icons stay legible.
+///
+/// Place a [PanahonHeroCard] (or any widget) as [overlap] to have it float
+/// over the curved bottom edge, mirroring the "30° Quezon City" card in the
+/// reference design.
 class PanahonHeader extends StatelessWidget {
   final String appName;
   final String tagline;
@@ -42,11 +46,11 @@ class PanahonHeader extends StatelessWidget {
           child: Container(
             height: height,
             width: double.infinity,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [AppColors.bgMid, AppColors.bgDark, AppColors.bgDeep],
+                colors: [AppColors.chromeTop, AppColors.chromeMid, AppColors.chromeBottom],
                 stops: [0.0, 0.6, 1.0],
               ),
             ),
@@ -77,14 +81,14 @@ class PanahonHeader extends StatelessWidget {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  AppColors.accent.withValues(alpha: 0.28),
-                                  AppColors.accent.withValues(alpha: 0.08),
+                                  AppColors.chromeAccent.withValues(alpha: 0.28),
+                                  AppColors.chromeAccent.withValues(alpha: 0.08),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(11),
-                              border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                              border: Border.all(color: AppColors.chromeAccent.withValues(alpha: 0.4)),
                               boxShadow: [
-                                BoxShadow(color: AppColors.accent.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 2)),
+                                BoxShadow(color: AppColors.chromeAccent.withValues(alpha: 0.18), blurRadius: 10, offset: const Offset(0, 2)),
                               ],
                             ),
                             child: const Center(
@@ -98,8 +102,8 @@ class PanahonHeader extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               ShaderMask(
-                                shaderCallback: (bounds) => const LinearGradient(
-                                  colors: [AppColors.textPri, AppColors.accent],
+                                shaderCallback: (bounds) => LinearGradient(
+                                  colors: [AppColors.chromeText, AppColors.chromeAccent],
                                 ).createShader(bounds),
                                 child: Text(
                                   appName,
@@ -115,7 +119,7 @@ class PanahonHeader extends StatelessWidget {
                               ),
                               Text(
                                 tagline,
-                                style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5),
+                                style: TextStyle(color: AppColors.chromeTextMuted, fontSize: 10.5),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -145,7 +149,7 @@ class PanahonHeader extends StatelessWidget {
         width: size, height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: AppColors.accent.withValues(alpha: 0.08), width: 18),
+          border: Border.all(color: AppColors.chromeAccent.withValues(alpha: 0.08), width: 18),
         ),
       );
 }
@@ -190,21 +194,21 @@ class PanahonHeaderIcon extends StatelessWidget {
         width: 34, height: 34,
         margin: const EdgeInsets.only(left: 8),
         decoration: BoxDecoration(
-          color: AppColors.bgCard.withValues(alpha: 0.6),
+          color: AppColors.chromeChip,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.bgBorder),
+          border: Border.all(color: AppColors.chromeBorder),
         ),
         clipBehavior: Clip.antiAlias,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            splashColor: AppColors.accent.withValues(alpha: 0.18),
-            highlightColor: AppColors.accent.withValues(alpha: 0.08),
+            splashColor: AppColors.chromeAccent.withValues(alpha: 0.18),
+            highlightColor: AppColors.chromeAccent.withValues(alpha: 0.08),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                Center(child: Icon(icon, size: 17, color: color ?? AppColors.textSec)),
+                Center(child: Icon(icon, size: 17, color: color ?? AppColors.chromeTextSec)),
                 if (showDot)
                   Positioned(
                     top: -2, right: -2,
@@ -213,7 +217,7 @@ class PanahonHeaderIcon extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: dotColor,
                         shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.bgDark, width: 1.5),
+                        border: Border.all(color: AppColors.chromeMid, width: 1.5),
                         boxShadow: [BoxShadow(color: dotColor.withValues(alpha: 0.6), blurRadius: 4)],
                       ),
                     ),
@@ -241,7 +245,7 @@ class PanahonHeroCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: (ac ?? AppColors.bgBorder).withValues(alpha: ac != null ? 0.5 : 1)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 10)),
+            BoxShadow(color: AppColors.shadow(0.35), blurRadius: 20, offset: const Offset(0, 10)),
             if (ac != null)
               BoxShadow(color: ac.withValues(alpha: 0.12), blurRadius: 24, spreadRadius: -4),
           ],
@@ -280,7 +284,7 @@ class PanahonBottomNav extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: AppColors.bgBorder),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8)),
+            BoxShadow(color: AppColors.shadow(0.4), blurRadius: 20, offset: const Offset(0, 8)),
           ],
         ),
         child: LayoutBuilder(
@@ -682,10 +686,10 @@ class SectionPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(text, style: const TextStyle(
+              Text(text, style: TextStyle(
                   color: AppColors.accent, fontSize: 10.5, fontWeight: FontWeight.w800)),
               const SizedBox(width: 2),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.accent, size: 14),
+              Icon(Icons.chevron_right_rounded, color: AppColors.accent, size: 14),
             ],
           ),
         ),
@@ -723,7 +727,7 @@ class PanahonSearchBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: AppColors.bgBorder),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 14, offset: const Offset(0, 4)),
+            BoxShadow(color: AppColors.shadow(0.4), blurRadius: 14, offset: const Offset(0, 4)),
           ],
         ),
         child: Row(
@@ -738,12 +742,12 @@ class PanahonSearchBar extends StatelessWidget {
                 controller: controller,
                 onChanged: onChanged,
                 onSubmitted: onSubmitted,
-                style: const TextStyle(color: AppColors.textPri, fontSize: 13),
+                style: TextStyle(color: AppColors.textPri, fontSize: 13),
                 decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
                   hintText: hint,
-                  hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
                 ),
               ),
             ),
@@ -804,7 +808,7 @@ class MapToolStack extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.bgBorder),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 14, offset: const Offset(0, 4)),
+            BoxShadow(color: AppColors.shadow(0.4), blurRadius: 14, offset: const Offset(0, 4)),
           ],
         ),
         child: ClipRRect(

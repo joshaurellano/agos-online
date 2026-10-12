@@ -289,7 +289,7 @@ class _RainfallScreenState extends State<RainfallScreen> {
     final delta = last3 - prev3;
     if (delta > 1) return const _Trend('⬆ Increasing', AppColors.red);
     if (delta < -1) return const _Trend('⬇ Decreasing', AppColors.green);
-    return const _Trend('➡ Steady', AppColors.textSec);
+    return _Trend('➡ Steady', AppColors.textSec);
   }
 
   @override
@@ -318,9 +318,9 @@ class _RainfallScreenState extends State<RainfallScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              const Icon(Icons.location_on_rounded, color: AppColors.textMuted, size: 13),
+              Icon(Icons.location_on_rounded, color: AppColors.textMuted, size: 13),
               const SizedBox(width: 3),
-              const Text('PAGASA Rainfall Thresholds',
+              Text('PAGASA Rainfall Thresholds',
                   style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
             ]),
             const SizedBox(height: 12),
@@ -335,12 +335,12 @@ class _RainfallScreenState extends State<RainfallScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(children: [
-                  const Icon(Icons.error_outline_rounded, color: AppColors.red, size: 16),
+                  Icon(Icons.error_outline_rounded, color: AppColors.ink(AppColors.red), size: 16),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text.rich(
                       TextSpan(
-                        style: const TextStyle(fontSize: 11.5, color: Color(0xFFF87171)),
+                        style: TextStyle(fontSize: 11.5, color: AppColors.redText),
                         children: [
                           TextSpan(
                               text: _fromSaved ? 'Showing saved data' : 'Data may be stale',
@@ -366,16 +366,16 @@ class _RainfallScreenState extends State<RainfallScreen> {
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('CURRENT RAINFALL', style: TextStyle(
+                      Text('CURRENT RAINFALL', style: TextStyle(
                           color: AppColors.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
                       const SizedBox(height: 6),
                       Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                         Text(
                           _liveRainfall != null ? _liveRainfall!.toStringAsFixed(1) : '—',
-                          style: const TextStyle(color: AppColors.textPri, fontSize: 40,
+                          style: TextStyle(color: AppColors.textPri, fontSize: 40,
                               fontWeight: FontWeight.w900, height: 1, letterSpacing: -1),
                         ),
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(bottom: 6, left: 4),
                           child: Text('mm/hr', style: TextStyle(color: AppColors.textSec, fontSize: 14, fontWeight: FontWeight.w700)),
                         ),
@@ -390,12 +390,12 @@ class _RainfallScreenState extends State<RainfallScreen> {
                             border: Border.all(color: cat.color.withValues(alpha: 0.4)),
                           ),
                           child: Text('${cat.label.toUpperCase()} RAINFALL',
-                              style: TextStyle(color: cat.color, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.4)),
+                              style: TextStyle(color: AppColors.ink(cat.color), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.4)),
                         ),
                         const SizedBox(height: 10),
-                        Text(cat.desc, style: const TextStyle(color: AppColors.textSec, fontSize: 12, height: 1.4)),
+                        Text(cat.desc, style: TextStyle(color: AppColors.textSec, fontSize: 12, height: 1.4)),
                         const SizedBox(height: 4),
-                        Text(cat.pagasa, style: const TextStyle(color: AppColors.textMuted, fontSize: 10)),
+                        Text(cat.pagasa, style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
                         const SizedBox(height: 8),
                         Wrap(spacing: 14, runSpacing: 4, children: [
                           if (acc3hr != null) _MiniStat(label: '3-hr accumulation', value: '${acc3hr.toStringAsFixed(1)} mm'),
@@ -403,7 +403,7 @@ class _RainfallScreenState extends State<RainfallScreen> {
                           _MiniStat(label: 'Peak intensity', value: '${peak.toStringAsFixed(1)} mm/hr'),
                         ]),
                       ] else if (!_loading)
-                        const Text('No significant rainfall detected right now.',
+                        Text('No significant rainfall detected right now.',
                             style: TextStyle(color: AppColors.textSec, fontSize: 12)),
                     ]),
                   ),
@@ -428,7 +428,7 @@ class _RainfallScreenState extends State<RainfallScreen> {
             const SizedBox(height: 16),
 
             // ── KPI Grid ─────────────────────────────────────────────
-            const Text('AT A GLANCE', style: TextStyle(
+            Text('AT A GLANCE', style: TextStyle(
                 color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
             const SizedBox(height: 8),
             Row(children: [
@@ -503,12 +503,12 @@ class _RainfallScreenState extends State<RainfallScreen> {
                     Expanded(
                       child: Text(
                         'Rainfall ${_period == 'hourly' ? 'Intensity (mm/hr)' : 'Accumulation (mm/24hr)'}',
-                        style: const TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w800, fontSize: 13),
+                        style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w800, fontSize: 13),
                       ),
                     ),
                     if (_lastFetched != null) ...[
                       Text('synced ${_formatHour(_lastFetched!)}',
-                          style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
                       const SizedBox(width: 8),
                     ],
                     _ViewToggleButton(
@@ -535,7 +535,7 @@ class _RainfallScreenState extends State<RainfallScreen> {
                       _period == 'hourly'
                           ? 'Thresholds based on PAGASA hourly rainfall intensity classification (mm/hr)'
                           : 'Thresholds based on PAGASA 24-hour accumulated rainfall classification (mm/24hr)',
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5, height: 1.4),
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 9.5, height: 1.4),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -545,7 +545,7 @@ class _RainfallScreenState extends State<RainfallScreen> {
                       child: Skeleton(height: 170, radius: 12),
                     )
                   else if (_data.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(vertical: 30),
                       child: Center(
                         child: Text(
@@ -565,7 +565,7 @@ class _RainfallScreenState extends State<RainfallScreen> {
             const SizedBox(height: 16),
 
             // ── Threshold reference list ────────────────────────────
-            const Text('THRESHOLD REFERENCE', style: TextStyle(
+            Text('THRESHOLD REFERENCE', style: TextStyle(
                 color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
             const SizedBox(height: 8),
             ...table.map((t) {
@@ -592,9 +592,9 @@ class _RainfallScreenState extends State<RainfallScreen> {
                         children: [
                           Row(children: [
                             Text(t.label, style: TextStyle(
-                                color: t.color, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 0.6)),
+                                color: AppColors.ink(t.color), fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 0.6)),
                             const SizedBox(width: 8),
-                            Text(t.pagasa.split('·').last.trim(), style: const TextStyle(
+                            Text(t.pagasa.split('·').last.trim(), style: TextStyle(
                                 color: AppColors.textMuted, fontSize: 10, fontFamily: 'monospace')),
                             if (isActive) ...[
                               const SizedBox(width: 8),
@@ -606,12 +606,12 @@ class _RainfallScreenState extends State<RainfallScreen> {
                                   borderRadius: BorderRadius.circular(3),
                                 ),
                                 child: Text('NOW', style: TextStyle(
-                                    color: t.color, fontWeight: FontWeight.w800, fontSize: 8.5, letterSpacing: 0.5)),
+                                    color: AppColors.ink(t.color), fontWeight: FontWeight.w800, fontSize: 8.5, letterSpacing: 0.5)),
                               ),
                             ],
                           ]),
                           const SizedBox(height: 4),
-                          Text(t.desc, style: const TextStyle(
+                          Text(t.desc, style: TextStyle(
                               color: AppColors.textSec, fontSize: 11.5, height: 1.4)),
                         ],
                       ),
@@ -636,10 +636,10 @@ class _MiniStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text.rich(
     TextSpan(
-      style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+      style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
       children: [
         TextSpan(text: '$label: '),
-        TextSpan(text: value, style: const TextStyle(color: AppColors.textSec, fontWeight: FontWeight.w700)),
+        TextSpan(text: value, style: TextStyle(color: AppColors.textSec, fontWeight: FontWeight.w700)),
       ],
     ),
   );
@@ -686,14 +686,14 @@ class _KpiCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label.toUpperCase(), style: const TextStyle(
+                Text(label.toUpperCase(), style: TextStyle(
                     color: AppColors.textMuted, fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                 const SizedBox(height: 6),
                 Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                  Text(value, style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.w900)),
+                  Text(value, style: TextStyle(color: AppColors.ink(color), fontSize: 22, fontWeight: FontWeight.w900)),
                   if (unit.isNotEmpty) ...[
                     const SizedBox(width: 3),
-                    Text(unit, style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5, fontWeight: FontWeight.w600)),
+                    Text(unit, style: TextStyle(color: AppColors.textMuted, fontSize: 10.5, fontWeight: FontWeight.w600)),
                   ],
                 ]),
                 if (badge != null) ...[
@@ -705,11 +705,11 @@ class _KpiCard extends StatelessWidget {
                       border: Border.all(color: (badgeColor ?? color).withValues(alpha: 0.4)),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Text(badge!, style: TextStyle(color: badgeColor ?? color, fontSize: 9, fontWeight: FontWeight.w800)),
+                    child: Text(badge!, style: TextStyle(color: AppColors.ink(badgeColor ?? color), fontSize: 9, fontWeight: FontWeight.w800)),
                   ),
                 ],
                 const SizedBox(height: 6),
-                Text(sub, style: const TextStyle(color: AppColors.textSec, fontSize: 10, height: 1.3)),
+                Text(sub, style: TextStyle(color: AppColors.textSec, fontSize: 10, height: 1.3)),
               ],
             ),
           ),
@@ -768,7 +768,7 @@ class _RainfallBarChart extends StatelessWidget {
             show: true,
             drawVerticalLine: false,
             horizontalInterval: chartMax / 4,
-            getDrawingHorizontalLine: (_) => const FlLine(color: AppColors.bgBorder, strokeWidth: 1),
+            getDrawingHorizontalLine: (_) => FlLine(color: AppColors.bgBorder, strokeWidth: 1),
           ),
           borderData: FlBorderData(show: false),
           titlesData: FlTitlesData(
@@ -777,7 +777,7 @@ class _RainfallBarChart extends StatelessWidget {
                 showTitles: true,
                 reservedSize: 32,
                 getTitlesWidget: (value, meta) => Text(value.toStringAsFixed(0),
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 9)),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
               ),
             ),
             rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -792,7 +792,7 @@ class _RainfallBarChart extends StatelessWidget {
                   return Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(data[i].label,
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 8.5),
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 8.5),
                         textAlign: TextAlign.center),
                   );
                 },
@@ -808,7 +808,7 @@ class _RainfallBarChart extends StatelessWidget {
               label: HorizontalLineLabel(
                 show: true,
                 alignment: Alignment.topRight,
-                style: TextStyle(color: t.color, fontSize: 8, fontWeight: FontWeight.w700),
+                style: TextStyle(color: AppColors.ink(t.color), fontSize: 8, fontWeight: FontWeight.w700),
                 labelResolver: (line) => '${t.label} (${t.min.toStringAsFixed(0)}mm)',
               ),
             )).toList(),
@@ -816,17 +816,17 @@ class _RainfallBarChart extends StatelessWidget {
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
               getTooltipColor: (_) => AppColors.bgDark,
-              tooltipBorder: const BorderSide(color: AppColors.bgBorder),
+              tooltipBorder: BorderSide(color: AppColors.bgBorder),
               getTooltipItem: (group, groupIndex, rod, rodIndex) {
                 final point = data[group.x.toInt()];
                 final cat = _categoryFor(point.value, thresholds);
                 return BarTooltipItem(
                   '${point.label}\n',
-                  const TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w700, fontSize: 11),
+                  TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w700, fontSize: 11),
                   children: [
                     TextSpan(
                       text: '${point.value} ${period == 'hourly' ? 'mm/hr' : 'mm'} · ${cat.label}',
-                      style: TextStyle(color: cat.color, fontWeight: FontWeight.w800, fontSize: 11),
+                      style: TextStyle(color: AppColors.ink(cat.color), fontWeight: FontWeight.w800, fontSize: 11),
                     ),
                   ],
                 );
@@ -869,7 +869,7 @@ class _RainfallTable extends StatelessWidget {
         shrinkWrap: true,
         physics: const ClampingScrollPhysics(),
         itemCount: rows.length,
-        separatorBuilder: (_, __) => const Divider(color: AppColors.bgBorder, height: 1),
+        separatorBuilder: (_, __) => Divider(color: AppColors.bgBorder, height: 1),
         itemBuilder: (context, i) {
           final point = rows[i];
           final cat = _categoryFor(point.value, thresholds);
@@ -879,12 +879,12 @@ class _RainfallTable extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 66,
-                  child: Text(point.label, style: const TextStyle(color: AppColors.textSec, fontSize: 11)),
+                  child: Text(point.label, style: TextStyle(color: AppColors.textSec, fontSize: 11)),
                 ),
                 SizedBox(
                   width: 68,
                   child: Text('${point.value} ${period == 'hourly' ? 'mm/hr' : 'mm'}',
-                      style: TextStyle(color: cat.color, fontWeight: FontWeight.w800, fontSize: 11)),
+                      style: TextStyle(color: AppColors.ink(cat.color), fontWeight: FontWeight.w800, fontSize: 11)),
                 ),
                 Expanded(
                   child: Align(
@@ -897,7 +897,7 @@ class _RainfallTable extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(cat.label,
-                          style: TextStyle(color: cat.color, fontWeight: FontWeight.w800, fontSize: 9.5)),
+                          style: TextStyle(color: AppColors.ink(cat.color), fontWeight: FontWeight.w800, fontSize: 9.5)),
                     ),
                   ),
                 ),
