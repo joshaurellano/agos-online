@@ -26,7 +26,7 @@ const NAV_ITEMS = [
   { path: '/reports',           label: 'Flood Log',        icon: LuClipboardList,   staffOnly: true, group: 'staff' },
   { path: '/community-reports', label: 'Resident Reports', icon: LuMegaphone,       staffOnly: true, group: 'staff' },
   { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        adminOnly: true, group: 'staff' },
-  { path: '/register',          label: 'Register',         icon: LuUserCog,         adminOnly: true, group: 'staff' },
+  { path: '/staff',             label: 'Staff',            icon: LuUserCog,         adminOnly: true, group: 'staff' },
   { path: '/residents',         label: 'Residents',        icon: LuUsers,           staffOnly: true, group: 'staff' },
   { path: '/add-resident',      label: 'Add Resident',     icon: LuUserPlus,        staffOnly: true, group: 'staff' },
 ];

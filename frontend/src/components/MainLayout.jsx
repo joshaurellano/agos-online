@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import QuickActionsBar from './QuickActionsBar';
-import Footer from './Footer';
+import ErrorBoundary from './ErrorBoundary';
+import OfflineBanner from './OfflineBanner';
+import PageLoader from './PageLoader';
 import { useModelPrediction } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { useAccessibility } from '../hooks/useAccessibility';
@@ -18,10 +20,10 @@ const PAGE_TITLES = {
   '/analytics':       'ML Analytics',
   '/alerts-log':      'Alert Log',
   '/settings':        'Settings',
-  '/register':        'Create Account',
+  '/staff':           'Staff Accounts',
+  '/register':        'New Staff Account',
   '/add-resident':    'Add Resident',
   '/residents':       'Residents',
-  '/privacy':         'Privacy Notice',
 };
 
 // Screen-reader announcement when the alert level changes. Sighted users see
@@ -65,6 +67,11 @@ export default function MainLayout() {
   const alertLevel = prediction?.alert_level ?? 'NORMAL';
   const location = useLocation();
   const { t } = useLanguage();
+  const pageTitle = PAGE_TITLES[location.pathname] ?? 'AGOS';
+
+  useEffect(() => {
+    document.title = pageTitle === 'AGOS' ? 'AGOS — Flood Early Warning System' : `${pageTitle} · AGOS`;
+  }, [pageTitle]);
 
   return (
     <div className="app-layout">
@@ -79,16 +86,20 @@ export default function MainLayout() {
         onClose={() => setSidebarOpen(false)}
       />
       <div className="main-content">
+        <OfflineBanner />
         <Topbar
-          title={PAGE_TITLES[location.pathname] ?? 'AGOS'}
+          title={pageTitle}
           onMenuClick={() => setSidebarOpen(true)}
           menuOpen={sidebarOpen}
           alertLevel={alertLevel}
         />
         <main id="main-content" tabIndex={-1} className="page-body">
-          <Outlet context={{ prediction, modelLoading, modelError }} />
+          <ErrorBoundary key={location.pathname}>
+            <Suspense fallback={<PageLoader />}>
+              <Outlet context={{ prediction, modelLoading, modelError }} />
+            </Suspense>
+          </ErrorBoundary>
         </main>
-        <Footer />
         <QuickActionsBar />
       </div>
     </div>

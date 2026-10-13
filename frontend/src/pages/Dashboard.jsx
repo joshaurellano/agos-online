@@ -2232,6 +2232,7 @@ export default function Dashboard() {
                 windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
                 condition={weatherCondition}
                 minutely={minutelyForecast}
+                hourly={forecast}
                 focusRequest={focusRequest}
                 showFacilities={showFacilities}
                 setShowFacilities={setShowFacilities}
