@@ -126,7 +126,7 @@ function StatusBanner({ total, peak, acc3hr, acc6hr, period, hasData }) {
         <span className="rain-banner-icon"><LuSun size={22} aria-hidden="true" /></span>
         <div>
           <div className="rain-banner-title">No rainfall detected</div>
-          <div className="rain-banner-text">Conditions are dry. AGOS keeps checking and will update this page as soon as rain starts.</div>
+          <div className="rain-banner-text">No significant flood impact expected. Normal activities may continue.</div>
         </div>
       </div>
     );
