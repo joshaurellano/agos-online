@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
@@ -8,22 +9,27 @@ import { DataSourceProvider } from './hooks/useDataSource';
 import { ModelSelectionProvider } from './hooks/useModelSelection';
 import { AccessibilityProvider } from './hooks/useAccessibility';
 
-import LoginPage from './pages/LoginPage';
-import RegistrationPage from './pages/RegistrationPage';
-import Dashboard from './pages/Dashboard';
-import RainfallPage from './pages/RainfallPage';
-import FloodMapPage from './pages/FloodMapPage';
-import ReportsPage from './pages/ReportsPage';
-import CommunityReportsPage from './pages/CommunityReportsPage';
-import AnalyticsPage from './pages/AnalyticsPage';
-import AlertsLogPage from './pages/AlertsLogPage';
-import TeamChatPage from './pages/TeamChatPage';
-import SettingsPage from './pages/SettingsPage';
-import ResidentRegistryPage from './pages/ResidentRegistryPage';
-
 import MainLayout from './components/MainLayout';
 import AdminRoute from './components/AdminRoute';
 import ResidentRoute from './components/ResidentRoute';
+import PageLoader from './components/PageLoader';
+
+// Each page loads when first visited, so the maps and charts on the
+// dashboard are not downloaded by someone who only opens the login page.
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegistrationPage = lazy(() => import('./pages/RegistrationPage'));
+const StaffPage = lazy(() => import('./pages/StaffPage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const RainfallPage = lazy(() => import('./pages/RainfallPage'));
+const FloodMapPage = lazy(() => import('./pages/FloodMapPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const TeamChatPage = lazy(() => import('./pages/TeamChatPage'));
+const CommunityReportsPage = lazy(() => import('./pages/CommunityReportsPage'));
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
+const AlertsLogPage = lazy(() => import('./pages/AlertsLogPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ResidentRegistryPage = lazy(() => import('./pages/ResidentRegistryPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function App() {
   return (
@@ -35,6 +41,7 @@ function App() {
         <DataSourceProvider>
         <ModelSelectionProvider>
           <Router>
+            <Suspense fallback={<PageLoader fullscreen />}>
             <Routes>
               <Route path="/login" element={<LoginPage />} />
 
@@ -69,6 +76,12 @@ function App() {
                   </ResidentRoute>
                 } />
 
+                <Route path="/staff" element={
+                  <AdminRoute>
+                    <StaffPage />
+                  </AdminRoute>
+                } />
+
                 <Route path="/team-chat" element={
                   <ResidentRoute>
                     <TeamChatPage />
@@ -92,8 +105,11 @@ function App() {
                     <RegistrationPage />
                   </ResidentRoute>
                 } />
+
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
+            </Suspense>
           </Router>
         </ModelSelectionProvider>
         </DataSourceProvider>

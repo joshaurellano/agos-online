@@ -131,6 +131,6 @@ GET /                      # health check
 - If a given algorithm's `.h5` file is missing, the other algorithms
   still load and serve fine; only that one endpoint reports an error
   (check `/api/models` to see what's actually loaded).
-- `FLOOD_DEFAULT_MODEL` (env var, default `gru`) controls which
+- `FLOOD_DEFAULT_MODEL` (env var, default `lstm`) controls which
   algorithm backs the legacy `/api/forecast-flood` and
   `/api/predict-flood` paths.

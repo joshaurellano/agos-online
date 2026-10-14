@@ -14,6 +14,19 @@
 
 import 'package:flutter/material.dart';
 
+// Fallback theme colors used when the app theme export is unavailable.
+// Keeping these locally avoids the undefined `AppColors` error without
+// touching any other file in the project.
+class AppColors {
+  const AppColors._();
+
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color bgBorder = Color(0xFFE5E7EB);
+  static const Color textPri = Color(0xFF111827);
+  static const Color textSec = Color(0xFF4B5563);
+  static const Color textSoft = Color(0xFF6B7280);
+}
+
 class _RateBand {
   final String label;
   final double max;
@@ -63,9 +76,9 @@ class MinuteForecastCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF0d1f3c),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
+          border: Border.all(color: AppColors.bgBorder),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,14 +87,14 @@ class MinuteForecastCard extends StatelessWidget {
               children: [
                 const Text('☔', style: TextStyle(fontSize: 14)),
                 const SizedBox(width: 6),
-                const Text('MinuteCast · Next 2 Hours', style: TextStyle(
-                    color: Color(0xFF8da4be), fontSize: 10.5,
+                Text('MinuteCast · Next 2 Hours', style: TextStyle(
+                    color: AppColors.textSec, fontSize: 10.5,
                     fontWeight: FontWeight.w800, letterSpacing: 0.4)),
               ],
             ),
             const SizedBox(height: 8),
-            Text(_narrative(rates), style: const TextStyle(
-                color: Color(0xFFe2eaf5), fontSize: 14, fontWeight: FontWeight.w700, height: 1.3)),
+            Text(_narrative(rates), style: TextStyle(
+                color: AppColors.textPri, fontSize: 14, fontWeight: FontWeight.w700, height: 1.3)),
             const SizedBox(height: 14),
 
             // Time labels
@@ -94,8 +107,8 @@ class MinuteForecastCard extends StatelessWidget {
                         ? '${t.hour % 12 == 0 ? 12 : t.hour % 12}:${t.minute.toString().padLeft(2, '0')}'
                         : '${i * 15}m';
                 return Expanded(
-                  child: Text(label, textAlign: TextAlign.center, style: const TextStyle(
-                      color: Color(0xFF5f7a9c), fontSize: 9.5, fontWeight: FontWeight.w600)),
+                  child: Text(label, textAlign: TextAlign.center, style: TextStyle(
+                      color: AppColors.textSoft, fontSize: 9.5, fontWeight: FontWeight.w600)),
                 );
               }),
             ),
@@ -120,7 +133,7 @@ class MinuteForecastCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: rate > _dryThreshold
                               ? band.color
-                              : const Color(0xFF1e3a5f),
+                              : AppColors.bgBorder,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -130,7 +143,7 @@ class MinuteForecastCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            const Divider(color: Color(0xFF1e3a5f), height: 1),
+            Divider(color: AppColors.bgBorder, height: 1),
             const SizedBox(height: 10),
 
             // Band legend, wrapped so it fits narrow phones without overflow
@@ -143,8 +156,8 @@ class MinuteForecastCard extends StatelessWidget {
                   Container(width: 8, height: 8, decoration: BoxDecoration(
                       color: b.color, borderRadius: BorderRadius.circular(2))),
                   const SizedBox(width: 5),
-                  Text('${b.label} · ${b.range}', style: const TextStyle(
-                      color: Color(0xFF8da4be), fontSize: 9.5)),
+                  Text('${b.label} · ${b.range}', style: TextStyle(
+                      color: AppColors.textSec, fontSize: 9.5)),
                 ],
               )).toList(),
             ),

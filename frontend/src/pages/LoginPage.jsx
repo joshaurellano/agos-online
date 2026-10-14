@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Spinner } from 'react-bootstrap';
 import { useAuth } from '../hooks/useAuth';
 import agosLogo from "../assets/agos-logo.png";
@@ -461,6 +461,10 @@ export default function LoginPage() {
               </button>
             </form>
           </div>
+
+          <p style={{ textAlign: 'center', marginTop: 18, fontSize: '0.78rem' }}>
+            <Link to="/privacy" style={{ color: 'rgba(148,195,240,0.7)' }}>Privacy notice</Link>
+          </p>
 
         </div>
       </div>

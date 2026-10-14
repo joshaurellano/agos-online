@@ -265,19 +265,13 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
 
           {canModerate && report.status === 'verified' && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              {report.promoted_report_id ? (
-                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                  Already promoted to an official report
-                </span>
-              ) : (
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => onPromote(report)}
-                  style={{ fontSize: '0.78rem', color: 'var(--accent)', borderColor: 'var(--accent)60' }}
-                >
-                  Promote to Official Report
-                </button>
-              )}
+              <button
+                className="btn btn-ghost"
+                onClick={() => onPromote(report)}
+                style={{ fontSize: '0.78rem', color: 'var(--accent)', borderColor: 'var(--accent)60' }}
+              >
+                Open in Flood Log
+              </button>
             </div>
           )}
         </div>
@@ -380,7 +374,11 @@ export default function CommunityReportsPage() {
   // via router state -- the official still reviews/completes the official-
   // only fields (water level, casualties, response time...) before it's
   // actually inserted as a flood_reports record. See ReportsPage.jsx.
-  const handlePromote = (report) => navigate('/reports', { state: { promoteFrom: report } });
+  const handlePromote = (report) => {
+    const d = new Date(report.created_at);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    navigate('/reports', { state: { logDate: key } });
+  };
 
   const filtered = reports.filter(r => {
     if (filterStatus !== 'ALL' && r.status !== filterStatus) return false;

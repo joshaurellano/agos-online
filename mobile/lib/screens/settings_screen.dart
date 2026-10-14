@@ -21,6 +21,7 @@ import '../services/flood_status_service.dart';
 import '../services/notification_service.dart';
 import '../services/offline_cache.dart';
 import '../services/pending_reports_service.dart';
+import '../services/theme_settings.dart';
 import '../services/tile_cache.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -74,13 +75,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bgMid,
-        title: Text(title, style: const TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w700)),
-        content: Text(body, style: const TextStyle(color: AppColors.textSec, fontSize: 13, height: 1.4)),
+        title: Text(title, style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w700)),
+        content: Text(body, style: TextStyle(color: AppColors.textSec, fontSize: 13, height: 1.4)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(action, style: const TextStyle(color: AppColors.red, fontWeight: FontWeight.w700)),
+            child: Text(action, style: TextStyle(color: AppColors.ink(AppColors.red), fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -137,6 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final flood = context.watch<FloodStatusService>();
     final settings = context.watch<AppSettings>();
     final a11y = context.watch<AccessibilitySettings>();
+    final themeSettings = context.watch<ThemeSettings>();
     final outbox = context.watch<PendingReportsService>();
     final maps = context.watch<OfflineMapService>();
 
@@ -145,8 +147,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.bgDark,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.textPri),
-        title: const Text('Settings',
+        iconTheme: IconThemeData(color: AppColors.textPri),
+        title: Text('Settings',
             style: TextStyle(color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w800)),
       ),
       body: SafeArea(
@@ -157,17 +159,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _Card(children: [
               Row(children: [
                 Icon(conn.isOffline ? Icons.cloud_off_rounded : Icons.cloud_done_rounded,
-                    color: conn.isOffline ? AppColors.orange : AppColors.green, size: 22),
+                    color: conn.isOffline ? AppColors.ink(AppColors.orange) : AppColors.ink(AppColors.green), size: 22),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(conn.isOffline ? 'Offline — showing saved data' : 'Online',
-                        style: const TextStyle(color: AppColors.textPri, fontSize: 14, fontWeight: FontWeight.w800)),
+                        style: TextStyle(color: AppColors.textPri, fontSize: 14, fontWeight: FontWeight.w800)),
                     Text(
                       flood.lastUpdated == null
                           ? 'No flood reading saved yet'
                           : 'Flood status ${flood.isFromCache ? 'saved' : 'updated'} ${agoLabel(flood.lastUpdated!)}',
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                     ),
                   ]),
                 ),
@@ -202,8 +204,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               if (settings.hasPendingSync) ...[
                 const SizedBox(height: 6),
-                const Text('Will apply as soon as you\'re back online.',
-                    style: TextStyle(color: AppColors.orange, fontSize: 11.5)),
+                Text('Will apply as soon as you\'re back online.',
+                    style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 11.5)),
               ],
               if (_permission == AuthorizationStatus.denied ||
                   _permission == AuthorizationStatus.notDetermined) ...[
@@ -234,14 +236,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const _SectionTitle('DISPLAY'),
             _Card(children: [
               Row(children: [
-                const Icon(Icons.text_fields_rounded, color: AppColors.textSec, size: 18),
+                Icon(Icons.brightness_6_rounded, color: AppColors.textSec, size: 18),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
+                  child: Text('Appearance',
+                      style: TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final o in const [
+                    (AppThemeMode.system, 'Match phone'),
+                    (AppThemeMode.light, 'Light'),
+                    (AppThemeMode.dark, 'Dark'),
+                  ])
+                    ChoiceChip(
+                      label: Text(o.$2),
+                      selected: themeSettings.mode == o.$1,
+                      onSelected: (_) => context.read<ThemeSettings>().setMode(o.$1),
+                    ),
+                ],
+              ),
+              const _Divider(),
+              Row(children: [
+                Icon(Icons.text_fields_rounded, color: AppColors.textSec, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
                   child: Text('Text size',
                       style: TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
                 ),
                 Text('${(a11y.textScale * 100).round()}%',
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
               ]),
               Slider(
                 value: a11y.textScale,
@@ -262,10 +289,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // ── Data & refresh ───────────────────────────────────────
             const _SectionTitle('DATA & REFRESH'),
             _Card(children: [
-              const Text('Auto-refresh flood status',
+              Text('Auto-refresh flood status',
                   style: TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('Longer intervals save battery and mobile data. Polling always pauses while the app is in the background.',
+              Text('Longer intervals save battery and mobile data. Polling always pauses while the app is in the background.',
                   style: TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.4)),
               const SizedBox(height: 10),
               Wrap(
@@ -286,10 +313,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'Restores defaults. Saved offline data is kept.',
                 actionLabel: 'Reset',
                 onTap: () async {
-                  final ok = await _confirm('Reset settings?', 'Text size, contrast, refresh interval and notification choices go back to their defaults.', 'Reset');
+                  final ok = await _confirm('Reset settings?', 'Appearance, text size, contrast, refresh interval and notification choices go back to their defaults.', 'Reset');
                   if (!ok || !mounted) return;
                   final a = context.read<AccessibilitySettings>();
                   final s = context.read<AppSettings>();
+                  await context.read<ThemeSettings>().setMode(AppThemeMode.dark);
                   await a.setTextScale(1.0);
                   await a.setHighContrast(false);
                   await flood.setRefreshInterval(FloodStatusService.defaultInterval);
@@ -362,7 +390,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 text: 'Severe flooding is imminent, with immediate danger to life and property. Evacuate now and go to a designated evacuation center.',
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Alerts are AGOS predictions. Always follow instructions from barangay officials.',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.45, fontStyle: FontStyle.italic),
               ),
@@ -450,7 +478,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Center(
                   child: Text(
                     _version.isEmpty ? 'AGOS' : 'AGOS · v$_version',
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
                   ),
                 ),
               ),
@@ -476,14 +504,14 @@ class _AlertLevelRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(type.icon, color: type.color, size: 20),
+        Icon(type.icon, color: AppColors.ink(type.color), size: 20),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(type.label,
-                style: TextStyle(color: type.color, fontSize: 13.5, fontWeight: FontWeight.w800)),
+                style: TextStyle(color: AppColors.ink(type.color), fontSize: 13.5, fontWeight: FontWeight.w800)),
             const SizedBox(height: 2),
-            Text(text, style: const TextStyle(color: AppColors.textSec, fontSize: 12, height: 1.4)),
+            Text(text, style: TextStyle(color: AppColors.textSec, fontSize: 12, height: 1.4)),
           ]),
         ),
       ]);
@@ -495,9 +523,9 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
+        Text(title, style: TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
         const SizedBox(height: 2),
-        Text(body, style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.45)),
+        Text(body, style: TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.45)),
       ]);
 }
 
@@ -533,7 +561,7 @@ class _MapDownloadRow extends StatelessWidget {
       ],
       if (maps.message != null) ...[
         const SizedBox(height: 6),
-        Text(maps.message!, style: const TextStyle(color: AppColors.orange, fontSize: 11.5)),
+        Text(maps.message!, style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 11.5)),
       ],
       if (maps.hasDownload && !maps.isDownloading)
         Align(
@@ -543,7 +571,7 @@ class _MapDownloadRow extends StatelessWidget {
               await maps.deleteAll();
               onChanged();
             },
-            child: const Text('Delete saved maps', style: TextStyle(color: AppColors.red, fontSize: 12)),
+            child: Text('Delete saved maps', style: TextStyle(color: AppColors.ink(AppColors.red), fontSize: 12)),
           ),
         ),
     ]);
@@ -558,7 +586,7 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 22, 0, 8),
         child: Text(text,
-            style: const TextStyle(
+            style: TextStyle(
                 color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
       );
 }
@@ -582,7 +610,7 @@ class _Divider extends StatelessWidget {
   const _Divider();
   @override
   Widget build(BuildContext context) =>
-      const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1, color: AppColors.bgBorder));
+      Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1, color: AppColors.bgBorder));
 }
 
 class _SwitchRow extends StatelessWidget {
@@ -600,8 +628,8 @@ class _SwitchRow extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
-            Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+            Text(title, style: TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
+            Text(subtitle, style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
           ]),
         ),
         Switch(value: value, onChanged: onChanged),
@@ -623,8 +651,8 @@ class _ActionRow extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
-            Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.35)),
+            Text(title, style: TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w700)),
+            Text(subtitle, style: TextStyle(color: AppColors.textMuted, fontSize: 11.5, height: 1.35)),
           ]),
         ),
         if (actionLabel != null)

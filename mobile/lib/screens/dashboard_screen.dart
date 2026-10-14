@@ -29,7 +29,7 @@ import '../services/model_api_client.dart';
 import '../theme/panahon_ui.dart';
 import '../widgets/rain_overlay.dart';
 import '../widgets/weather_backdrop.dart';
-import '../widgets/minute_forecast_card.dart';
+import '../widgets/minute_forecast_card.dart' hide AppColors;
 
 // ─── URLs ─────────────────────────────────────────────────────────────────────
 // Read from .env (see README) so the backend can be swapped between
@@ -230,6 +230,16 @@ class _Prediction {
     if (probability >= 0.25) return 'Moderate';
     return 'Low';
   }
+}
+
+// Whole calendar days between today and [d] (0 = today, 1 = tomorrow).
+// Derived from the actual date rather than the backend's `day_ahead`, because
+// the forecast now starts on today (day_ahead 0) and labels must not depend
+// on how the backend numbers its offset.
+int _daysFromToday(DateTime d) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return DateTime(d.year, d.month, d.day).difference(today).inDays;
 }
 
 // ─── Daily flood forecast entry (from GET /api/forecast-flood) ──────────────
@@ -667,11 +677,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
               child: Container(
-                color: AppColors.bgDeep.withValues(alpha: 0.86),
+                // Light mode is nearly opaque: the dark weather backdrop
+                // behind it would otherwise muddy the pale canvas.
+                color: AppColors.bgDeep.withValues(alpha: AppColors.isLight ? 0.96 : 0.86),
                 child: RefreshIndicator(
                   onRefresh: _refreshAll,
-                  color: const Color(0xFF38bdf8),
-                  backgroundColor: const Color(0xFF0d1f3c),
+                  color: AppColors.accent,
+                  backgroundColor: AppColors.surface,
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(14, 18, 14, 28),
@@ -734,8 +746,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           trailing: const SectionPill(text: '14 days'),
                         ),
                         const SizedBox(height: 2),
-                        const Text('AI model outlook · updated with each Open-Meteo sync',
-                            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+                        Text('AI model outlook · updated with each Open-Meteo sync',
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
                         const SizedBox(height: 10),
                         if (_dailySavedAt != null) ...[
                           _SavedNote('Saved outlook · updated ${agoLabel(_dailySavedAt!)}'),
@@ -797,8 +809,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           trailing: const SectionPill(text: '48 hours'),
                         ),
                         const SizedBox(height: 2),
-                        const Text('OpenMeteo · Brgy. Triangulo, Naga City',
-                            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+                        Text('OpenMeteo · Brgy. Triangulo, Naga City',
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
                         const SizedBox(height: 10),
                         if (_forecastSavedAt != null) ...[
                           _SavedNote('Saved forecast · updated ${agoLabel(_forecastSavedAt!)}'),
@@ -966,7 +978,7 @@ class _WeatherSectionDivider extends StatelessWidget {
       Expanded(child: Container(height: 1, color: AppColors.bgBorder)),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(children: const [
+        child: Row(children: [
           Icon(Icons.cloud_outlined, size: 12, color: AppColors.textMuted),
           SizedBox(width: 5),
           Text('WEATHER DATA', style: TextStyle(
@@ -995,14 +1007,14 @@ class _OfflineBanner extends StatelessWidget {
             border: Border.all(color: const Color(0xFFef4444).withValues(alpha: 0.25)),
           ),
           child: Row(children: [
-            const Text('⚠', style: TextStyle(color: Color(0xFFf87171), fontSize: 13)),
+            Text('⚠', style: TextStyle(color: AppColors.redText, fontSize: 13)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 lastUpdated != null
                     ? "Can't reach live data right now. Showing the status from ${_relativeTime(lastUpdated!)}."
                     : "We're having trouble reaching live data. Showing the last known status.",
-                style: const TextStyle(color: Color(0xFFf87171), fontSize: 11.5, fontWeight: FontWeight.w500),
+                style: TextStyle(color: AppColors.redText, fontSize: 11.5, fontWeight: FontWeight.w500),
               ),
             ),
           ]),
@@ -1036,18 +1048,18 @@ class _RightNowCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Icon(isNormal ? Icons.check_circle_rounded : Icons.checklist_rounded,
-              color: alertColor, size: 16),
+              color: AppColors.ink(alertColor), size: 16),
           const SizedBox(width: 6),
           Text(isNormal ? 'Nothing to do right now' : 'Right now, you should:', style: TextStyle(
-              color: alertColor, fontSize: 13, fontWeight: FontWeight.w800)),
+              color: AppColors.ink(alertColor), fontSize: 13, fontWeight: FontWeight.w800)),
         ]),
         const SizedBox(height: 10),
         ...guidance.actions.map((a) => Padding(
           padding: const EdgeInsets.only(bottom: 6),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(Icons.circle, size: 5, color: alertColor.withValues(alpha: 0.8)),
+            Icon(Icons.circle, size: 5, color: AppColors.ink(alertColor).withValues(alpha: 0.8)),
             const SizedBox(width: 8),
-            Expanded(child: Text(a, style: const TextStyle(
+            Expanded(child: Text(a, style: TextStyle(
                 color: AppColors.textPri, fontSize: 12.5, height: 1.4))),
           ]),
         )),
@@ -1072,7 +1084,7 @@ class _HourlyForecastStrip extends StatelessWidget {
   Color _precipColor(num precip) {
     if (precip > 10) return const Color(0xFFef4444);
     if (precip > 2)  return const Color(0xFFf97316);
-    return const Color(0xFF38bdf8);
+    return AppColors.accent;
   }
 
   @override
@@ -1087,9 +1099,9 @@ class _HourlyForecastStrip extends StatelessWidget {
           itemBuilder: (_, __) => Container(
             width: 82, height: 110,
             decoration: BoxDecoration(
-              color: const Color(0xFF0a1828),
+              color: AppColors.surfaceDim,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF1e3a5f)),
+              border: Border.all(color: AppColors.bgBorder),
             ),
           ),
         ),
@@ -1100,13 +1112,13 @@ class _HourlyForecastStrip extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFF0a1828),
+          color: AppColors.surfaceDim,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
+          border: Border.all(color: AppColors.bgBorder),
         ),
-        child: const Center(
+        child: Center(
           child: Text('⚠️ Hourly forecast unavailable right now — check back soon',
-              style: TextStyle(color: Color(0xFF4a6080), fontSize: 12), textAlign: TextAlign.center),
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12), textAlign: TextAlign.center),
         ),
       );
     }
@@ -1140,25 +1152,25 @@ class _HourlyForecastStrip extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
               decoration: BoxDecoration(
                 color: idx == 0
-                    ? const Color(0xFF38bdf8).withValues(alpha: 0.08)
-                    : const Color(0xFF0a1828),
+                    ? AppColors.accent.withValues(alpha: 0.08)
+                    : AppColors.surfaceDim,
                 border: Border.all(
-                    color: idx == 0 ? const Color(0xFF38bdf8) : const Color(0xFF1e3a5f)),
+                    color: idx == 0 ? AppColors.accent : AppColors.bgBorder),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(label, style: TextStyle(
-                      color: idx == 0 ? const Color(0xFF38bdf8) : const Color(0xFF8da4be),
+                      color: idx == 0 ? AppColors.accent : AppColors.textSec,
                       fontSize: 10, fontWeight: FontWeight.w700),
                       textAlign: TextAlign.center),
                   Text(_emoji(precip), style: const TextStyle(fontSize: 20)),
-                  Text('$temp°C', style: const TextStyle(
-                      color: Color(0xFFe2eaf5), fontSize: 12, fontWeight: FontWeight.w700)),
+                  Text('$temp°C', style: TextStyle(
+                      color: AppColors.textPri, fontSize: 12, fontWeight: FontWeight.w700)),
                   Column(children: [
                     Container(height: 3,
                       decoration: BoxDecoration(
-                          color: const Color(0xFF1e3a5f),
+                          color: AppColors.bgBorder,
                           borderRadius: BorderRadius.circular(2)),
                       child: FractionallySizedBox(widthFactor: precipPct,
                           alignment: Alignment.centerLeft,
@@ -1166,7 +1178,7 @@ class _HourlyForecastStrip extends StatelessWidget {
                               color: pc, borderRadius: BorderRadius.circular(2))))),
                     const SizedBox(height: 3),
                     Text('${precip.toStringAsFixed(1)}mm',
-                        style: TextStyle(color: pc, fontSize: 9, fontWeight: FontWeight.w600)),
+                        style: TextStyle(color: AppColors.ink(pc), fontSize: 9, fontWeight: FontWeight.w600)),
                   ]),
                 ],
               ),
@@ -1222,8 +1234,8 @@ class _WeatherDetailsGrid extends StatelessWidget {
       children: [
         const _SectionLabel(icon: '📊', text: 'Weather Details', muted: true),
         const SizedBox(height: 2),
-        const Text('Current conditions · Open-Meteo',
-            style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+        Text('Current conditions · Open-Meteo',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
         const SizedBox(height: 10),
         // Rounded-square icon chip per stat — mirrors the reference app's
         // "Detail" grid (purple icon square + big value + small label
@@ -1238,8 +1250,8 @@ class _WeatherDetailsGrid extends StatelessWidget {
           children: stats.map((s) => Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF0d1f3c),
-              border: Border.all(color: const Color(0xFF1e3a5f)),
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.bgBorder),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -1259,12 +1271,12 @@ class _WeatherDetailsGrid extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(s.value, style: const TextStyle(
-                          color: Color(0xFFe2eaf5), fontSize: 14.5, fontWeight: FontWeight.w800),
+                      Text(s.value, style: TextStyle(
+                          color: AppColors.textPri, fontSize: 14.5, fontWeight: FontWeight.w800),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 1),
-                      Text(s.label, style: const TextStyle(
-                          color: Color(0xFF4a6080), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+                      Text(s.label, style: TextStyle(
+                          color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.3),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                     ],
                   ),
@@ -1293,8 +1305,9 @@ class _FloodRiskTrendChart extends StatelessWidget {
   const _FloodRiskTrendChart({required this.days, required this.loading});
 
   String _shortDay(_DailyFloodForecast d) {
-    if (d.dayAhead == 0) return 'Today';
-    if (d.dayAhead == 1) return 'Tmrw';
+    final diff = _daysFromToday(d.date);
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tmrw';
     const wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return wdays[d.date.weekday - 1];
   }
@@ -1305,13 +1318,13 @@ class _FloodRiskTrendChart extends StatelessWidget {
       return Container(
         height: 132, alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xFF0a1828),
+          color: AppColors.surfaceDim,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
+          border: Border.all(color: AppColors.bgBorder),
         ),
         child: Text(
           loading ? 'Loading flood risk trend...' : 'Flood risk trend unavailable',
-          style: const TextStyle(color: Color(0xFF4a6080), fontSize: 12),
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
         ),
       );
     }
@@ -1320,18 +1333,18 @@ class _FloodRiskTrendChart extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0d1f3c),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF1e3a5f)),
+        border: Border.all(color: AppColors.bgBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('7-Day Flood Risk Trend', style: TextStyle(
+          Text('7-Day Flood Risk Trend', style: TextStyle(
               color: AppColors.textPri, fontSize: 13, fontWeight: FontWeight.w800)),
           const SizedBox(height: 2),
-          const Text('Model probability of flooding, by day',
-              style: TextStyle(color: Color(0xFF4a6080), fontSize: 10)),
+          Text('Model probability of flooding, by day',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
           const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -1356,7 +1369,7 @@ class _FloodRiskTrendChart extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text('${pct.toStringAsFixed(0)}%', style: TextStyle(
-                          color: color, fontSize: 9.5, fontWeight: FontWeight.w800)),
+                          color: AppColors.ink(color), fontSize: 9.5, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
                       Container(
                         height: barHeight,
@@ -1366,8 +1379,8 @@ class _FloodRiskTrendChart extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text(_shortDay(d), style: const TextStyle(
-                          color: Color(0xFF8da4be), fontSize: 9.5, fontWeight: FontWeight.w700)),
+                      Text(_shortDay(d), style: TextStyle(
+                          color: AppColors.textSec, fontSize: 9.5, fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -1412,26 +1425,26 @@ class _RainfallOutlookRow extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0d1f3c),
-                    border: Border.all(color: const Color(0xFF1e3a5f)),
+                    color: AppColors.surface,
+                    border: Border.all(color: AppColors.bgBorder),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(label, style: const TextStyle(
-                          color: Color(0xFF4a6080), fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                      Text(label, style: TextStyle(
+                          color: AppColors.textMuted, fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
                       const SizedBox(height: 6),
                       Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                        Text(mm != null ? '$mm' : '—', style: const TextStyle(
-                            color: Color(0xFF38bdf8), fontSize: 16, fontWeight: FontWeight.w900)),
+                        Text(mm != null ? '$mm' : '—', style: TextStyle(
+                            color: AppColors.accent, fontSize: 16, fontWeight: FontWeight.w900)),
                         const SizedBox(width: 3),
-                        const Text('mm', style: TextStyle(color: Color(0xFF4a6080), fontSize: 9)),
+                        Text('mm', style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
                       ]),
                       if (pct != null) ...[
                         const SizedBox(height: 3),
-                        Text('☔ $pct% chance', style: const TextStyle(
-                            color: Color(0xFF8da4be), fontSize: 9)),
+                        Text('☔ $pct% chance', style: TextStyle(
+                            color: AppColors.textSec, fontSize: 9)),
                       ],
                     ],
                   ),
@@ -1458,7 +1471,9 @@ class _DailyFloodForecastList extends StatelessWidget {
   const _DailyFloodForecastList({required this.days, required this.loading, required this.error});
 
   String _dayLabel(_DailyFloodForecast d) {
-    if (d.dayAhead == 1) return 'Tomorrow';
+    final diff = _daysFromToday(d.date);
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tomorrow';
     const wdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     return '${wdays[d.date.weekday - 1]} ${d.date.day}/${d.date.month}';
   }
@@ -1469,12 +1484,12 @@ class _DailyFloodForecastList extends StatelessWidget {
       return Container(
         height: 160, alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xFF0a1828),
+          color: AppColors.surfaceDim,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
+          border: Border.all(color: AppColors.bgBorder),
         ),
-        child: const Text('Loading the 14-day outlook...',
-            style: TextStyle(color: Color(0xFF4a6080), fontSize: 12)),
+        child: Text('Loading the 14-day outlook...',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
       );
     }
 
@@ -1482,13 +1497,13 @@ class _DailyFloodForecastList extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFF0a1828),
+          color: AppColors.surfaceDim,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
+          border: Border.all(color: AppColors.bgBorder),
         ),
-        child: const Center(
+        child: Center(
           child: Text('⚠️ 14-day flood outlook unavailable right now — check back soon',
-              style: TextStyle(color: Color(0xFF4a6080), fontSize: 12), textAlign: TextAlign.center),
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12), textAlign: TextAlign.center),
         ),
       );
     }
@@ -1497,8 +1512,8 @@ class _DailyFloodForecastList extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0d1f3c),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.bgBorder),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
@@ -1514,24 +1529,24 @@ class _DailyFloodForecastList extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
                 decoration: BoxDecoration(
                   border: Border(
-                    bottom: isLast ? BorderSide.none : const BorderSide(color: Color(0xFF13284a)),
+                    bottom: isLast ? BorderSide.none : BorderSide(color: AppColors.divider),
                   ),
                 ),
                 child: Row(children: [
                   SizedBox(
                     width: 66,
-                    child: Text(_dayLabel(d), style: const TextStyle(
-                        color: Color(0xFFe2eaf5), fontSize: 11, fontWeight: FontWeight.w800)),
+                    child: Text(_dayLabel(d), style: TextStyle(
+                        color: AppColors.textPri, fontSize: 11, fontWeight: FontWeight.w800)),
                   ),
                   Text(_riskEmoji(d.probabilityPct), style: const TextStyle(fontSize: 17)),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(_riskWordFromPct(d.probabilityPct), style: const TextStyle(
-                          color: Color(0xFF8da4be), fontSize: 11.5, fontWeight: FontWeight.w600)),
+                      Text(_riskWordFromPct(d.probabilityPct), style: TextStyle(
+                          color: AppColors.textSec, fontSize: 11.5, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 1),
                       Text(_confidenceLabels[d.confidenceBand] ?? 'Outlook only',
-                          style: const TextStyle(color: Color(0xFF4a6080), fontSize: 9)),
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
                     ]),
                   ),
                   Container(
@@ -1542,10 +1557,10 @@ class _DailyFloodForecastList extends StatelessWidget {
                       border: Border.all(color: color.withValues(alpha: 0.4)),
                     ),
                     child: Text('${d.probabilityPct.toStringAsFixed(0)}%',
-                        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
+                        style: TextStyle(color: AppColors.ink(color), fontSize: 11, fontWeight: FontWeight.w900)),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF4a6080), size: 18),
+                  Icon(Icons.chevron_right_rounded, color: AppColors.textMuted, size: 18),
                 ]),
               ),
             );
@@ -1609,10 +1624,10 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(dayLabel, style: const TextStyle(
+                  Text(dayLabel, style: TextStyle(
                       color: AppColors.textPri, fontSize: 16, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 1),
-                  Text(_riskWordFromPct(d.probabilityPct), style: const TextStyle(
+                  Text(_riskWordFromPct(d.probabilityPct), style: TextStyle(
                       color: AppColors.textSec, fontSize: 12.5, fontWeight: FontWeight.w600)),
                 ]),
               ),
@@ -1624,7 +1639,7 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
                   border: Border.all(color: color.withValues(alpha: 0.45)),
                 ),
                 child: Text('${d.probabilityPct.toStringAsFixed(0)}%',
-                    style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w900)),
+                    style: TextStyle(color: AppColors.ink(color), fontSize: 16, fontWeight: FontWeight.w900)),
               ),
             ]),
             const SizedBox(height: 14),
@@ -1638,17 +1653,17 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
                 border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 16),
+                Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_confidenceLabels[d.confidenceBand] ?? 'Outlook only', style: const TextStyle(
+                    Text(_confidenceLabels[d.confidenceBand] ?? 'Outlook only', style: TextStyle(
                         color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text(
                       _confidenceExplainers[d.confidenceBand] ??
                           'Forecast confidence decreases the further out the day is.',
-                      style: const TextStyle(color: AppColors.textSec, fontSize: 11.5, height: 1.4),
+                      style: TextStyle(color: AppColors.textSec, fontSize: 11.5, height: 1.4),
                     ),
                   ]),
                 ),
@@ -1656,7 +1671,7 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
             ),
             const SizedBox(height: 20),
 
-            const Text('WHAT DROVE THIS FORECAST', style: TextStyle(
+            Text('WHAT DROVE THIS FORECAST', style: TextStyle(
                 color: AppColors.textMuted, fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
             const SizedBox(height: 10),
 
@@ -1701,8 +1716,8 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
                   return Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0d1f3c),
-                      border: Border.all(color: const Color(0xFF1e3a5f)),
+                      color: AppColors.surface,
+                      border: Border.all(color: AppColors.bgBorder),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(children: [
@@ -1721,11 +1736,11 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('$display${meta?.suffix ?? ''}', style: const TextStyle(
-                                color: Color(0xFFe2eaf5), fontSize: 13, fontWeight: FontWeight.w800),
+                            Text('$display${meta?.suffix ?? ''}', style: TextStyle(
+                                color: AppColors.textPri, fontSize: 13, fontWeight: FontWeight.w800),
                                 maxLines: 1, overflow: TextOverflow.ellipsis),
-                            Text(meta?.label ?? _titleCase(entry.key), style: const TextStyle(
-                                color: Color(0xFF4a6080), fontSize: 9, fontWeight: FontWeight.w700),
+                            Text(meta?.label ?? _titleCase(entry.key), style: TextStyle(
+                                color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w700),
                                 maxLines: 1, overflow: TextOverflow.ellipsis),
                           ],
                         ),
@@ -1736,7 +1751,7 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
               ),
             ] else ...[
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Rainfall and wind are the main inputs the model uses for this day.',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.4),
               ),
@@ -1762,26 +1777,26 @@ class _DriverCallout extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: const Color(0xFF0d1f3c),
-      border: Border.all(color: const Color(0xFF1e3a5f)),
+      color: AppColors.surface,
+      border: Border.all(color: AppColors.bgBorder),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Text(icon, style: const TextStyle(fontSize: 15)),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(
-            color: Color(0xFF8da4be), fontSize: 11, fontWeight: FontWeight.w700)),
+        Text(label, style: TextStyle(
+            color: AppColors.textSec, fontSize: 11, fontWeight: FontWeight.w700)),
       ]),
       const SizedBox(height: 6),
       Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-        Text(value, style: const TextStyle(
-            color: Color(0xFFe2eaf5), fontSize: 20, fontWeight: FontWeight.w900)),
+        Text(value, style: TextStyle(
+            color: AppColors.textPri, fontSize: 20, fontWeight: FontWeight.w900)),
         const SizedBox(width: 3),
-        Text(suffix, style: const TextStyle(color: Color(0xFF4a6080), fontSize: 11)),
+        Text(suffix, style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
       ]),
       const SizedBox(height: 2),
-      Text(note, style: const TextStyle(color: Color(0xFF4a6080), fontSize: 9.5)),
+      Text(note, style: TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
     ]),
   );
 }
@@ -1824,7 +1839,7 @@ class _QuickActionsRow extends StatelessWidget {
                     child: Icon(a.icon, color: AppColors.accent, size: 17),
                   ),
                   const SizedBox(height: 7),
-                  Text(a.label, textAlign: TextAlign.center, style: const TextStyle(
+                  Text(a.label, textAlign: TextAlign.center, style: TextStyle(
                       color: AppColors.textSec, fontSize: 10.5, fontWeight: FontWeight.w700, height: 1.2)),
                 ]),
               ),
@@ -1849,9 +1864,9 @@ class _MapTeaserCard extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0d1f3c),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF1e3a5f)),
+        border: Border.all(color: AppColors.bgBorder),
       ),
       child: Row(children: [
         Container(
@@ -1860,10 +1875,10 @@ class _MapTeaserCard extends StatelessWidget {
             color: AppColors.accent.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Icon(Icons.radar_rounded, color: AppColors.accent, size: 17),
+          child: Icon(Icons.radar_rounded, color: AppColors.accent, size: 17),
         ),
         const SizedBox(width: 10),
-        const Expanded(
+        Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Flood and Weather Map', style: TextStyle(
                 color: AppColors.textPri, fontSize: 12.5, fontWeight: FontWeight.w700)),
@@ -1872,7 +1887,7 @@ class _MapTeaserCard extends StatelessWidget {
                 style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
           ]),
         ),
-        const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted, size: 18),
+        Icon(Icons.chevron_right_rounded, color: AppColors.textMuted, size: 18),
       ]),
     ),
   );
@@ -1889,8 +1904,8 @@ class _AlertLevelTable extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0d1f3c),
-          border: Border.all(color: const Color(0xFF1e3a5f)),
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.bgBorder),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
@@ -1906,7 +1921,7 @@ class _AlertLevelTable extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isCur ? color.withValues(alpha: 0.08) : Colors.transparent,
                 border: Border(
-                  bottom: isLast ? BorderSide.none : const BorderSide(color: Color(0xFF1e3a5f))),
+                  bottom: isLast ? BorderSide.none : BorderSide(color: AppColors.bgBorder)),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 3),
@@ -1916,9 +1931,9 @@ class _AlertLevelTable extends StatelessWidget {
                   width: 76,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(_thresholds[item.key]!.label.toUpperCase(), style: TextStyle(
-                        color: color, fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
-                    Text(item.range, style: const TextStyle(
-                        color: Color(0xFF4a6080), fontSize: 9, fontFamily: 'monospace')),
+                        color: AppColors.ink(color), fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 0.4)),
+                    Text(item.range, style: TextStyle(
+                        color: AppColors.textMuted, fontSize: 9, fontFamily: 'monospace')),
                   ]),
                 ),
                 const SizedBox(width: 8),
@@ -1929,11 +1944,11 @@ class _AlertLevelTable extends StatelessWidget {
                         padding: const EdgeInsets.only(bottom: 2),
                         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('•  ', style: TextStyle(
-                            color: isCur ? color : const Color(0xFF2a4060),
+                            color: isCur ? AppColors.ink(color) : AppColors.bgBorder,
                             fontSize: 10.5, height: 1.4,
                           )),
                           Expanded(child: Text(a, style: TextStyle(
-                            color: isCur ? const Color(0xFFe2eaf5) : const Color(0xFF4a6080),
+                            color: isCur ? AppColors.textPri : AppColors.textMuted,
                             fontSize: 10.5, height: 1.4,
                           ))),
                         ]),
@@ -1950,7 +1965,7 @@ class _AlertLevelTable extends StatelessWidget {
                         borderRadius: BorderRadius.circular(3),
                       ),
                       child: Text('CURRENT', style: TextStyle(
-                          color: color, fontSize: 8, fontWeight: FontWeight.w700)),
+                          color: AppColors.ink(color), fontSize: 8, fontWeight: FontWeight.w700)),
                     ),
                   ],
                 ])),
@@ -2007,11 +2022,11 @@ class _SavedNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(children: [
-        const Icon(Icons.history_rounded, size: 13, color: AppColors.orange),
+        Icon(Icons.history_rounded, size: 13, color: AppColors.ink(AppColors.orange)),
         const SizedBox(width: 5),
         Expanded(
           child: Text(text,
-              style: const TextStyle(color: AppColors.orange, fontSize: 11, fontWeight: FontWeight.w600)),
+              style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 11, fontWeight: FontWeight.w600)),
         ),
       ]);
 }

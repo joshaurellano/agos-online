@@ -257,8 +257,8 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
       backgroundColor: AppColors.bgDeep,
       appBar: AppBar(
         backgroundColor: AppColors.bgDark,
-        title: const Text('Report Flooding', style: TextStyle(color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w700)),
-        iconTheme: const IconThemeData(color: AppColors.textPri),
+        title: Text('Report Flooding', style: TextStyle(color: AppColors.textPri, fontSize: 17, fontWeight: FontWeight.w700)),
+        iconTheme: IconThemeData(color: AppColors.textPri),
         elevation: 0,
       ),
       body: SafeArea(
@@ -275,7 +275,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
                 ),
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 18),
                     SizedBox(width: 10),
                     Expanded(
@@ -300,8 +300,8 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 child: TextField(
                   controller: _nameCtrl,
                   textCapitalization: TextCapitalization.words,
-                  style: const TextStyle(color: AppColors.textPri, fontSize: 14),
-                  decoration: const InputDecoration(
+                  style: TextStyle(color: AppColors.textPri, fontSize: 14),
+                  decoration: InputDecoration(
                     hintText: 'e.g. Juan Dela Cruz',
                     hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
                     contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
@@ -311,7 +311,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Leave blank to submit as "Anonymous Resident". Your name is shown '
                 'next to your report in the community feed.',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.35),
@@ -329,8 +329,8 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 child: TextField(
                   controller: _descriptionCtrl,
                   maxLines: 4,
-                  style: const TextStyle(color: AppColors.textPri, fontSize: 14),
-                  decoration: const InputDecoration(
+                  style: TextStyle(color: AppColors.textPri, fontSize: 14),
+                  decoration: InputDecoration(
                     hintText: 'e.g. Baha na sa Zone 1, umaabot na sa tuhod...',
                     hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
                     contentPadding: EdgeInsets.all(14),
@@ -384,9 +384,9 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 18),
+                      Icon(Icons.check_circle_rounded, color: AppColors.ink(AppColors.green), size: 18),
                       const SizedBox(width: 8),
-                      Expanded(child: Text('Pinned: $_locationLabel', style: const TextStyle(color: AppColors.textSec, fontSize: 12.5))),
+                      Expanded(child: Text('Pinned: $_locationLabel', style: TextStyle(color: AppColors.textSec, fontSize: 12.5))),
                     ],
                   ),
                 )
@@ -398,7 +398,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 ),
               if (_locError != null) ...[
                 const SizedBox(height: 8),
-                Text(_locError!, style: const TextStyle(color: AppColors.orange, fontSize: 12)),
+                Text(_locError!, style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 12)),
               ],
 
               if (_errorMsg != null) ...[
@@ -410,7 +410,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.red.withValues(alpha: 0.3)),
                   ),
-                  child: Text(_errorMsg!, style: const TextStyle(color: AppColors.red, fontSize: 12.5)),
+                  child: Text(_errorMsg!, style: TextStyle(color: AppColors.ink(AppColors.red), fontSize: 12.5)),
                 ),
               ],
 
@@ -440,7 +440,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
   Widget _sectionLabel(String text) => Text(
         text.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.8,
         ),
       );
@@ -459,9 +459,9 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (icon != null) Icon(icon, size: 17, color: AppColors.accent)
-            else const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent)),
+            else SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent)),
             const SizedBox(width: 8),
-            Text(label, style: const TextStyle(color: AppColors.textSec, fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(color: AppColors.textSec, fontSize: 13, fontWeight: FontWeight.w600)),
           ],
         ),
       ),

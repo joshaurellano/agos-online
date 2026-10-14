@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
@@ -46,7 +47,8 @@ const _typeColors = {
   _AlertType.warning:  AppColors.orange,
   _AlertType.advisory: AppColors.yellow,
   _AlertType.normal:   AppColors.green,
-  _AlertType.info:     AppColors.accent,
+  // `info` isn't listed: AppColors.accent changes with the theme so it can't
+  // live in a const map — _AlertCard falls back to it (see `?? AppColors.accent`).
 };
 
 // Shape-distinct icons, not just color — matches the set already used on
@@ -254,22 +256,22 @@ class _AlertScreenState extends State<AlertScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.bgMid,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text(
+        title: Text(
           'Clear all alerts?',
           style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w700, decoration: TextDecoration.none),
         ),
-        content: const Text(
+        content: Text(
           'This clears every alert from your view on this device, including future reopens of this screen. Records already saved in the database are not deleted, and new alerts will still show up as they arrive.',
           style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4, decoration: TextDecoration.none),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted, decoration: TextDecoration.none)),
+            child: Text('Cancel', style: TextStyle(color: AppColors.textMuted, decoration: TextDecoration.none)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Clear all', style: TextStyle(color: AppColors.red, fontWeight: FontWeight.w700, decoration: TextDecoration.none)),
+            child: Text('Clear all', style: TextStyle(color: AppColors.ink(AppColors.red), fontWeight: FontWeight.w700, decoration: TextDecoration.none)),
           ),
         ],
       ),
@@ -293,10 +295,20 @@ class _AlertScreenState extends State<AlertScreen> {
   // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: AppColors.systemOverlayOnCanvas,
+        child: _buildScreen(context),
+      );
+
+  Widget _buildScreen(BuildContext context) {
     final filtered = _filtered;
 
-    return Column(
+    // This screen is pushed as a bare route (no Scaffold), so nothing painted
+    // its background — it showed the window's default black. Material gives
+    // it the themed canvas (and a default text style) in both light and dark.
+    return Material(
+      color: AppColors.bgDeep,
+      child: Column(
       children: [
 
         // ── Header bar ────────────────────────────────────────
@@ -312,10 +324,10 @@ class _AlertScreenState extends State<AlertScreen> {
                   color: AppColors.accent.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.notifications_rounded, color: AppColors.accent, size: 15),
+                child: Icon(Icons.notifications_rounded, color: AppColors.accent, size: 15),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Notifications',
                   // Matches PanahonHeader's title style (see theme/panahon_ui.dart)
@@ -341,7 +353,7 @@ class _AlertScreenState extends State<AlertScreen> {
                   ),
                   child: Text(
                     '$_unreadCount unread',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.accent,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
@@ -354,7 +366,7 @@ class _AlertScreenState extends State<AlertScreen> {
               if (_unreadCount > 0)
                 GestureDetector(
                   onTap: _markAllRead,
-                  child: const Text(
+                  child: Text(
                     'Mark all read',
                     style: TextStyle(
                       color: AppColors.accent,
@@ -368,10 +380,10 @@ class _AlertScreenState extends State<AlertScreen> {
                 const SizedBox(width: 12),
                 GestureDetector(
                   onTap: _confirmClearAll,
-                  child: const Text(
+                  child: Text(
                     'Clear all',
                     style: TextStyle(
-                      color: AppColors.red,
+                      color: AppColors.ink(AppColors.red),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       decoration: TextDecoration.none,
@@ -424,7 +436,7 @@ class _AlertScreenState extends State<AlertScreen> {
                     ),
         ),
       ],
-    );
+    ));
   }
 }
 
@@ -461,7 +473,7 @@ class _FilterChip extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          color: active ? _color : AppColors.textMuted,
+          color: active ? AppColors.ink(_color) : AppColors.textMuted,
           fontSize: 11,
           fontWeight: active ? FontWeight.w700 : FontWeight.w400,
           decoration: TextDecoration.none,
@@ -493,19 +505,16 @@ class _AlertCard extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: log.read ? AppColors.bgCard : color.withOpacity(0.07),
-              // borderRadius removed – now handled by ClipRRect
-              border: Border(
-                left: BorderSide(color: color, width: 3),
-                top:    BorderSide(color: log.read ? AppColors.bgBorder : color.withOpacity(0.25)),
-                right:  BorderSide(color: log.read ? AppColors.bgBorder : color.withOpacity(0.25)),
-                bottom: BorderSide(color: log.read ? AppColors.bgBorder : color.withOpacity(0.25)),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: log.read ? AppColors.bgBorder : color.withOpacity(0.25),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  Icon(icon, color: color, size: 15),
+                  Icon(icon, color: AppColors.ink(color), size: 15),
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -516,7 +525,7 @@ class _AlertCard extends StatelessWidget {
                     child: Text(
                       label,
                       style: TextStyle(
-                        color: color,
+                        color: AppColors.ink(color),
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
@@ -533,13 +542,13 @@ class _AlertCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Text(
                     log.time,
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11, decoration: TextDecoration.none),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11, decoration: TextDecoration.none),
                   ),
                 ]),
                 const SizedBox(height: 8),
                 Text(
                   log.message,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.textPri,
                     fontSize: 13,
                     height: 1.45,
@@ -549,7 +558,7 @@ class _AlertCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   'Sent by: ${log.sentBy}',
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11, decoration: TextDecoration.none),
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 11, decoration: TextDecoration.none),
                 ),
               ],
             ),
@@ -569,11 +578,11 @@ class _EmptyState extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('🔔', style: TextStyle(fontSize: 40, color: AppColors.textMuted, decoration: TextDecoration.none)),
+        Text('🔔', style: TextStyle(fontSize: 40, color: AppColors.textMuted, decoration: TextDecoration.none)),
         const SizedBox(height: 12),
         Text(
           filter == 'ALL' ? 'No alerts yet' : 'No $filter alerts',
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.textPri,
             fontWeight: FontWeight.w700,
             fontSize: 15,
@@ -581,7 +590,7 @@ class _EmptyState extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'You\'ll be notified when the system\ndetects a change in flood risk.',
           style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.5, decoration: TextDecoration.none),
           textAlign: TextAlign.center,

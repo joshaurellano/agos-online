@@ -23,6 +23,7 @@ import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, FACILITY_ICON_PATHS, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
+import { LuRoute, LuHistory, LuClock } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
@@ -276,47 +277,34 @@ function CollapsibleSection({ title, subtitle, defaultOpen = true, children, cla
 // strip on gauge pages like NOAA's National Water Prediction Service and
 // Google Flood Hub, where the "where/when/what engine" context sits above
 // the fold, separate from the alert itself.
-function StationHeader({ area, activeModel, lastUpdated }) {
-
+// Compact context bar. Public flood-warning services (UK Environment Agency,
+// PAGASA) lead with "am I at risk, what do I do?" rather than branding, so
+// the identity strip is kept to one slim row and the status card below is
+// the hero of the page.
+function FreshnessLabel({ date }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+  if (!date) {
+    return <span className="freshness stale"><LuClock size={13} aria-hidden="true" /> No live data yet</span>;
+  }
+  const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  const text = mins < 1 ? 'Updated just now' : mins === 1 ? 'Updated 1 min ago' : mins < 60 ? `Updated ${mins} min ago` : `Updated ${date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}`;
   return (
-    <div className="hero-masthead">
-      {/* Decorative contour wash — a literal topographic-map motif (this is
-          a hazard map, after all) rather than a generic gradient blob. Lives
-          inside the hero now instead of floating absolutely behind the
-          sections below it, so it can't bleed into unrelated content. */}
-      <div className="hero-masthead-pattern" aria-hidden="true">
-        <svg width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <radialGradient id="heroWash1" cx="12%" cy="8%" r="80%">
-              <stop offset="0%" stopColor="rgba(56,189,248,0.16)" />
-              <stop offset="100%" stopColor="rgba(56,189,248,0)" />
-            </radialGradient>
-            <radialGradient id="heroWash2" cx="92%" cy="18%" r="65%">
-              <stop offset="0%" stopColor="rgba(14,165,233,0.11)" />
-              <stop offset="100%" stopColor="rgba(14,165,233,0)" />
-            </radialGradient>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#heroWash1)" />
-          <rect width="100%" height="100%" fill="url(#heroWash2)" />
-        </svg>
-      </div>
+    <span className="freshness" title={date.toLocaleString('en-PH')}>
+      <LuClock size={13} aria-hidden="true" /> {text}
+    </span>
+  );
+}
 
-      <div className="hero-masthead-row">
-        <div className="hero-brand">
-          <div>
-            <div className="hero-eyebrow">Barangay Flood Forecasting and Early Warning System</div>
-            <h1 className="hero-title">Triangulo Flood Watch</h1>
-          </div>
-        </div>
-
-        {/* Live status — was computed on every render but never actually
-            shown; surfacing it here gives the hero a genuine "is this
-            system alive right now" signal instead of just branding. */}
-        <div className="hero-status-col">
-          <div className="hero-synced">
-            Synced {lastUpdated.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        </div>
+function StationHeader({ area, activeModel, lastUpdated }) {
+  return (
+    <div className="station-bar">
+      <div>
+        <div className="hero-eyebrow">Barangay Flood Forecasting and Early Warning System</div>
+        <h1 className="hero-title">Triangulo Flood Watch</h1>
       </div>
     </div>
   );
@@ -402,8 +390,34 @@ function Sparkline({ data, color, width = 72, height = 22 }) {
 // enlarged risk gauge) and a narrower Dispatch card holding the recommended
 // action and the emergency dispatch control, so the advisory reads like the
 // headline element while dispatch stays a clearly distinct, adjacent action.
-function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, probabilityPct, onSendAlert, canSendAlert }) {
+const LEVEL_ORDER = ['NORMAL', 'ADVISORY', 'WARNING', 'CRITICAL'];
+
+// Four-step scale: shows where today's level sits relative to the others, so
+// "Advisory" is understood as step 2 of 4 rather than a bare word. Each step
+// pairs colour with a text label and position, never colour alone.
+function LevelScale({ current }) {
   const { t } = useLanguage();
+  const idx = LEVEL_ORDER.indexOf(current);
+  return (
+    <ol className="level-scale" aria-label="Alert level scale">
+      {LEVEL_ORDER.map((lvl, i) => (
+        <li
+          key={lvl}
+          className={`level-scale-step${i === idx ? ' current' : ''}${i < idx ? ' passed' : ''}`}
+          style={{ '--seg': ALERT_LEVELS[lvl].color }}
+          aria-current={i === idx ? 'step' : undefined}
+        >
+          <span className="level-scale-bar" aria-hidden="true" />
+          <span className="level-scale-name">{t(`alertLevel.${lvl}.name`)}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, probabilityPct, onSendAlert, canSendAlert, lastUpdated }) {
+  const { t } = useLanguage();
+  const navigate = useNavigate();
   const TREND_COPY = {
     rising:  { icon: '↗', label: 'Rising trend', color: '#f97316' },
     falling: { icon: '↘', label: 'Falling trend', color: '#22c55e' },
@@ -433,9 +447,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
             Flood Advisory Bulletin
           </span>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-            Issued {new Date().toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </span>
+          <FreshnessLabel date={lastUpdated} />
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', padding: '18px 22px' }}>
@@ -460,6 +472,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
               }}>
                 {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
               </span>
+              <span className="stance" style={{ '--c': alertColor }}>{t(`alertLevel.${currentAlert}.stance`)}</span>
               {trend && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.9rem', fontWeight: 700, color: trend.color }}>
                   {trend.icon} {trend.label}
@@ -468,6 +481,15 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
             </div>
             <div style={{ fontSize: '1.05rem', color: 'var(--text-primary)', lineHeight: 1.55 }}>
               {t(`alertLevel.${currentAlert}.desc`)}
+            </div>
+            <LevelScale current={currentAlert} />
+            <div className="advisory-cta">
+              <button type="button" className={`btn ${isSevere ? 'btn-danger' : 'btn-primary'}`} onClick={() => navigate('/evacuation-map')}>
+                <LuRoute size={18} aria-hidden="true" /> {t('findEvacuationRoute')}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => navigate('/alerts-log')}>
+                <LuHistory size={16} aria-hidden="true" /> {t('viewAlertHistory')}
+              </button>
             </div>
           </div>
         </div>
@@ -479,20 +501,17 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
           <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
-            Dispatch Alert
+            {canSendAlert ? 'Dispatch Alert' : t('whatToDoNow')}
           </span>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', flex: 1 }}>
-          <div style={{
-            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-            borderRadius: 'var(--radius-sm)', padding: '12px 16px',
-          }}>
+          <div className="action-callout" style={{ '--lvl': alertColor }}>
             <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
               Recommended Action
             </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              {(currentAlert === 'WARNING' || currentAlert === 'CRITICAL') ? t('evacuateNow') + ' — ' + alertInfo.action : alertInfo.action}
+            <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.55, fontWeight: 500 }}>
+              {currentAlert === 'CRITICAL' ? <><strong>{t('evacuateNow')}.</strong> Proceed to the designated evacuation centers.</> : alertInfo.action}
             </div>
           </div>
 
@@ -641,7 +660,7 @@ function ConditionsStrip({ items }) {
             style={{
               padding: '16px 18px',
               borderLeft: i === 0 ? 'none' : '1px solid var(--blue-border)',
-              opacity: it.noData ? 0.55 : 1,
+              
             }}
           >
             <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
@@ -654,7 +673,7 @@ function ConditionsStrip({ items }) {
               {it.unit && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{it.unit}</span>}
             </div>
             <div style={{ fontSize: '0.68rem', color: it.badgeColor || 'var(--text-secondary)', marginTop: 5, fontWeight: it.badge ? 700 : 400 }}>
-              {it.badge || it.sub}
+              {it.badge || it.sub || (it.noData ? 'Waiting for the model server…' : null)}
             </div>
             {it.sparkline && it.sparkline.length >= 2 && (
               <div style={{ marginTop: 7 }}>
@@ -2098,6 +2117,7 @@ export default function Dashboard() {
           probabilityPct={prediction ? prediction.probability * 100 : null}
           onSendAlert={handleEvacuationAlert}
           canSendAlert={!!user && !userIsResident}
+          lastUpdated={prediction ? lastUpdated : null}
         />
       </div>
 
@@ -2212,6 +2232,7 @@ export default function Dashboard() {
                 windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
                 condition={weatherCondition}
                 minutely={minutelyForecast}
+                hourly={forecast}
                 focusRequest={focusRequest}
                 showFacilities={showFacilities}
                 setShowFacilities={setShowFacilities}

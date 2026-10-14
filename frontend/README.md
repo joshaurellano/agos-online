@@ -1,62 +1,62 @@
-# 🌊 AGOS — Flood Early Warning System
-### Capstone Prototype | Barangay Triangulo, Naga City
+# AGOS: Flood Early Warning System (web)
 
----
+React + Vite dashboard for Barangay Triangulo, Naga City. Staff manage alerts,
+residents and the daily flood log; the public can view the dashboard.
+Backend: Supabase (database, auth, edge functions). Hosting: Vercel.
 
-## Quick Start
+## Run locally
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Run development server
+cp .env.example .env.local   # fill in the DEV project values
 npm run dev
-
-# 3. Open in browser
-# http://localhost:5173
 ```
 
-## Demo Login Accounts
+| Variable | What |
+| --- | --- |
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable (anon) key |
+| `VITE_LIVE_URL` / `VITE_MOCK_URL` | Flood model API base addresses |
 
-| Username | Password | Role |
-|---|---|---|
-| `barangay_captain` | `agos2024` | Barangay Official |
-| `bgy_secretary` | `agos2024` | Barangay Secretary |
-| `drrm_officer` | `agos2024` | DRRM Team |
+Use the **dev** Supabase project locally. Alerts sent from a project that has
+SMS / Firebase keys reach real residents. Keep those keys out of dev.
 
----
+## Environments
 
-## Features
+| | Dev | Prod |
+| --- | --- | --- |
+| Supabase | separate project | live project |
+| SMS / push keys (`PHILSMS_*`, `FIREBASE_*`) | not set | set |
+| Cron `poll-flood` | off | every 5 min |
 
-- ✅ **Dashboard** — Alert level, live water gauge (auto-updates every 5s), weather forecast, one-click evacuation button
-- ✅ **Real-Time Water Level** — Chart + table view, visual gauge, color-coded thresholds
-- ✅ **Rainfall Accumulation** — Hourly/daily charts and tables from PAGASA
-- ✅ **Flood Zone Map** — SVG map of Barangay Triangulo with Zone 1–4 risk levels
-- ✅ **Historical Flood Events** — Timeline of past typhoons affecting the barangay
-- ✅ **Alert Notification Log** — Send/view/filter alerts; exportable log (SOP #6)
-- ✅ **Data Sources Panel** — Live status of PAGASA, DOST-ASTI, OCD Region V, LGU
+## Releasing a change
 
-## Research Question Mapping
+Always dev first, then prod, in this order:
 
-| RQ | Component |
-|---|---|
-| RQ1 & RQ2 — Current limitations | Historical Events, Data Sources Panel |
-| RQ3 — Functional requirements | Water Level Gauge, Rainfall Chart, Alert Levels |
-| RQ5 — Non-technical visualization | Flood Zone Map, Plain-language status, Evacuation button |
-| RQ6 — Usability | Mobile-responsive layout, Notification Log |
+1. **Database**: run new files in `supabase/migrations/` in the SQL editor.
+2. **Functions**: `npx supabase functions deploy --project-ref <ref> --use-api`
+3. **Web app**: push to the branch Vercel deploys.
 
-## Tech Stack
+Edge function secrets (Dashboard > Edge Functions > Secrets):
+`INTERNAL_FUNCTION_SECRET`, `MODEL_BASE_URL` (if your functions read it),
+`PHILSMS_*`, `FIREBASE_*` (prod only).
 
-- **React 18** + **Vite** — Frontend framework
-- **Recharts** — Charts (water level, rainfall)
-- **SweetAlert2** — Evacuation/alert modals
-- **DM Sans + Syne** — Typography
-- **Simulated Data** — PAGASA/DOST-ASTI data emulated for prototype
+## Accounts and roles
 
-## Notes
+- Staff sign in with a username (stored as `<username>@agos.local`).
+- Only admins create staff (**Staff > Add staff**), change roles, reset
+  passwords, and disable accounts. A disabled account loses access at once.
+  The last active admin cannot be demoted or disabled.
+- Residents are not given web logins. They are added to the SMS list from
+  **Add Resident** and use the mobile app.
+- First admin on a new project: create the Auth user in the dashboard, then
+  insert a `profiles` row with the admin role.
 
-> This is a **capstone prototype** using simulated data. PAGASA covers regional stations; a deployed local IoT sensor node would be required for hyper-local real-time accuracy (per Assumption 1 of the study).
+## Troubleshooting
 
----
-
-*AGOS v1.0 — Capstone Prototype · Bicol Region, Philippines*
+- **Signs in, then "This account has no profile"**: the Auth user has no
+  `profiles` row. Insert one with the same id.
+- **Blank page after deploy**: check the two `VITE_SUPABASE_*` variables are set
+  in Vercel; the app shows a "not set up" message when they are missing.
+- **Staff page says disabling needs the latest database update**: run the
+  newest migration.

@@ -1,3 +1,4 @@
+import { LuBellOff } from 'react-icons/lu';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { ErrorBanner } from '../components/ui';
@@ -263,12 +264,20 @@ export default function AlertsLogPage() {
       </div>
 
       {loading && alerts.length === 0 ? (
-        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', padding: '32px 0', textAlign: 'center' }}>
-          Loading…
+        <div className="state-stack" aria-busy="true" aria-label="Loading alerts">
+          {[0, 1, 2].map(i => <div key={i} className="skeleton" style={{ height: 76 }} />)}
         </div>
       ) : alerts.length === 0 ? (
-        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', padding: '32px 0', textAlign: 'center' }}>
-          {typeFilter !== 'ALL' ? 'No alerts at this severity.' : 'No alerts yet.'}
+        <div className="empty-state">
+          <div className="empty-state-icon" aria-hidden="true"><LuBellOff size={26} /></div>
+          <div className="empty-state-title">
+            {typeFilter !== 'ALL' ? 'No alerts at this severity' : 'No alerts yet'}
+          </div>
+          <p className="empty-state-text">
+            {typeFilter !== 'ALL'
+              ? 'Try a different severity filter to see other alerts.'
+              : 'When AGOS issues an advisory, warning or outlook, it will appear here.'}
+          </p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

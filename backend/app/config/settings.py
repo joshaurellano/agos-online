@@ -132,7 +132,7 @@ MODEL_REGISTRY = {
 # the "primary" entry when a caller doesn't ask for a specific algorithm.
 # Configurable via env var so the primary model can be swapped without a
 # code change.
-DEFAULT_MODEL_KEY = os.environ.get("FLOOD_DEFAULT_MODEL", "gru")
+DEFAULT_MODEL_KEY = os.environ.get("FLOOD_DEFAULT_MODEL", "lstm")
 
 SCALER_FILE = "flood_scaler.pkl"
 FEATURE_METADATA_FILE = "feature_metadata.json"
