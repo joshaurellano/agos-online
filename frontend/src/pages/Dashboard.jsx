@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { SectionLabel, ErrorBanner, ExpandableMapFrame, MapRecenterButton, TabBar } from '../components/ui';
@@ -21,7 +21,7 @@ import {
 } from 'recharts';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
-import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, FACILITY_ICON_PATHS, facilityIconSvgMarkup } from '../data/criticalFacilities';
+import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
 import { LuRoute, LuHistory, LuClock } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
@@ -34,7 +34,8 @@ import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
 import { logger } from '../lib/logger';
 
-import FloodMap3D from '../components/FloodMap3D';
+// Lazy: pulls in MapLibre and the building footprints only when the 3D map is shown.
+const FloodMap3D = lazy(() => import('../components/FloodMap3D'));
 import YourPlaceCard from '../components/YourPlaceCard';
 import RainOverlay from '../components/RainOverlay';
 import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
@@ -128,18 +129,17 @@ function createReportClusterIcon(cluster) {
   return L.divIcon({ html, className: '', iconSize: [34, 34] });
 }
 
-// Critical-facility pin (hospital/school/etc.) -- the flat icon glyph only,
-// no circle/box container, so it reads as a simple map symbol rather than a
-// badge.
+// Critical-facility pin (hospital/school/etc.): a round, colored badge with a
+// white glyph -- see facilityIconSvgMarkup().
 function createFacilityIcon(facility) {
   const style = FACILITY_STYLE[facility.facilityType];
-  const html = facilityIconSvgMarkup(facility.facilityType, { size: 24, color: style.color });
+  const html = facilityIconSvgMarkup(facility.facilityType, { size: 30, color: style.color });
   return L.divIcon({
     html,
     className: '',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12],
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -15],
   });
 }
 
@@ -1078,17 +1078,11 @@ const FACILITY_FILTERS = [
   ...FACILITY_TYPE_ORDER.map(key => ({ key, label: FACILITY_STYLE[key].label })),
 ];
 
-// Small inline icon, rendered directly from the shared path data -- no
-// circle or box behind it, just the glyph in its category color, the same
-// glyph used on both maps via facilityIconSvgMarkup().
-function FacilityIcon({ facilityType, size = 20, color }) {
-  const glyph = FACILITY_ICON_PATHS[facilityType];
-  if (!glyph) return null;
-  return (
-    <svg viewBox={glyph.viewBox} width={size} height={size} style={{ flexShrink: 0 }}>
-      <path d={glyph.d} fill={color} />
-    </svg>
-  );
+// Small round badge for the facilities list -- the same markup the maps use.
+function FacilityIcon({ facilityType, size = 30, color }) {
+  const html = facilityIconSvgMarkup(facilityType, { size, color });
+  if (!html) return null;
+  return <span style={{ display: 'inline-flex', flexShrink: 0 }} aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 function FacilityCard({ facility, onSelect }) {
@@ -1104,7 +1098,7 @@ function FacilityCard({ facility, onSelect }) {
         appearance: 'none', WebkitAppearance: 'none',
       }}
     >
-      <FacilityIcon facilityType={facility.facilityType} size={22} color={style.color} />
+      <FacilityIcon facilityType={facility.facilityType} size={32} color={style.color} />
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
           {facility.name}
@@ -1724,7 +1718,6 @@ function FloodForecast14Day() {
                     minWidth: 62, flexShrink: 0, textAlign: 'center',
                     background: isToday ? riskColor(pct) : bandColor(d.confidence_band) + fillAlpha,
                     border: `1px solid ${isToday ? riskColor(pct) : bandColor(d.confidence_band) + borderAlpha}`,
-                    borderTop: `2px solid ${isToday ? riskColor(pct) : bandColor(d.confidence_band)}`,
                     borderRadius: 'var(--radius-sm)', padding: '8px 6px',
                     opacity: d.confidence_band === 'outlook-only' ? 0.75 : 1,
                     cursor: 'pointer', font: 'inherit', transition: 'transform 0.15s ease, opacity 0.15s ease',
@@ -1773,6 +1766,24 @@ function FloodForecast14Day() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+// 3D is the showpiece (rain, wind, timeline) but needs WebGL and a reasonably capable
+// device, so default to it only when that looks safe. A choice the user made wins.
+const MAP_VIEW_KEY = 'agos-map-view';
+function defaultMapView() {
+  try {
+    const saved = localStorage.getItem(MAP_VIEW_KEY);
+    if (saved === '2d' || saved === '3d') return saved;
+  } catch { /* storage unavailable */ }
+  try {
+    if (navigator.connection?.saveData) return '2d';
+    if (navigator.deviceMemory && navigator.deviceMemory < 4) return '2d';
+    if (navigator.hardwareConcurrency && navigator.hardwareConcurrency < 4) return '2d';
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return '2d';
+    const canvas = document.createElement('canvas');
+    return canvas.getContext('webgl2') || canvas.getContext('webgl') ? '3d' : '2d';
+  } catch { return '2d'; }
+}
+
 export default function Dashboard() {
   const { user }    = useAuth();
   const { apiBaseUrl } = useDataSource();
@@ -1788,7 +1799,11 @@ export default function Dashboard() {
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
   const [probHistory, setProbHistory]         = useState([]);
-  const [mapView, setMapView] = useState('2d'); // '2d' | '3d'
+  const [mapView, setMapView] = useState(defaultMapView); // '2d' | '3d'
+  const chooseMapView = (v) => {
+    setMapView(v);
+    try { localStorage.setItem(MAP_VIEW_KEY, v); } catch { /* ignore */ }
+  };
   // { id, ts } | null -- set when a Critical Facilities card is clicked;
   // ts makes each click a distinct object so re-clicking the same facility
   // still re-triggers the fly-to effect below.
@@ -1836,19 +1851,20 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const showStaffTab = !!user && !userIsResident;
   const tabs = [
-    { key: 'map',      label: 'Map' },
     { key: 'forecast', label: 'Forecast' },
     { key: 'weather',  label: 'Weather' },
+    { key: 'map',      label: 'Facilities & Levels' },
     ...(showStaffTab ? [{ key: 'staff', label: 'Staff' }] : []),
   ];
   const requestedTab = searchParams.get('tab');
-  const activeTab = tabs.some(t => t.key === requestedTab) ? requestedTab : 'map';
+  const defaultTab = tabs[0].key;
+  const activeTab = tabs.some(t => t.key === requestedTab) ? requestedTab : defaultTab;
   const tabAnchorRef = useRef(null);
 
   const selectTab = useCallback((key) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (key === 'map') next.delete('tab'); else next.set('tab', key);
+      if (key === 'forecast') next.delete('tab'); else next.set('tab', key);
       return next;
     }, { replace: true });
     // If the tab bar is already stuck to the top, start the new tab from
@@ -2080,6 +2096,114 @@ export default function Dashboard() {
         hasPrediction={!!prediction}
       />
 
+      {/* ── 4. Flood Status Map ──────────────────────────────────── */}
+      <div ref={mapCardRef} className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
+        <div className="title-band-bar" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+          padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
+        }}>
+          <div>
+            <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                Flood Status Map — Barangay Triangulo
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
+              Tap a pin to see a report.
+            </div>
+          </div>
+          {mapView === '2d' && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Pending report</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Verified report</span>
+              </div>
+            </div>
+          )}
+          <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+            {['2d', '3d'].map(v => (
+              <button key={v} className="toggle-pill" onClick={() => chooseMapView(v)} style={{
+                padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+                letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+                background: mapView === v ? 'var(--accent)' : 'transparent',
+                color: mapView === v ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}>
+                {v === '2d' ? '2D View' : '3D View'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <ExpandableMapFrame height={typeof window !== 'undefined' && window.innerWidth < 700 ? 'clamp(460px, 72vh, 620px)' : 'clamp(560px, 84vh, 940px)'}>
+        {mapView === '2d' ? (
+          <FloodMap
+            currentAlert={currentAlert}
+            rainfallMm={rainfallMm}
+            windSignal={prediction?.live_metrics?.wind_signal}
+            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
+            condition={weatherCondition}
+            focusRequest={focusRequest}
+            showFacilities={showFacilities}
+            setShowFacilities={setShowFacilities}
+          />
+        ) : (
+          <Suspense fallback={<div className="skeleton" style={{ width: '100%', height: '100%', minHeight: 360 }} role="status" aria-label="Loading 3D map" />}>
+          <FloodMap3D
+            probabilityPct={prediction ? Math.round(prediction.probability * 100) : null}
+            currentAlert={currentAlert}
+            boundary={TRIANGULO_BOUNDARY}
+            alertColors={ALERT_COLORS}
+            rainfallMm={rainfallMm}
+            windSignal={prediction?.live_metrics?.wind_signal}
+            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
+            condition={weatherCondition}
+            minutely={minutelyForecast}
+            hourly={forecast}
+            focusRequest={focusRequest}
+            showFacilities={showFacilities}
+            setShowFacilities={setShowFacilities}
+          />
+          </Suspense>
+        )}
+        </ExpandableMapFrame>
+
+        {/* Cartographic legend — swatch, classification, threshold — rather
+            than a row of dots, so the map reads like a hazard map rather
+            than a status badge. */}
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px',
+          padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
+        }}>
+          <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+            Legend
+          </span>
+          {[
+            ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
+          ].map(([key, range]) => (
+            <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem' }}>
+              <span style={{
+                width: 10, height: 10, borderRadius: 2,
+                background: ALERT_COLORS[key], opacity: currentAlert === key ? 1 : 0.35,
+                flexShrink: 0,
+              }} />
+              <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
+                {key}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+            Approximate barangay boundary · &copy; OpenStreetMap contributors
+          </span>
+        </div>
+      </div>
+
+
       {/* ── 3. Current Conditions Strip ─────────────────────────── */}
       {/* Same two cards for every role -- residents used to see Alert
           Level + Rainfall (Alert Level is already shown above in the
@@ -2126,110 +2250,6 @@ export default function Dashboard() {
 
       {renderPanel('map', (
         <>
-          {/* ── 4. Flood Status Map ──────────────────────────────────── */}
-          <div ref={mapCardRef} className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
-            <div className="title-band-bar" style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-              padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
-            }}>
-              <div>
-                <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                    Flood Status Map — Barangay Triangulo
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
-                  Tap a pin to see a report.
-                </div>
-              </div>
-              {mapView === '2d' && (
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Pending report</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Verified report</span>
-                  </div>
-                </div>
-              )}
-              <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
-                {['2d', '3d'].map(v => (
-                  <button key={v} className="toggle-pill" onClick={() => setMapView(v)} style={{
-                    padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
-                    letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
-                    background: mapView === v ? 'var(--accent)' : 'transparent',
-                    color: mapView === v ? '#fff' : 'var(--text-muted)',
-                    transition: 'all 0.2s',
-                  }}>
-                    {v === '2d' ? '2D View' : '3D View'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <ExpandableMapFrame height={480}>
-            {mapView === '2d' ? (
-              <FloodMap
-                currentAlert={currentAlert}
-                rainfallMm={rainfallMm}
-                windSignal={prediction?.live_metrics?.wind_signal}
-                windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
-                condition={weatherCondition}
-                focusRequest={focusRequest}
-                showFacilities={showFacilities}
-                setShowFacilities={setShowFacilities}
-              />
-            ) : (
-              <FloodMap3D
-                currentAlert={currentAlert}
-                boundary={TRIANGULO_BOUNDARY}
-                alertColors={ALERT_COLORS}
-                rainfallMm={rainfallMm}
-                windSignal={prediction?.live_metrics?.wind_signal}
-                windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
-                condition={weatherCondition}
-                minutely={minutelyForecast}
-                hourly={forecast}
-                focusRequest={focusRequest}
-                showFacilities={showFacilities}
-                setShowFacilities={setShowFacilities}
-              />
-            )}
-            </ExpandableMapFrame>
-
-            {/* Cartographic legend — swatch, classification, threshold — rather
-                than a row of dots, so the map reads like a hazard map rather
-                than a status badge. */}
-            <div style={{
-              display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px',
-              padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
-            }}>
-              <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                Legend
-              </span>
-              {[
-                ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
-              ].map(([key, range]) => (
-                <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem' }}>
-                  <span style={{
-                    width: 10, height: 10, borderRadius: 2,
-                    background: ALERT_COLORS[key], opacity: currentAlert === key ? 1 : 0.35,
-                    flexShrink: 0,
-                  }} />
-                  <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
-                    {key}
-                  </span>
-                  <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
-                </span>
-              ))}
-              <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--text-muted)' }}>
-                Approximate barangay boundary · &copy; OpenStreetMap contributors
-              </span>
-            </div>
-          </div>
-
           {/* ── 5. Critical Facilities Near You ─────────────────────── */}
           {/* Only shown while the Facilities layer is toggled on (same toggle
               used on both maps) -- one switch controls whether the layer exists

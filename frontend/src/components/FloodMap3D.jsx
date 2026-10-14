@@ -4,7 +4,11 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
 import trianguloFloodHazard from '../data/trianguloFloodHazard.json';
-import trianguloBuildings from '../data/trianguloBuildings.json';
+// ~850 KB of footprints: fetched as its own chunk after the map is up instead of
+// blocking the first paint, and cached for style switches.
+let buildingsPromise = null;
+const loadBuildings = () => (buildingsPromise ??= import('../data/trianguloBuildings.json').then((m) => m.default));
+const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 import { CRITICAL_FACILITIES, FACILITY_STYLE, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
@@ -163,7 +167,7 @@ function roadWidthExpression() {
 // Plain DOM element for a maplibregl.Marker -- these live outside the
 // style/source/layer system entirely, so (unlike everything in
 // addDataLayers) they survive a setStyle() basemap switch without needing
-// to be re-added. Just the flat icon glyph, no circle/box behind it.
+// to be re-added. Round badge, same markup as the 2D map.
 function createFacilityMarkerEl(facility) {
   const style = FACILITY_STYLE[facility.facilityType];
   const el = document.createElement('div');
@@ -171,7 +175,7 @@ function createFacilityMarkerEl(facility) {
   el.style.alignItems = 'center';
   el.style.justifyContent = 'center';
   el.style.cursor = 'pointer';
-  el.innerHTML = facilityIconSvgMarkup(facility.facilityType, { size: 24, color: style.color });
+  el.innerHTML = facilityIconSvgMarkup(facility.facilityType, { size: 30, color: style.color });
   return el;
 }
 
@@ -195,7 +199,7 @@ function LayerChip({ active, label, title, onClick }) {
   );
 }
 
-export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly, focusRequest, showFacilities, setShowFacilities }) {
+export default function FloodMap3D({ currentAlert, probabilityPct = null, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly, focusRequest, showFacilities, setShowFacilities }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
@@ -333,7 +337,10 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     // The basemap's own 3D buildings are hidden while this layer is on so
     // the two don't overlap.
     if (!map.getSource('triangulo-buildings')) {
-      map.addSource('triangulo-buildings', { type: 'geojson', data: trianguloBuildings });
+      map.addSource('triangulo-buildings', { type: 'geojson', data: EMPTY_FC });
+      loadBuildings().then((data) => {
+        try { map.getSource('triangulo-buildings')?.setData(data); } catch { /* map was torn down */ }
+      });
     }
     if (!map.getLayer('triangulo-buildings-3d')) {
       map.addLayer({
@@ -707,7 +714,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
             fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.06em',
             color: alertColor, textTransform: 'uppercase',
           }}>
-            {currentAlert}
+            {currentAlert}{probabilityPct != null ? ` · ${probabilityPct}%` : ''}
           </span>
           {forecastFrame && (
             <span style={{

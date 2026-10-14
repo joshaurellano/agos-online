@@ -125,14 +125,20 @@ export const FACILITY_ICON_PATHS = {
   },
 };
 
-// Builds a bare <svg> string (path only, no wrapper box/circle) for
-// non-React DOM contexts -- Leaflet L.divIcon html and MapLibre marker
-// elements. A subtle white outline (stroke) stands in for the old circle
-// background, keeping the icon legible over a busy hazard-colored map
-// without boxing it in.
-export function facilityIconSvgMarkup(facilityType, { size = 20, color } = {}) {
+// Builds a round "badge" <svg> string for non-React DOM contexts -- Leaflet
+// L.divIcon html and MapLibre marker elements: a colored circle with a white
+// ring, a soft glossy highlight, and a chubby white glyph inside. Same badge
+// everywhere (both maps and the facilities list) so a category always looks
+// the same.
+export function facilityIconSvgMarkup(facilityType, { size = 30, color } = {}) {
   const glyph = FACILITY_ICON_PATHS[facilityType];
-  const fill = color || (FACILITY_STYLE[facilityType] && FACILITY_STYLE[facilityType].color) || '#333';
   if (!glyph) return '';
-  return `<svg viewBox="${glyph.viewBox}" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));"><path d="${glyph.d}" fill="${fill}" stroke="#fff" stroke-width="10" paint-order="stroke"/></svg>`;
+  const base = color || (FACILITY_STYLE[facilityType] && FACILITY_STYLE[facilityType].color) || '#333';
+  return `<svg class="facility-badge" viewBox="0 0 40 40" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.35));transition:transform 0.15s ease;">`
+    + `<defs><radialGradient id="fb-shine" cx="32%" cy="26%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity="0.5"/><stop offset="0.55" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>`
+    + `<circle cx="20" cy="20" r="18" fill="${base}" stroke="#fff" stroke-width="3"/>`
+    + `<circle cx="20" cy="20" r="18" fill="url(#fb-shine)"/>`
+    + `<svg x="10" y="10" width="20" height="20" viewBox="${glyph.viewBox}" overflow="visible">`
+    + `<path d="${glyph.d}" fill="#fff" stroke="#fff" stroke-width="22" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+    + `</svg>`;
 }
