@@ -46,3 +46,4 @@ app.*.map.json
 
 .env.json
 .env
+.env.dev

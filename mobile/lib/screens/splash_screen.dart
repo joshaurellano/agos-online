@@ -19,7 +19,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import '../firebase_options.dart';
+import '../config/app_env.dart';
 import '../main.dart';
 import '../services/app_settings.dart';
 import '../services/connectivity_service.dart';
@@ -116,13 +116,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Future<void> _runInit() async {
     try {
       _setStatus('Connecting to Firebase…');
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      await Firebase.initializeApp(options: AppEnvironment.firebaseOptions);
       // Hook up crash reporting first so anything that goes wrong in the
       // rest of startup is captured too (respects the Settings opt-out).
       await CrashReporting.init();
 
       _setStatus('Loading configuration…');
-      await dotenv.load(fileName: '.env');
+      await dotenv.load(fileName: AppEnvironment.envFile);
 
       _setStatus('Connecting to AGOS…');
       await Supabase.initialize(

@@ -68,7 +68,14 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - .env
+    # Environment files are flavor-specific: dev builds bundle .env.dev,
+    # prod builds bundle .env (see lib/config/app_env.dart).
+    - path: .env
+      flavors:
+        - prod
+    - path: .env.dev
+      flavors:
+        - dev
     - assets/data/triangulo_roads.json
     - lib/assets/agos_icon.png
     # Plus Jakarta Sans, bundled so the app's typography renders on a first

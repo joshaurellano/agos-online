@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'config/app_env.dart';
 import 'services/accessibility_settings.dart';
 import 'services/app_settings.dart';
 import 'services/auth_service.dart';
@@ -128,6 +129,16 @@ class AgosApp extends StatelessWidget {
             if (a11y.highContrast) {
               wrapped = ColorFiltered(
                 colorFilter: ColorFilter.matrix(AccessibilitySettings.highContrastMatrix),
+                child: wrapped,
+              );
+            }
+            // Test builds wear a visible ribbon so they are never mistaken
+            // for the real app (see config/app_env.dart).
+            if (AppEnvironment.isDev) {
+              wrapped = Banner(
+                message: 'DEV',
+                location: BannerLocation.topEnd,
+                color: const Color(0xFFEA580C),
                 child: wrapped,
               );
             }
