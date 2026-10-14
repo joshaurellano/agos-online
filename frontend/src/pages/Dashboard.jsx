@@ -35,6 +35,7 @@ import { isAdmin, isResident } from '../lib/roles';
 import { logger } from '../lib/logger';
 
 import FloodMap3D from '../components/FloodMap3D';
+import YourPlaceCard from '../components/YourPlaceCard';
 import RainOverlay from '../components/RainOverlay';
 import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
 import WeatherForecast from '../components/WeatherForecast';
@@ -149,56 +150,7 @@ const TRIANGULO_AREA = {
   coords: '13.614°N, 123.192°E',
 };
 
-const TRIANGULO_BOUNDARY = [
-  { lat: 13.622162, lng: 123.193368 },
-  { lat: 13.621778, lng: 123.195934 },
-  { lat: 13.621222, lng: 123.195882 },
-  { lat: 13.621053, lng: 123.196923 },
-  { lat: 13.620874, lng: 123.197226 },
-  { lat: 13.619826, lng: 123.196902 },
-  { lat: 13.619792, lng: 123.197160 },
-  { lat: 13.619419, lng: 123.197081 },
-  { lat: 13.619310, lng: 123.197670 },
-  { lat: 13.617688, lng: 123.197134 },
-  { lat: 13.613977, lng: 123.197774 },
-  { lat: 13.611311, lng: 123.195202 },
-  { lat: 13.607139, lng: 123.197145 },
-  { lat: 13.602733, lng: 123.187140 },
-  { lat: 13.611057, lng: 123.185706 },
-  { lat: 13.611714, lng: 123.186500 },
-  { lat: 13.611770, lng: 123.186722 },
-  { lat: 13.611529, lng: 123.187289 },
-  { lat: 13.611511, lng: 123.187524 },
-  { lat: 13.611704, lng: 123.187806 },
-  { lat: 13.611891, lng: 123.187920 },
-  { lat: 13.612091, lng: 123.187856 },
-  { lat: 13.612502, lng: 123.187898 },
-  { lat: 13.612609, lng: 123.187964 },
-  { lat: 13.612574, lng: 123.188154 },
-  { lat: 13.612936, lng: 123.188138 },
-  { lat: 13.613193, lng: 123.187934 },
-  { lat: 13.613532, lng: 123.188201 },
-  { lat: 13.613921, lng: 123.187954 },
-  { lat: 13.613929, lng: 123.187798 },
-  { lat: 13.614044, lng: 123.187740 },
-  { lat: 13.614219, lng: 123.187710 },
-  { lat: 13.614300, lng: 123.187333 },
-  { lat: 13.616435, lng: 123.187325 },
-  { lat: 13.616637, lng: 123.184921 },
-  { lat: 13.617106, lng: 123.184082 },
-  { lat: 13.618525, lng: 123.185204 },
-  { lat: 13.618746, lng: 123.185162 },
-  { lat: 13.619016, lng: 123.185245 },
-  { lat: 13.619187, lng: 123.185523 },
-  { lat: 13.619383, lng: 123.185558 },
-  { lat: 13.620149, lng: 123.186123 },
-  { lat: 13.620387, lng: 123.186049 },
-  { lat: 13.620389, lng: 123.186138 },
-  { lat: 13.621316, lng: 123.187165 },
-  { lat: 13.621189, lng: 123.187267 },
-  { lat: 13.622423, lng: 123.189744 },
-  { lat: 13.622633, lng: 123.189794 },
-];
+import { TRIANGULO_BOUNDARY } from '../data/triangulo';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -2120,6 +2072,13 @@ export default function Dashboard() {
           lastUpdated={prediction ? lastUpdated : null}
         />
       </div>
+
+      {/* ── 2b. Your Place: personal flood check for one saved spot ───── */}
+      <YourPlaceCard
+        currentAlert={currentAlert}
+        probability={prediction ? prediction.probability : null}
+        hasPrediction={!!prediction}
+      />
 
       {/* ── 3. Current Conditions Strip ─────────────────────────── */}
       {/* Same two cards for every role -- residents used to see Alert
