@@ -138,7 +138,6 @@ function StatusBanner({ total, peak, acc3hr, acc6hr, period, hasData }) {
       padding: '14px 18px', marginBottom: 18,
       background: `${cat.color}08`,
       border: `1px solid ${cat.color}35`,
-      borderLeft: `4px solid ${cat.color}`,
       borderRadius: 'var(--radius-sm)',
     }}>
       <span className="rain-banner-icon" style={{ color: cat.color, background: `${cat.color}1f` }}><LuCloudRain size={22} aria-hidden="true" /></span>
@@ -319,7 +318,7 @@ export default function RainfallPage() {
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '9px 14px', marginBottom: 14,
           background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)',
-          borderLeft: '3px solid #ef4444', borderRadius: 'var(--radius-sm)',
+          borderRadius: 'var(--radius-sm)',
           fontSize: '0.8rem', color: '#f87171',
         }}>
           <strong>Data may be stale</strong> — last update was over 5 minutes ago. Check backend connectivity.

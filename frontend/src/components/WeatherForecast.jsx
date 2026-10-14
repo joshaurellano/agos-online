@@ -378,7 +378,6 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                 minWidth: 74, flexShrink: 0, cursor: 'pointer',
                 padding: '10px 10px 8px', borderRadius: 'var(--radius-sm)',
                 border: `1px solid ${active ? accent : accent + tabBorderAlpha}`,
-                borderTop: `2px solid ${accent}`,
                 background: active ? accent : accent + tabFillAlpha,
                 color: active ? '#fff' : 'var(--text-primary)',
                 transition: 'all 0.15s ease',

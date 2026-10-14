@@ -343,7 +343,7 @@ const algorithmCards = modelOptions.map((opt) => {
           </div>
         </div>
 
-        <div className="card" style={{ borderTop: `6px solid ${selectedAlert.color}`, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>
             Timeline: <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{selectedForecast.day}</span>
           </div>
