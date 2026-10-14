@@ -62,6 +62,29 @@ android {
         }
     }
 
+    // ── Environments ────────────────────────────────────────────────────────
+    // dev  = separate Firebase project (and Supabase project) for testing, so a
+    //        test alert can never reach a real resident's phone. Installs
+    //        side by side with the real app (id + ".dev", name "AGOS Dev").
+    // prod = the real app.
+    // The google-services plugin automatically reads
+    //   src/dev/google-services.json   for the dev flavor
+    //   src/prod/google-services.json  for the prod flavor
+    // Run with:  flutter run --flavor dev      /      flutter run --flavor prod
+    flavorDimensions += "env"
+    productFlavors {
+        create("prod") {
+            dimension = "env"
+            resValue("string", "app_name", "AGOS")
+        }
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            resValue("string", "app_name", "AGOS Dev")
+        }
+    }
+
     buildTypes {
         release {
             signingConfig = if (hasReleaseKey) signingConfigs.getByName("release")

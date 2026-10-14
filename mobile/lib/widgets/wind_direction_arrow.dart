@@ -29,18 +29,25 @@ String? degToCardinal(double? deg) {
 class WindDirectionArrow extends StatelessWidget {
   final double? deg;
   final double size;
-  final Color color;
+  // null = the theme's primary text color (resolved in build, because the
+  // theme color can change with light/dark mode and therefore cannot be a
+  // const default value).
+  final Color? color;
 
   const WindDirectionArrow({
     super.key,
     required this.deg,
     this.size = 16,
-    this.color = const Color(0xFFE2EAF5),
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     if (deg == null || deg!.isNaN) return const SizedBox.shrink();
+    final effectiveColor = color ??
+        Theme.of(context).textTheme.bodyLarge?.color ??
+        Theme.of(context).colorScheme.onSurface;
+
     return AnimatedRotation(
       // Fractional turns, not degrees -- matches the web's CSS
       // `rotate(${deg}deg)` + 0.6s transition, including the same
@@ -51,7 +58,7 @@ class WindDirectionArrow extends StatelessWidget {
       curve: Curves.easeInOut,
       child: CustomPaint(
         size: Size(size, size),
-        painter: _ArrowPainter(color: color),
+        painter: _ArrowPainter(color: effectiveColor),
       ),
     );
   }

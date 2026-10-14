@@ -15,12 +15,14 @@ export const LANGUAGES = [
 
 export const STRINGS = {
   en: {
+    whatToDoNow: 'What to do now',
+    viewAlertHistory: 'View alert history',
     dashboardTitle: 'Flood Early Warning Dashboard',
     alertLevel: {
-      NORMAL:   { name: 'Normal',   desc: 'No flood risk detected. Routine monitoring continues.' },
-      ADVISORY: { name: 'Advisory', desc: 'Conditions are being watched closely. No action needed yet.' },
-      WARNING:  { name: 'Warning',  desc: 'Flooding is possible within hours. Prepare to move to higher ground.' },
-      CRITICAL: { name: 'Critical', desc: 'Flooding is happening or imminent. Evacuate low-lying areas now.' },
+      NORMAL:   { stance: 'Stay informed', name: 'Normal',   desc: 'No flood risk detected. Routine monitoring continues.' },
+      ADVISORY: { stance: 'Be alert', name: 'Advisory', desc: 'Conditions are being watched closely. No action needed yet.' },
+      WARNING:  { stance: 'Be prepared', name: 'Warning',  desc: 'Flooding is possible within hours. Prepare to move to higher ground.' },
+      CRITICAL: { stance: 'Take action', name: 'Critical', desc: 'Flooding is happening or imminent. Evacuate low-lying areas now.' },
     },
     alertChanged: 'Alert level changed to',
     skipToContent: 'Skip to main content',
@@ -39,12 +41,14 @@ export const STRINGS = {
     disclaimer: 'For official advisories, check with the Barangay or CDRRMO. In an emergency, follow their instructions.',
   },
   fil: {
+    whatToDoNow: 'Ano ang gagawin ngayon',
+    viewAlertHistory: 'Tingnan ang kasaysayan ng alerto',
     dashboardTitle: 'Dashboard ng Babalang Pambaha',
     alertLevel: {
-      NORMAL:   { name: 'Normal',   desc: 'Walang nakitang panganib ng baha. Patuloy ang regular na pagmamanman.' },
-      ADVISORY: { name: 'Advisory', desc: 'Sinusubaybayan nang mabuti ang kalagayan. Wala pang kailangang gawin.' },
-      WARNING:  { name: 'Warning',  desc: 'Posibleng magbaha sa loob ng ilang oras. Maghanda nang lumipat sa mataas na lugar.' },
-      CRITICAL: { name: 'Kritikal', desc: 'Nagbabaha na o malapit nang magbaha. Lumikas agad sa mga mababang lugar.' },
+      NORMAL:   { stance: 'Manatiling alerto', name: 'Normal',   desc: 'Walang nakitang panganib ng baha. Patuloy ang regular na pagmamanman.' },
+      ADVISORY: { stance: 'Maging alerto', name: 'Advisory', desc: 'Sinusubaybayan nang mabuti ang kalagayan. Wala pang kailangang gawin.' },
+      WARNING:  { stance: 'Maghanda', name: 'Warning',  desc: 'Posibleng magbaha sa loob ng ilang oras. Maghanda nang lumipat sa mataas na lugar.' },
+      CRITICAL: { stance: 'Kumilos na', name: 'Kritikal', desc: 'Nagbabaha na o malapit nang magbaha. Lumikas agad sa mga mababang lugar.' },
     },
     alertChanged: 'Nagbago ang antas ng alerto sa',
     skipToContent: 'Lumaktaw sa pangunahing nilalaman',
@@ -63,12 +67,14 @@ export const STRINGS = {
     disclaimer: 'Para sa opisyal na abiso, makipag-ugnayan sa Barangay o CDRRMO. Sa oras ng emergency, sundin ang kanilang mga tagubilin.',
   },
   bcl: {
+    whatToDoNow: 'Ano an gigibuhon ngonyan',
+    viewAlertHistory: 'Hilingon an kasaysayan kan alerto',
     dashboardTitle: 'Dashboard kan Ampat na Babala sa Baha',
     alertLevel: {
-      NORMAL:   { name: 'Normal',   desc: 'Mayong nahiling na peligro sa baha. Padagos an regular na pagbantay.' },
-      ADVISORY: { name: 'Advisory', desc: 'Binabantayan an kamugtakan. Mayo pang kaipuhan na gibuhon.' },
-      WARNING:  { name: 'Warning',  desc: 'Posibleng magbaha sa laog nin pirang oras. Mag-andam na maglipat sa halangkaw na lugar.' },
-      CRITICAL: { name: 'Kritikal', desc: 'Nagbabaha na o hampang-hampang na magbaha. Lumikas tulos sa hababang lugar.' },
+      NORMAL:   { stance: 'Magbantay sa abiso', name: 'Normal',   desc: 'Mayong nahiling na peligro sa baha. Padagos an regular na pagbantay.' },
+      ADVISORY: { stance: 'Magin alerto', name: 'Advisory', desc: 'Binabantayan an kamugtakan. Mayo pang kaipuhan na gibuhon.' },
+      WARNING:  { stance: 'Mag-andam', name: 'Warning',  desc: 'Posibleng magbaha sa laog nin pirang oras. Mag-andam na maglipat sa halangkaw na lugar.' },
+      CRITICAL: { stance: 'Kumilos na', name: 'Kritikal', desc: 'Nagbabaha na o hampang-hampang na magbaha. Lumikas tulos sa hababang lugar.' },
     },
     evacuateNow: 'Lumikas na ngonyan',
     findEvacuationRoute: 'Hanapon an pinakaharani na ruta nin paglikas',

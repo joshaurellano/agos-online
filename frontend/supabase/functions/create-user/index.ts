@@ -1,104 +1,56 @@
-import { createClient } from '@supabase/supabase-js'
+import {
+  audit, corsHeaders, json, requireAdmin,
+  USERNAME_RE, PHONE_RE, RESIDENT_ROLE_ID, validPassword,
+} from '../_shared/admin-auth.ts'
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// Creates a staff login (admins only). Residents never get a login here.
 
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  const ctx = await requireAdmin(req)
+  if (ctx instanceof Response) return ctx
+  const { admin, callerId } = ctx
 
-  const body = await req.json()
-  const { name, username, password, role_id, phone } = body
+  let body: Record<string, unknown>
+  try { body = await req.json() } catch { return json({ error: 'Invalid request' }, 400) }
 
-  const authHeader = req.headers.get("Authorization")
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : ''
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : ''
+  const password = body.password
+  const roleId = body.role_id
 
-  if (!authHeader) {
-    return new Response("Missing auth header", {
-      status: 401,
-      headers: corsHeaders
-    })
-  }
+  if (!name || name.length > 100) return json({ error: 'Enter a name.' }, 400)
+  if (!USERNAME_RE.test(username)) return json({ error: 'Username must be 3-30 characters: letters, numbers, . _ -' }, 400)
+  if (!PHONE_RE.test(phone)) return json({ error: 'Phone must be 11 digits starting with 09.' }, 400)
+  if (!validPassword(password)) return json({ error: 'Password needs 8+ characters with letters and numbers.' }, 400)
+  if (!Number.isInteger(roleId) || roleId === RESIDENT_ROLE_ID) return json({ error: 'Choose a staff role.' }, 400)
 
-  const token = authHeader.replace("Bearer ", "")
+  const { data: role } = await admin.from('roles').select('role_id').eq('role_id', roleId).maybeSingle()
+  if (!role) return json({ error: 'Choose a staff role.' }, 400)
 
-  const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-)
-
-const { data: userData, error: userError } =
-  await supabaseAdmin.auth.getUser(token)
-
-  if (userError || !userData.user) {
-    return new Response("Invalid token", {
-      status: 401,
-      headers: corsHeaders
-    })
-  }
-
-
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from("profiles")
-    .select("roles(role_desc)")
-    .eq("id", userData.user.id)
-    .single()
-
-  if (profileError) {
-  return new Response("Failed to fetch profile", { status: 500, headers: corsHeaders })
-}
-
-  if (profile?.roles?.role_desc !== "Admin") {
-    return new Response("Forbidden", {
-      status: 403,
-      headers: corsHeaders
-    })
-  }
-
-
-  const email = `${username}@agos.local`
-
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
+  const { data, error } = await admin.auth.admin.createUser({
+    email: `${username}@agos.local`,
     password,
-    email_confirm: true
+    email_confirm: true,
   })
-console.log("CREATE USER ERROR:", JSON.stringify(error))
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
-      headers: corsHeaders
-    })
+  if (error || !data.user) {
+    const taken = /already.*registered|already exists/i.test(error?.message ?? '')
+    return json({ error: taken ? 'That username is already taken.' : 'Could not create the login.' }, taken ? 409 : 400)
   }
 
-  const { error: insertError } = await supabaseAdmin
-    .from("profiles")
-    .insert({
-      id: data.user.id,
-      name,
-      username,
-      role_id,
-      phone
-    })
-
+  const { error: insertError } = await admin.from('profiles').insert({
+    id: data.user.id, name, username, role_id: roleId, phone,
+  })
   if (insertError) {
-    // Don't leave a login behind with no profile (the username would be
-    // stuck): undo the auth user we just created.
-    await supabaseAdmin.auth.admin.deleteUser(data.user.id)
-    return new Response(JSON.stringify({ error: insertError.message }), {
-      status: 400,
-      headers: corsHeaders
-    })
+    // Don't leave a login behind with no profile (the username would be stuck).
+    await admin.auth.admin.deleteUser(data.user.id)
+    console.error('profile insert failed:', insertError.message)
+    return json({ error: 'Could not create the account.' }, 400)
   }
 
-  return new Response(JSON.stringify({ success: true }), {
-    headers: {
-      "Content-Type": "application/json",
-      ...corsHeaders
-    }
-  })
+  await audit(admin, callerId, 'STAFF_CREATED', data.user.id, null, { username, name, role_id: roleId })
+  return json({ success: true })
 })

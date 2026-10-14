@@ -13,12 +13,13 @@
 // fades into MainShell.
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import '../firebase_options.dart';
+import '../config/app_env.dart';
 import '../main.dart';
 import '../services/app_settings.dart';
 import '../services/connectivity_service.dart';
@@ -115,13 +116,13 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Future<void> _runInit() async {
     try {
       _setStatus('Connecting to Firebase…');
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      await Firebase.initializeApp(options: AppEnvironment.firebaseOptions);
       // Hook up crash reporting first so anything that goes wrong in the
       // rest of startup is captured too (respects the Settings opt-out).
       await CrashReporting.init();
 
       _setStatus('Loading configuration…');
-      await dotenv.load(fileName: '.env');
+      await dotenv.load(fileName: AppEnvironment.envFile);
 
       _setStatus('Connecting to AGOS…');
       await Supabase.initialize(
@@ -170,13 +171,18 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: AppColors.systemOverlayOnCanvas,
+        child: _buildScreen(context),
+      );
+
+  Widget _buildScreen(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const DecoratedBox(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -261,8 +267,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     child: Column(
                       children: [
                         ShaderMask(
-                          shaderCallback: (bounds) => const LinearGradient(
-                            colors: [Colors.white, AppColors.accent],
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: [AppColors.isLight ? AppColors.textPri : Colors.white, AppColors.accent],
                           ).createShader(bounds),
                           child: const Text(
                             'AGOS',

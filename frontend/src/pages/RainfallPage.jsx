@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
 import { supabase } from '../lib/supabaseClient';
 import { SectionLabel } from '../components/ui';
+import { LuChartColumn, LuTable, LuTimer, LuGauge, LuCloudRain, LuCloudOff, LuDroplets, LuSun, LuTrendingUp } from 'react-icons/lu';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -111,12 +112,25 @@ function getRainfallEmoji(mm, period = 'hourly') {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatusBanner({ total, peak, acc3hr, acc6hr, period }) {
+function StatusBanner({ total, peak, acc3hr, acc6hr, period, hasData }) {
   const ref  = acc3hr ?? total;
   const cat  = getRainfallCategory(ref, 'hourly');
   const emoji = getRainfallEmoji(ref, 'hourly');
 
-  if (ref === 0) return null;
+  // Never claim "dry" when there are simply no readings yet.
+  if (!hasData) return null;
+
+  if (ref === 0) {
+    return (
+      <div className="rain-banner calm" role="status">
+        <span className="rain-banner-icon"><LuSun size={22} aria-hidden="true" /></span>
+        <div>
+          <div className="rain-banner-title">No rainfall detected</div>
+          <div className="rain-banner-text">No significant flood impact expected. Normal activities may continue.</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -127,7 +141,7 @@ function StatusBanner({ total, peak, acc3hr, acc6hr, period }) {
       borderLeft: `4px solid ${cat.color}`,
       borderRadius: 'var(--radius-sm)',
     }}>
-      <span style={{ fontSize: '1.6rem', flexShrink: 0 }}>{emoji}</span>
+      <span className="rain-banner-icon" style={{ color: cat.color, background: `${cat.color}1f` }}><LuCloudRain size={22} aria-hidden="true" /></span>
       <div style={{ flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
           <span style={{
@@ -175,14 +189,14 @@ function CustomTooltip({ active, payload, label, period }) {
   const cat = getRainfallCategory(val, period);
   return (
     <div style={{
-      background: '#0d1f3c', border: '1px solid #1e3a5f',
+      background: 'var(--blue-card)', border: '1px solid var(--blue-border)',
       borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem',
       boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
     }}>
-      <div style={{ fontWeight: 700, color: '#e2eaf5', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <div style={{ width: 8, height: 8, borderRadius: 2, background: cat.color }} />
-        <span style={{ color: '#8da4be' }}>Rainfall:</span>
+        <span style={{ color: 'var(--text-secondary)' }}>Rainfall:</span>
         <span style={{ fontWeight: 800, color: cat.color, fontSize: '0.9rem' }}>
           {val} {period === 'hourly' ? 'mm/hr' : 'mm'}
         </span>
@@ -190,7 +204,7 @@ function CustomTooltip({ active, payload, label, period }) {
       <div style={{ fontSize: '0.65rem', color: cat.color, opacity: 0.9, marginBottom: 4 }}>
         {getRainfallEmoji(val, period)} {cat.label}
       </div>
-      <div style={{ fontSize: '0.62rem', color: '#4a6080', borderTop: '1px solid #1e3a5f', paddingTop: 5, marginTop: 4 }}>
+      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', borderTop: '1px solid var(--blue-border)', paddingTop: 5, marginTop: 4 }}>
         {cat.pagasa}
       </div>
     </div>
@@ -317,16 +331,17 @@ export default function RainfallPage() {
         total={total} peak={peak}
         acc3hr={acc3hr} acc6hr={acc6hr}
         period={period}
+        hasData={hourlyLogs.length > 0}
       />
 
       {/* ── KPI Cards ─────────────────────────────────────────────── */}
-      <div className="grid-4" style={{ marginBottom: 18 }}>
+      <div className="grid-4 rain-kpis" style={{ marginBottom: 18 }}>
         {[
           {
             label: 'Total Accumulated',
             value: `${total}`,
             unit: 'mm',
-            icon: '',
+            icon: <LuDroplets size={16} />,
             color: 'var(--accent)',
             sub: period === 'hourly' ? 'Last 24 hours · hourly average' : 'Last 7 days · daily total',
           },
@@ -334,7 +349,7 @@ export default function RainfallPage() {
             label: period === 'hourly' ? 'Peak Intensity' : 'Peak Day',
             value: `${peak}`,
             unit: period === 'hourly' ? 'mm/hr' : 'mm',
-            icon: '',
+            icon: <LuTrendingUp size={16} />,
             color: peak > 0 ? getRainfallCategory(peak, period).color : '#22c55e',
             sub: peak > 0
               ? `${getRainfallCategory(peak, period).label}${period === 'hourly' ? ' intensity' : ''} · ${getRainfallCategory(peak, period).pagasa}`
@@ -344,11 +359,11 @@ export default function RainfallPage() {
             label: '3-Hr Accumulation',
             value: acc3hr != null ? `${acc3hr}` : '—',
             unit: acc3hr != null ? 'mm' : '',
-            icon: '⏱',
+            icon: <LuTimer size={16} />,
             color: acc3hrCat?.color ?? 'var(--text-muted)',
             sub: acc3hr != null
               ? `${acc3hrCat.label} · ${trend?.label ?? '—'}`
-              : 'Insufficient hourly data',
+              : 'Needs recorded hourly readings',
             badge: acc3hrCat?.label ?? null,
             badgeColor: acc3hrCat?.color ?? null,
           },
@@ -356,11 +371,11 @@ export default function RainfallPage() {
             label: '6-Hr Accumulation',
             value: acc6hr != null ? `${acc6hr}` : '—',
             unit: acc6hr != null ? 'mm' : '',
-            icon: '',
+            icon: <LuGauge size={16} />,
             color: acc6hrCat?.color ?? 'var(--text-muted)',
             sub: acc6hr != null
               ? `PAGASA Intense threshold at 15mm/hr · 6-hr window`
-              : 'Insufficient hourly data',
+              : 'Needs recorded hourly readings',
             badge: acc6hr != null && acc6hr >= 15 ? 'Above Intense' : null,
             badgeColor: '#ef4444',
           },
@@ -368,13 +383,9 @@ export default function RainfallPage() {
           <div key={c.label} className="card" style={{
             position: 'relative', overflow: 'hidden',
           }}>
-            <div style={{
-              position: 'absolute', right: 12, top: 10,
-              fontSize: '2.2rem', opacity: 0.07,
-              pointerEvents: 'none', userSelect: 'none',
-            }}>{c.icon}</div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
-              {c.label}
+            <div className="kpi-head">
+              <span className="kpi-icon" aria-hidden="true">{c.icon}</span>
+              <span className="kpi-label">{c.label}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 800, color: c.color, lineHeight: 1 }}>
@@ -406,22 +417,22 @@ export default function RainfallPage() {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-title" style={{ marginBottom: 14 }}>
           Rainfall {period === 'hourly' ? 'Intensity (mm/hr)' : 'Accumulation (mm/24hr)'}
-          <div style={{
-            marginLeft: 'auto', display: 'flex', gap: 8,
-            fontFamily: 'var(--font-body)', fontWeight: 400,
-            textTransform: 'none', letterSpacing: 0,
-            alignItems: 'center',
-          }}>
-            {lastFetched && (
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginRight: 4 }}>
-                synced {lastFetched.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
-            <button className={`btn ${period === 'hourly' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPeriod('hourly')} style={{ padding: '4px 12px', fontSize: '0.75rem' }}>Hourly</button>
-            <button className={`btn ${period === 'daily'  ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPeriod('daily')}  style={{ padding: '4px 12px', fontSize: '0.75rem' }}>Daily</button>
-            <button className={`btn ${view === 'chart' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('chart')} style={{ padding: '4px 12px', fontSize: '0.75rem' }}></button>
-            <button className={`btn ${view === 'table' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setView('table')} style={{ padding: '4px 12px', fontSize: '0.75rem' }}></button>
+        </div>
+
+        <div className="chart-toolbar">
+          <div className="seg" role="group" aria-label="Time period">
+            <button type="button" aria-pressed={period === 'hourly'} onClick={() => setPeriod('hourly')}>Last 24 hours</button>
+            <button type="button" aria-pressed={period === 'daily'}  onClick={() => setPeriod('daily')}>Last 7 days</button>
           </div>
+          <div className="seg" role="group" aria-label="Display as">
+            <button type="button" aria-pressed={view === 'chart'} onClick={() => setView('chart')}><LuChartColumn size={15} aria-hidden="true" /> Chart</button>
+            <button type="button" aria-pressed={view === 'table'} onClick={() => setView('table')}><LuTable size={15} aria-hidden="true" /> Table</button>
+          </div>
+          {lastFetched && (
+            <span className="chart-toolbar-sync">
+              Synced {lastFetched.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
         </div>
 
         {/* Period context note */}
@@ -437,22 +448,23 @@ export default function RainfallPage() {
         </div>
 
         {data.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '40px 0', textAlign: 'center' }}>
-            <div style={{ fontSize: '2rem', marginBottom: 8, opacity: 0.3 }}></div>
-            No data yet — logs will appear once the backend starts recording.
+          <div className="empty-state">
+            <div className="empty-state-icon" aria-hidden="true"><LuCloudOff size={26} /></div>
+            <div className="empty-state-title">No rainfall readings yet</div>
+            <p className="empty-state-text">Readings appear here once AGOS starts recording. Check back in a few minutes.</p>
           </div>
         ) : view === 'chart' ? (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--blue-border)" />
               <XAxis
                 dataKey={dataKey}
-                tick={{ fill: '#4a6080', fontSize: 10 }}
+                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
                 tickLine={false}
                 interval={period === 'hourly' ? Math.floor(data.length / 8) : 0}
               />
               <YAxis
-                tick={{ fill: '#4a6080', fontSize: 10 }}
+                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
                 unit="mm"
                 tickLine={false}
               />
@@ -469,13 +481,17 @@ export default function RainfallPage() {
                   label={{
                     value: `${t.label} (${t.min}mm)`,
                     fill: t.color,
-                    fontSize: 9,
+                    fontSize: 10,
                     position: 'insideTopRight',
                   }}
                 />
               ))}
 
-              <Bar dataKey="rainfall" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              <Bar dataKey="rainfall" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                {data.map((row, i) => (
+                  <Cell key={i} fill={getRainfallCategory(row.rainfall, period).color} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         ) : (
@@ -496,7 +512,7 @@ export default function RainfallPage() {
                 {data.map((row, i) => {
                   const cat = getRainfallCategory(row.rainfall, period);
                   return (
-                    <tr key={i} style={{ borderBottom: '1px solid rgba(30,58,95,0.4)' }}>
+                    <tr key={i} style={{ borderBottom: '1px solid var(--blue-border)' }}>
                       <td style={{ padding: '7px 12px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {row[dataKey]}
                       </td>
@@ -533,7 +549,7 @@ export default function RainfallPage() {
           {period === 'hourly' ? 'Hourly Intensity (mm/hr)' : '24-Hour Accumulation (mm/24hr)'}
         </SectionLabel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginBottom: 14 }}>
           {activeThresholds.map(t => {
             const isActive = liveRainfall != null && liveRainfall >= t.min && liveRainfall < t.max;
             return (
