@@ -21,7 +21,7 @@ import {
 } from 'recharts';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
-import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, facilityIconSvgMarkup } from '../data/criticalFacilities';
+import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, PIN_ASPECT, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
 import { LuRoute, LuHistory, LuClock } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
@@ -129,17 +129,19 @@ function createReportClusterIcon(cluster) {
   return L.divIcon({ html, className: '', iconSize: [34, 34] });
 }
 
-// Critical-facility pin (hospital/school/etc.): a round, colored badge with a
-// white glyph -- see facilityIconSvgMarkup().
+// Critical-facility pin (hospital/school/etc.): a teardrop map pin with a white
+// glyph -- see facilityIconSvgMarkup(). The anchor is the pin's tip.
+const FACILITY_PIN_SIZE = 30;
 function createFacilityIcon(facility) {
   const style = FACILITY_STYLE[facility.facilityType];
-  const html = facilityIconSvgMarkup(facility.facilityType, { size: 30, color: style.color });
+  const html = facilityIconSvgMarkup(facility.facilityType, { size: FACILITY_PIN_SIZE, color: style.color });
+  const h = Math.round(FACILITY_PIN_SIZE * PIN_ASPECT);
   return L.divIcon({
     html,
     className: '',
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -15],
+    iconSize: [FACILITY_PIN_SIZE, h],
+    iconAnchor: [FACILITY_PIN_SIZE / 2, Math.round(h * 0.94)],
+    popupAnchor: [0, -Math.round(h * 0.85)],
   });
 }
 
@@ -150,7 +152,11 @@ const TRIANGULO_AREA = {
   coords: '13.614°N, 123.192°E',
 };
 
-import { TRIANGULO_BOUNDARY } from '../data/triangulo';
+import { TRIANGULO_BOUNDARY, TRIANGULO_CENTER } from '../data/triangulo';
+import { hazardAtPoint, HAZARD_LABELS } from '../lib/hazard';
+import { YourPlaceProvider, useYourPlace } from '../hooks/useYourPlace';
+import YourPlaceMapLayer from '../components/YourPlaceMapLayer';
+import PlacePickBanner from '../components/PlacePickBanner';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -416,11 +422,12 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
 
           <div style={{ flex: '1 1 260px', minWidth: 220 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-              <span style={{
+              <span key={currentAlert} className="level-pill" style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.4rem',
                 color: '#fff', background: alertColor,
-                padding: '7px 18px', borderRadius: 7, letterSpacing: '0.04em',
+                padding: '7px 18px', borderRadius: 999, letterSpacing: '0.04em',
+                boxShadow: `0 6px 18px ${hexToRgba(alertColor, 0.4)}`,
               }}>
                 {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
               </span>
@@ -773,6 +780,8 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   const [reports, setReports] = useState([]);
   const [showBoundary, setShowBoundary] = useState(true);
   const [showReports, setShowReports] = useState(true);
+  const [showEvac, setShowEvac] = useState(true);
+  const [showPlace, setShowPlace] = useState(true);
   const facilityMarkerRefs = useRef({});
   const mapRef = useRef(null);
   const navigate = useNavigate();
@@ -958,6 +967,8 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           );
         })}
 
+        <YourPlaceMapLayer currentAlert={currentAlert} showEvac={showEvac} showPlace={showPlace} />
+
         <FloodMapFocusController
           focusRequest={focusRequest}
           markerRefs={facilityMarkerRefs}
@@ -988,16 +999,21 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
         </div>
       )}
 
+      <PlacePickBanner />
       <BasemapSwitcher basemap={basemap} onChange={setBasemap} />
       <LayerToggle
         layers={[
           { key: 'boundary', label: 'Boundary', visible: showBoundary },
           { key: 'reports', label: 'Reports', visible: showReports },
           { key: 'facilities', label: 'Critical Facilities', visible: showFacilities },
+          { key: 'evac', label: 'Evacuation Centers', visible: showEvac },
+          { key: 'place', label: 'My Place', visible: showPlace },
         ]}
         onToggle={(key) => {
           if (key === 'boundary') setShowBoundary(v => !v);
           else if (key === 'reports') setShowReports(v => !v);
+          else if (key === 'evac') setShowEvac(v => !v);
+          else if (key === 'place') setShowPlace(v => !v);
           else setShowFacilities(v => !v);
         }}
       />
@@ -1078,15 +1094,21 @@ const FACILITY_FILTERS = [
   ...FACILITY_TYPE_ORDER.map(key => ({ key, label: FACILITY_STYLE[key].label })),
 ];
 
-// Small round badge for the facilities list -- the same markup the maps use.
-function FacilityIcon({ facilityType, size = 30, color }) {
+// Small pin for the facilities list -- the same markup the maps use.
+function FacilityIcon({ facilityType, size = 26, color }) {
   const html = facilityIconSvgMarkup(facilityType, { size, color });
   if (!html) return null;
   return <span style={{ display: 'inline-flex', flexShrink: 0 }} aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+const HAZARD_CHIP = { 1: '#3b82f6', 2: '#f59e0b', 3: '#ef4444' };
+// A visitor further than this from the barangay centre is treated as "not here".
+const NEARBY_KM = 3;
+
 function FacilityCard({ facility, onSelect }) {
   const style = FACILITY_STYLE[facility.facilityType];
+  const hz = facility.hazard ?? 0;
+  const chip = HAZARD_CHIP[hz];
   return (
     <button
       type="button"
@@ -1098,16 +1120,21 @@ function FacilityCard({ facility, onSelect }) {
         appearance: 'none', WebkitAppearance: 'none',
       }}
     >
-      <FacilityIcon facilityType={facility.facilityType} size={32} color={style.color} />
+      <FacilityIcon facilityType={facility.facilityType} size={28} color={style.color} />
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
           {facility.name}
         </div>
-        {facility.distanceKm != null && (
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-            {formatDistanceKm(facility.distanceKm)} away
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 3, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+          {facility.distanceKm != null && <span>{formatDistanceKm(facility.distanceKm)} away</span>}
+          <span style={{
+            padding: '1px 8px', borderRadius: 999, fontWeight: 700, fontSize: '0.64rem',
+            color: chip ?? 'var(--green)',
+            background: `color-mix(in srgb, ${chip ?? 'var(--green)'} 16%, transparent)`,
+          }}>
+            {hz ? `In ${HAZARD_LABELS[hz].toLowerCase()} flood zone` : 'Outside flood zone'}
+          </span>
+        </div>
       </div>
     </button>
   );
@@ -1139,22 +1166,39 @@ function CriticalFacilitiesPanel({ onSelectFacility }) {
   // filled in without the visitor needing to press anything first.
   useEffect(() => { requestLocation(); }, [requestLocation]);
 
+  // Flood-zone class per facility. Static data, so compute once.
+  const hazardById = useMemo(
+    () => Object.fromEntries(CRITICAL_FACILITIES.map(f => [f.id, hazardAtPoint(f.position)])),
+    []
+  );
+  const exposedCount = CRITICAL_FACILITIES.filter(f => hazardById[f.id] > 0).length;
+
+  const { place: savedPlace } = useYourPlace();
+
+  // Measure from where it is meaningful. A GPS fix hundreds of km away (a
+  // visitor reading the dashboard from elsewhere) used to make every facility
+  // read the same distance, so only trust GPS when the visitor is nearby.
+  const origin = useMemo(() => {
+    const here = userLocation && haversineDistanceKm(userLocation, TRIANGULO_CENTER) <= NEARBY_KM;
+    if (here) return { point: userLocation, label: 'you' };
+    if (savedPlace) return { point: savedPlace, label: 'your saved place' };
+    return { point: TRIANGULO_CENTER, label: 'the barangay center' };
+  }, [userLocation, savedPlace]);
+  const outsideBarangay = geoStatus === 'granted' && userLocation
+    && haversineDistanceKm(userLocation, TRIANGULO_CENTER) > NEARBY_KM;
+
   const facilities = useMemo(() => {
     const filtered = filter === 'all'
       ? CRITICAL_FACILITIES
       : CRITICAL_FACILITIES.filter(f => f.facilityType === filter);
-
-    if (userLocation) {
-      return filtered
-        .map(f => ({ ...f, distanceKm: haversineDistanceKm(userLocation, f.position) }))
-        .sort((a, b) => a.distanceKm - b.distanceKm);
-    }
-    return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
-  }, [filter, userLocation]);
+    return filtered
+      .map(f => ({ ...f, hazard: hazardById[f.id], distanceKm: haversineDistanceKm(origin.point, f.position) }))
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+  }, [filter, origin, hazardById]);
 
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {FACILITY_FILTERS.map(f => (
             <button
@@ -1179,16 +1223,14 @@ function CriticalFacilitiesPanel({ onSelectFacility }) {
         )}
       </div>
 
-      {geoStatus === 'denied' && (
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 10 }}>
-          Location access was declined — showing facilities sorted alphabetically instead.
-        </div>
-      )}
-      {geoStatus === 'unsupported' && (
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 10 }}>
-          Location isn't available in this browser — showing facilities sorted alphabetically instead.
-        </div>
-      )}
+      <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+        <strong style={{ color: exposedCount ? 'var(--orange)' : 'var(--green)' }}>
+          {exposedCount} of {CRITICAL_FACILITIES.length}
+        </strong>{' '}facilities sit inside a mapped flood zone. Distances are measured from {origin.label}
+        {outsideBarangay && ' (you appear to be outside Barangay Triangulo)'}
+        {geoStatus === 'denied' && ' (location access was declined)'}
+        {geoStatus === 'unsupported' && " (location isn't available in this browser)"}.
+      </div>
 
       <div className="grid-3">
         {facilities.map(facility => (
@@ -2053,7 +2095,8 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="fade-in">
+    <YourPlaceProvider>
+    <div className="fade-in stagger">
 
       {/* ── 0. Station Masthead + Advisory ── */}
       <div>
@@ -2066,9 +2109,18 @@ export default function Dashboard() {
         {/* ── 1. Offline Banner ──────────────────────────────────── */}
         {modelError && (
           <ErrorBanner>
-            <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
-            <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
-            to enable live predictions.
+            {(import.meta.env.DEV || (user && !userIsResident)) ? (
+              <>
+                <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
+                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
+                to enable live predictions.
+              </>
+            ) : (
+              <>
+                <strong>Live prediction is temporarily unavailable.</strong> Showing the latest saved data. Follow
+                barangay announcements if conditions worsen.
+              </>
+            )}
           </ErrorBanner>
         )}
 
@@ -2097,7 +2149,7 @@ export default function Dashboard() {
       />
 
       {/* ── 4. Flood Status Map ──────────────────────────────────── */}
-      <div ref={mapCardRef} className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
+      <div ref={mapCardRef} id="flood-status-map" className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
         <div className="title-band-bar" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
           padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
@@ -2326,5 +2378,6 @@ export default function Dashboard() {
       <DisclaimerFooter />
 
     </div>
+    </YourPlaceProvider>
   );
 }
