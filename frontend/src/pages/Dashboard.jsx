@@ -36,7 +36,6 @@ import { logger } from '../lib/logger';
 
 // Lazy: pulls in MapLibre and the building footprints only when the 3D map is shown.
 const FloodMap3D = lazy(() => import('../components/FloodMap3D'));
-import YourPlaceCard from '../components/YourPlaceCard';
 import RainOverlay from '../components/RainOverlay';
 import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
 import WeatherForecast from '../components/WeatherForecast';
@@ -155,9 +154,8 @@ const TRIANGULO_AREA = {
 
 import { TRIANGULO_BOUNDARY, TRIANGULO_CENTER } from '../data/triangulo';
 import { hazardAtPoint, HAZARD_LABELS } from '../lib/hazard';
-import { YourPlaceProvider, useYourPlace } from '../hooks/useYourPlace';
+import { YourPlaceProvider } from '../hooks/useYourPlace';
 import YourPlaceMapLayer from '../components/YourPlaceMapLayer';
-import PlacePickBanner from '../components/PlacePickBanner';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -782,7 +780,6 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   const [showBoundary, setShowBoundary] = useState(true);
   const [showReports, setShowReports] = useState(true);
   const [showEvac, setShowEvac] = useState(true);
-  const [showPlace, setShowPlace] = useState(true);
   const facilityMarkerRefs = useRef({});
   const mapRef = useRef(null);
   const navigate = useNavigate();
@@ -968,7 +965,8 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           );
         })}
 
-        <YourPlaceMapLayer currentAlert={currentAlert} showEvac={showEvac} showPlace={showPlace} />
+        {/* Your Place now lives on the Know Your Zone page; this layer only draws evacuation centers here. */}
+        <YourPlaceMapLayer currentAlert={currentAlert} showEvac={showEvac} showPlace={false} />
 
         <FloodMapFocusController
           focusRequest={focusRequest}
@@ -1000,7 +998,6 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
         </div>
       )}
 
-      <PlacePickBanner />
       <BasemapSwitcher basemap={basemap} onChange={setBasemap} />
       <LayerToggle
         layers={[
@@ -1008,13 +1005,11 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           { key: 'reports', label: 'Reports', visible: showReports },
           { key: 'facilities', label: 'Critical Facilities', visible: showFacilities },
           { key: 'evac', label: 'Evacuation Centers', visible: showEvac },
-          { key: 'place', label: 'My Place', visible: showPlace },
         ]}
         onToggle={(key) => {
           if (key === 'boundary') setShowBoundary(v => !v);
           else if (key === 'reports') setShowReports(v => !v);
           else if (key === 'evac') setShowEvac(v => !v);
-          else if (key === 'place') setShowPlace(v => !v);
           else setShowFacilities(v => !v);
         }}
       />
@@ -1174,17 +1169,14 @@ function CriticalFacilitiesPanel({ onSelectFacility }) {
   );
   const exposedCount = CRITICAL_FACILITIES.filter(f => hazardById[f.id] > 0).length;
 
-  const { place: savedPlace } = useYourPlace();
-
   // Measure from where it is meaningful. A GPS fix hundreds of km away (a
   // visitor reading the dashboard from elsewhere) used to make every facility
   // read the same distance, so only trust GPS when the visitor is nearby.
   const origin = useMemo(() => {
     const here = userLocation && haversineDistanceKm(userLocation, TRIANGULO_CENTER) <= NEARBY_KM;
     if (here) return { point: userLocation, label: 'you' };
-    if (savedPlace) return { point: savedPlace, label: 'your saved place' };
     return { point: TRIANGULO_CENTER, label: 'the barangay center' };
-  }, [userLocation, savedPlace]);
+  }, [userLocation]);
   const outsideBarangay = geoStatus === 'granted' && userLocation
     && haversineDistanceKm(userLocation, TRIANGULO_CENTER) > NEARBY_KM;
 
@@ -2144,13 +2136,6 @@ export default function Dashboard() {
 
       {/* ── 2a. Official PAGASA wind signal (hidden when no active cyclone) ── */}
       <PagasaBulletinBanner />
-
-      {/* ── 2b. Your Place: personal flood check for one saved spot ───── */}
-      <YourPlaceCard
-        currentAlert={currentAlert}
-        probability={prediction ? prediction.probability : null}
-        hasPrediction={!!prediction}
-      />
 
       {/* ── 4. Flood Status Map ──────────────────────────────────── */}
       <div ref={mapCardRef} id="flood-status-map" className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
