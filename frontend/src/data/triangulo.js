@@ -2,6 +2,10 @@
 // Previously copy-pasted into Dashboard.jsx and FloodMapPage.jsx; keeping one
 // copy means the map, the route finder and the Your Place card always agree.
 
+// Visual center of the barangay. Used as the fallback origin for "near you"
+// distances when the visitor is not actually in Triangulo.
+export const TRIANGULO_CENTER = { lat: 13.618, lng: 123.1905 };
+
 export const TRIANGULO_BOUNDARY = [
   { lat: 13.622162, lng: 123.193368 },
   { lat: 13.621778, lng: 123.195934 },

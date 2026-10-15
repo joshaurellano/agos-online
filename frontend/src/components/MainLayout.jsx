@@ -5,6 +5,7 @@ import Topbar from './Topbar';
 import QuickActionsBar from './QuickActionsBar';
 import ErrorBoundary from './ErrorBoundary';
 import OfflineBanner from './OfflineBanner';
+import AlertChangeToast from './AlertChangeToast';
 import PageLoader from './PageLoader';
 import { useModelPrediction } from '../lib/modelApi';
 import { useModelSelection } from '../hooks/useModelSelection';
@@ -81,6 +82,7 @@ export default function MainLayout() {
         onClick={(e) => { e.preventDefault(); document.getElementById('main-content')?.focus(); }}
       >{t('skipToContent')}</a>
       <AlertAnnouncer alertLevel={alertLevel} />
+      <AlertChangeToast alertLevel={alertLevel} ready={!modelLoading && !!prediction} resetKey={modelKey} />
       <Sidebar
         mobileOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
