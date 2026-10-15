@@ -126,7 +126,6 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
     <div style={{
       background: 'var(--blue-mid)',
       border: `1px solid ${expanded ? STATUS_COLORS[report.status] + '60' : 'var(--blue-border)'}`,
-      borderLeft: `4px solid ${STATUS_COLORS[report.status]}`,
       borderRadius: 'var(--radius-sm)',
       overflow: 'hidden',
       transition: 'border-color 0.2s',

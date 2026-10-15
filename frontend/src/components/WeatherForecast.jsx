@@ -378,7 +378,6 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                 minWidth: 74, flexShrink: 0, cursor: 'pointer',
                 padding: '10px 10px 8px', borderRadius: 'var(--radius-sm)',
                 border: `1px solid ${active ? accent : accent + tabBorderAlpha}`,
-                borderTop: `2px solid ${accent}`,
                 background: active ? accent : accent + tabFillAlpha,
                 color: active ? '#fff' : 'var(--text-primary)',
                 transition: 'all 0.15s ease',
@@ -460,6 +459,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
         <div style={{
           background: 'var(--blue-card)', border: '1px solid var(--blue-border)',
           borderRadius: 'var(--radius)', padding: '16px 18px',
+          display: 'flex', flexDirection: 'column', minWidth: 0,
         }}>
           <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 10 }}>
             Hourly forecast
@@ -471,7 +471,10 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
             </div>
           ) : (
             <>
-              <div style={{ height: 120, marginBottom: 4, cursor: 'pointer' }} title="Click the chart to show that hour in the panel above">
+              {/* Grows to fill whatever height the hero panel beside it sets, so the
+                  card never has a dead gap under the hour tiles. */}
+              <div style={{ position: 'relative', flex: '1 1 150px', minHeight: 150, marginBottom: 4, cursor: 'pointer' }} title="Click the chart to show that hour in the panel above">
+                <div style={{ position: 'absolute', inset: 0 }}>
                 <ResponsiveContainer key={`${selectedDay.date}-${chartData.length}`} width="100%" height="100%">
                   <AreaChart
                     data={chartData}
@@ -508,6 +511,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                     />
                   </AreaChart>
                 </ResponsiveContainer>
+                </div>
               </div>
 
               {/* Dedicated hour axis — plain HTML, sits directly under the

@@ -4,7 +4,11 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
 import trianguloFloodHazard from '../data/trianguloFloodHazard.json';
-import trianguloBuildings from '../data/trianguloBuildings.json';
+// ~850 KB of footprints: fetched as its own chunk after the map is up instead of
+// blocking the first paint, and cached for style switches.
+let buildingsPromise = null;
+const loadBuildings = () => (buildingsPromise ??= import('../data/trianguloBuildings.json').then((m) => m.default));
+const EMPTY_FC = { type: 'FeatureCollection', features: [] };
 import { CRITICAL_FACILITIES, FACILITY_STYLE, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
@@ -12,6 +16,8 @@ import MapTimeline from './MapTimeline';
 import WindFlowOverlay from './WindFlowOverlay';
 import WindDirectionArrow, { degToCardinal } from './WindDirectionArrow';
 import { MapRecenterButton } from './ui';
+import { useYourPlaceMap3D } from '../hooks/useYourPlaceMap3D';
+import PlacePickBanner from './PlacePickBanner';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
 // two views read consistently (trunk/primary thicker, service thinner).
@@ -163,7 +169,7 @@ function roadWidthExpression() {
 // Plain DOM element for a maplibregl.Marker -- these live outside the
 // style/source/layer system entirely, so (unlike everything in
 // addDataLayers) they survive a setStyle() basemap switch without needing
-// to be re-added. Just the flat icon glyph, no circle/box behind it.
+// to be re-added. Teardrop pin, same markup as the 2D map.
 function createFacilityMarkerEl(facility) {
   const style = FACILITY_STYLE[facility.facilityType];
   const el = document.createElement('div');
@@ -171,7 +177,7 @@ function createFacilityMarkerEl(facility) {
   el.style.alignItems = 'center';
   el.style.justifyContent = 'center';
   el.style.cursor = 'pointer';
-  el.innerHTML = facilityIconSvgMarkup(facility.facilityType, { size: 24, color: style.color });
+  el.innerHTML = facilityIconSvgMarkup(facility.facilityType, { size: 30, color: style.color, shape: 'pin' });
   return el;
 }
 
@@ -195,14 +201,17 @@ function LayerChip({ active, label, title, onClick }) {
   );
 }
 
-export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly, focusRequest, showFacilities, setShowFacilities }) {
+export default function FloodMap3D({ currentAlert, probabilityPct = null, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly, focusRequest, showFacilities, setShowFacilities }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
   const [rainDebugPreset, setRainDebugPreset] = useState(null); // dev-only override, see RainDebugControls
+  // The HUD is big; on phones it starts collapsed to a one-line alert chip.
+  const [hudOpen, setHudOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 700);
   const [showHazard, setShowHazard] = useState(true);
   const [showWind, setShowWind] = useState(true);
   const [showRainFx, setShowRainFx] = useState(true);
+  const [showEvac, setShowEvac] = useState(true);
   // null = live conditions; otherwise the forecast frame picked on the timeline.
   const [forecastFrame, setForecastFrame] = useState(null);
   const facilityMarkersRef = useRef([]);
@@ -228,7 +237,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     facilityMarkersRef.current = CRITICAL_FACILITIES.map(facility => {
       const el = createFacilityMarkerEl(facility);
       const style = FACILITY_STYLE[facility.facilityType];
-      const popup = new maplibregl.Popup({ offset: 16, closeButton: false }).setHTML(`
+      const popup = new maplibregl.Popup({ offset: 38, closeButton: false }).setHTML(`
         <div style="min-width:160px; padding:2px;">
           <div style="font-weight:700; font-size:0.85rem; margin-bottom:4px;">${facility.name}</div>
           <div style="display:inline-block; font-size:0.6rem; font-weight:700; text-transform:uppercase;
@@ -238,7 +247,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
           </div>
         </div>
       `);
-      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([facility.position.lng, facility.position.lat])
         .setPopup(popup)
         .addTo(map);
@@ -333,7 +342,10 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     // The basemap's own 3D buildings are hidden while this layer is on so
     // the two don't overlap.
     if (!map.getSource('triangulo-buildings')) {
-      map.addSource('triangulo-buildings', { type: 'geojson', data: trianguloBuildings });
+      map.addSource('triangulo-buildings', { type: 'geojson', data: EMPTY_FC });
+      loadBuildings().then((data) => {
+        try { map.getSource('triangulo-buildings')?.setData(data); } catch { /* map was torn down */ }
+      });
     }
     if (!map.getLayer('triangulo-buildings-3d')) {
       map.addLayer({
@@ -498,10 +510,10 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     // Layer-delegated listeners survive basemap switches (setStyle), so they
     // are registered once here rather than inside addDataLayers.
     map.on('click', 'triangulo-buildings-3d', (e) => {
-      if (e.features?.[0]) openBuildingPopup(map, e.features[0], e.lngLat);
+      if (!pickingRef.current && e.features?.[0]) openBuildingPopup(map, e.features[0], e.lngLat);
     });
     map.on('mousemove', 'triangulo-buildings-3d', (e) => {
-      map.getCanvas().style.cursor = 'pointer';
+      map.getCanvas().style.cursor = pickingRef.current ? 'crosshair' : 'pointer';
       const id = e.features?.[0]?.properties?.i ?? -1;
       if (id !== hoverIdRef.current) {
         hoverIdRef.current = id;
@@ -509,7 +521,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
       }
     });
     map.on('mouseleave', 'triangulo-buildings-3d', () => {
-      map.getCanvas().style.cursor = '';
+      map.getCanvas().style.cursor = pickingRef.current ? 'crosshair' : '';
       hoverIdRef.current = -1;
       refreshBuildingHighlight(map);
     });
@@ -542,6 +554,10 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Saved place: pin, route and evacuation centers on this map. Declared after
+  // the init effect above so the map instance exists when its effects run.
+  const pickingRef = useYourPlaceMap3D(mapRef, { currentAlert, showEvac, showPlace: false });
 
   // Toggle critical-facility marker visibility. Markers are plain DOM
   // overlays (not a style layer), so this just flips each element's
@@ -680,6 +696,8 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
         />
       )}
 
+      <PlacePickBanner />
+
       {/* Dev-only tier preview -- stripped from production builds since
           import.meta.env.DEV is statically false there and bundlers
           tree-shake the dead branch. */}
@@ -698,7 +716,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
         padding: '10px 14px', minWidth: 176, maxWidth: 230,
         boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: hudOpen ? 8 : 0, transition: 'margin 0.25s ease' }}>
           <div style={{
             width: 8, height: 8, borderRadius: '50%', background: alertColor,
             boxShadow: `0 0 6px ${alertColor}`,
@@ -707,7 +725,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
             fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.06em',
             color: alertColor, textTransform: 'uppercase',
           }}>
-            {currentAlert}
+            {currentAlert}{probabilityPct != null ? ` · ${probabilityPct}%` : ''}
           </span>
           {forecastFrame && (
             <span style={{
@@ -717,7 +735,22 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
               FORECAST
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => setHudOpen(v => !v)}
+            aria-expanded={hudOpen}
+            aria-label={hudOpen ? 'Collapse map details' : 'Expand map details'}
+            style={{
+              marginLeft: forecastFrame ? 4 : 'auto', width: 22, height: 22, display: 'grid', placeItems: 'center',
+              borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.1)', color: '#cfe0f5',
+              fontSize: '0.7rem', lineHeight: 1,
+            }}
+          >
+            <span style={{ display: 'inline-block', transition: 'transform 0.25s ease', transform: hudOpen ? 'rotate(180deg)' : 'none' }}>▾</span>
+          </button>
         </div>
+        <div style={{ display: 'grid', gridTemplateRows: hudOpen ? '1fr' : '0fr', transition: 'grid-template-rows 0.3s ease' }}>
+        <div style={{ minHeight: 0, overflow: 'hidden' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
             <span style={{ fontSize: '0.65rem', color: '#8da4be' }}>Rainfall</span>
@@ -768,6 +801,7 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
               <LayerChip active={showBuildings} label="Buildings" title="Building footprints in 3D (heights partly estimated)" onClick={() => setShowBuildings(v => !v)} />
               <LayerChip active={showWind} label="Wind flow" title="Animated wind direction and strength (barangay-wide reading)" onClick={() => setShowWind(v => !v)} />
               <LayerChip active={showRainFx} label="Rain" title="Animated rain / cloud effect" onClick={() => setShowRainFx(v => !v)} />
+              <LayerChip active={showEvac} label="Evac centers" title="Designated evacuation centers" onClick={() => setShowEvac(v => !v)} />
             </div>
           </div>
 
@@ -791,6 +825,8 @@ export default function FloodMap3D({ currentAlert, boundary, alertColors, rainfa
               ))}
             </div>
           )}
+        </div>
+        </div>
         </div>
       </div>
 
