@@ -1582,9 +1582,7 @@ function DriverModal({ day, onClose }) {
         className="card"
         style={{ maxWidth: 420, width: '100%', maxHeight: '85vh', overflowY: 'auto', padding: 0, overflow: 'hidden' }}
       >
-        {/* Colored header band — tinted by this day's risk level so the
-            modal reads as "about" that risk from the first glance, instead
-            of opening on a flat white/navy panel. */}
+        {/* Colored header band, tinted by this day's risk level. */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
           padding: '16px 20px', gap: 12,

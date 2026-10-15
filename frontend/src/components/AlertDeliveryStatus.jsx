@@ -2,7 +2,7 @@
 // of assuming success the moment an `alerts` row is inserted. Reads from
 // alert_deliveries, which on-alert-change writes to after calling
 // send-alert / send-push-notification (see supabase/functions/on-alert-change
-// and supabase/alert_deliveries_schema.sql).
+//).
 //
 // Admin-only by convention -- render this gated the same way the "Send
 // Alert" button is (canSendAlert), since delivery detail (SMS provider
