@@ -13,7 +13,6 @@ import { personalTier, TIER_KEYS } from '../lib/personalRisk';
 import { TIER_COLORS } from '../hooks/useYourPlace';
 import { useLanguage } from '../hooks/useLanguage';
 import FloodGuide from '../components/FloodGuide';
-import './KnowYourHazardsPage.css';
 
 // "Know Your Zone": an explorer for the flood hazard map. Tap any spot to see
 // how flood-prone it is, what that means *today* (live alert x zone, the same

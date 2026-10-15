@@ -3,11 +3,6 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      rollup: '@rollup/wasm-node',
-    },
-  },
   optimizeDeps: {
     exclude: ['maplibre-gl'],
   },

@@ -64,7 +64,7 @@ export default function PagasaBulletinBanner() {
   else headline = 'Check the official bulletin for the wind signal over Naga City';
 
   return (
-    <div className="card" role="status" style={{ marginBottom: 18, borderLeft: `5px solid ${color}`, padding: 0, overflow: 'hidden' }}>
+    <div className="card" role="status" style={{ marginBottom: 18, padding: 0, overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>

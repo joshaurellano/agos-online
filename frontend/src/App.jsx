@@ -29,6 +29,7 @@ const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const AlertsLogPage = lazy(() => import('./pages/AlertsLogPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ResidentRegistryPage = lazy(() => import('./pages/ResidentRegistryPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function App() {
@@ -64,6 +65,7 @@ function App() {
                 } />
                 <Route path="/alerts-log"    element={<AlertsLogPage />} />
                 <Route path="/settings"      element={<SettingsPage />} />
+                <Route path="/privacy"       element={<PrivacyPage />} />
 
                 <Route path="/reports" element={
                   <ResidentRoute>
