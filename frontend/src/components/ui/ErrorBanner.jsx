@@ -12,7 +12,7 @@ export default function ErrorBanner({ children, role = 'alert' }) {
       style={{
         display: 'flex', alignItems: 'center', gap: 10,
         background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.25)',
-        borderLeft: '3px solid #ef4444', borderRadius: 'var(--radius-sm)',
+        borderRadius: 'var(--radius-sm)',
         padding: '9px 14px', marginBottom: 14, fontSize: '0.8rem', color: '#f87171',
       }}
     >

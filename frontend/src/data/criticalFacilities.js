@@ -123,16 +123,54 @@ export const FACILITY_ICON_PATHS = {
     viewBox: '0 0 448 512',
     d: 'M323.56 51.2c-20.8 19.3-39.58 39.59-56.22 59.97C240.08 73.62 206.28 35.53 168 0 69.74 91.17 0 209.96 0 281.6 0 408.85 100.29 512 224 512s224-103.15 224-230.4c0-53.27-51.98-163.14-124.44-230.4zm-19.47 340.65C282.43 407.01 255.72 416 226.86 416 154.71 416 96 368.26 96 290.75c0-38.61 24.31-72.63 72.79-130.75 6.93 7.98 98.83 125.34 98.83 125.34l58.63-66.88c4.14 6.85 7.91 13.55 11.27 19.97 27.35 52.19 15.81 118.97-33.43 153.42z',
   },
+  // Not a facility category: the house glyph used on evacuation-center pins.
+  evacuation: {
+    viewBox: '0 0 24 24',
+    d: 'M12 2.8 2.5 11.4h2.7V20h4.8v-5.4h4V20h4.8v-8.6h2.7L12 2.8z',
+  },
 };
 
-// Builds a bare <svg> string (path only, no wrapper box/circle) for
-// non-React DOM contexts -- Leaflet L.divIcon html and MapLibre marker
-// elements. A subtle white outline (stroke) stands in for the old circle
-// background, keeping the icon legible over a busy hazard-colored map
-// without boxing it in.
-export function facilityIconSvgMarkup(facilityType, { size = 20, color } = {}) {
+// Builds a "badge" <svg> string for non-React DOM contexts -- Leaflet
+// L.divIcon html and MapLibre marker elements: a colored shape with a white
+// outline, a soft glossy highlight, and a chubby white glyph inside. Same badge
+// everywhere (both maps and the facilities list) so a category always looks
+// the same.
+//   shape 'pin'    (default): teardrop map pin, tip at the bottom center.
+//                  Rendered size is `size` wide by size * PIN_ASPECT tall.
+//   shape 'circle': round badge, `size` x `size`.
+export const PIN_ASPECT = 1.3;
+
+export function facilityIconSvgMarkup(facilityType, { size = 30, color, shape = 'pin' } = {}) {
   const glyph = FACILITY_ICON_PATHS[facilityType];
-  const fill = color || (FACILITY_STYLE[facilityType] && FACILITY_STYLE[facilityType].color) || '#333';
   if (!glyph) return '';
-  return `<svg viewBox="${glyph.viewBox}" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));"><path d="${glyph.d}" fill="${fill}" stroke="#fff" stroke-width="10" paint-order="stroke"/></svg>`;
+  const base = color || (FACILITY_STYLE[facilityType] && FACILITY_STYLE[facilityType].color) || '#333';
+  const vbHeight = Number(String(glyph.viewBox).split(/\s+/)[3]) || 512;
+  const strokeW = ((22 * vbHeight) / 512).toFixed(2); // chubby outline, scaled to the glyph's own units
+  const isPin = shape === 'pin';
+  const w = size;
+  const h = isPin ? Math.round(size * PIN_ASPECT) : size;
+  const viewBox = isPin ? '0 0 40 52' : '0 0 40 40';
+  const defs = `<defs><radialGradient id="fb-shine" cx="32%" cy="26%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity="0.5"/><stop offset="0.55" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>`;
+  const body = isPin
+    ? `<ellipse cx="20" cy="49.5" rx="7" ry="2" fill="rgba(0,0,0,0.22)"/>`
+      + `<path d="M20 49 C14 41 3 32 3 19 A17 17 0 0 1 37 19 C37 32 26 41 20 49 Z" fill="${base}" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>`
+      + `<circle cx="20" cy="19" r="16" fill="url(#fb-shine)"/>`
+      + `<svg x="10" y="9" width="20" height="20" viewBox="${glyph.viewBox}" overflow="visible">`
+    : `<circle cx="20" cy="20" r="18" fill="${base}" stroke="#fff" stroke-width="3"/>`
+      + `<circle cx="20" cy="20" r="18" fill="url(#fb-shine)"/>`
+      + `<svg x="10" y="10" width="20" height="20" viewBox="${glyph.viewBox}" overflow="visible">`;
+  return `<svg class="facility-badge facility-badge--${isPin ? 'pin' : 'circle'}" viewBox="${viewBox}" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.3));transition:transform 0.15s ease;">`
+    + defs + body
+    + `<path d="${glyph.d}" fill="#fff" stroke="#fff" stroke-width="${strokeW}" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+    + `</svg>`;
+}
+
+// Evacuation-center pin: same pin language as the facilities, with a house
+// glyph. `highlighted` is the center the saved place's route leads to.
+export function evacuationPinSvgMarkup({ highlighted = false } = {}) {
+  return facilityIconSvgMarkup('evacuation', {
+    size: highlighted ? 36 : 30,
+    color: highlighted ? '#22c55e' : '#64748b',
+    shape: 'pin',
+  });
 }
