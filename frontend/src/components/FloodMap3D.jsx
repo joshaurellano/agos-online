@@ -212,7 +212,6 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   const [showWind, setShowWind] = useState(true);
   const [showRainFx, setShowRainFx] = useState(true);
   const [showEvac, setShowEvac] = useState(true);
-  const [showPlace, setShowPlace] = useState(true);
   // null = live conditions; otherwise the forecast frame picked on the timeline.
   const [forecastFrame, setForecastFrame] = useState(null);
   const facilityMarkersRef = useRef([]);
@@ -558,7 +557,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
 
   // Saved place: pin, route and evacuation centers on this map. Declared after
   // the init effect above so the map instance exists when its effects run.
-  const pickingRef = useYourPlaceMap3D(mapRef, { currentAlert, showEvac, showPlace });
+  const pickingRef = useYourPlaceMap3D(mapRef, { currentAlert, showEvac, showPlace: false });
 
   // Toggle critical-facility marker visibility. Markers are plain DOM
   // overlays (not a style layer), so this just flips each element's
@@ -803,7 +802,6 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
               <LayerChip active={showWind} label="Wind flow" title="Animated wind direction and strength (barangay-wide reading)" onClick={() => setShowWind(v => !v)} />
               <LayerChip active={showRainFx} label="Rain" title="Animated rain / cloud effect" onClick={() => setShowRainFx(v => !v)} />
               <LayerChip active={showEvac} label="Evac centers" title="Designated evacuation centers" onClick={() => setShowEvac(v => !v)} />
-              <LayerChip active={showPlace} label="My place" title="Your saved place and walking route" onClick={() => setShowPlace(v => !v)} />
             </div>
           </div>
 

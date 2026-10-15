@@ -22,6 +22,7 @@ const StaffPage = lazy(() => import('./pages/StaffPage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const RainfallPage = lazy(() => import('./pages/RainfallPage'));
 const FloodMapPage = lazy(() => import('./pages/FloodMapPage'));
+const KnowYourHazardsPage = lazy(() => import('./pages/KnowYourHazardsPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const CommunityReportsPage = lazy(() => import('./pages/CommunityReportsPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
@@ -55,6 +56,7 @@ function App() {
                 <Route path="/dashboard"     element={<Dashboard />} />
                 <Route path="/rainfall"      element={<RainfallPage />} />
                 <Route path="/evacuation-map" element={<FloodMapPage />} />
+                <Route path="/know-your-hazards" element={<KnowYourHazardsPage />} />
                 <Route path="/analytics" element={
                   <AdminRoute>
                     <AnalyticsPage />
