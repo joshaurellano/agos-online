@@ -41,6 +41,7 @@ import RainOverlay from '../components/RainOverlay';
 import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionArrow';
 import WeatherForecast from '../components/WeatherForecast';
 import AlertDeliveryStatus from '../components/AlertDeliveryStatus';
+import PagasaBulletinBanner from '../components/PagasaBulletinBanner';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1247,7 +1248,7 @@ function PredictionInputTable({ prediction }) {
   const rows = [
     { label: 'Rainfall',          value: `${m.rainfall_mm?.toFixed(2) ?? '—'} mm/hr`, icon: '', note: 'Primary flood driver' },
     { label: 'Humidity',          value: `${m.humidity ?? '—'}%`,                      icon: '', note: 'Atmospheric moisture' },
-    { label: 'Wind Signal',       value: `Signal #${m.wind_signal ?? '—'}`,     icon: '', note: 'PAGASA classification' },
+    { label: 'Wind Signal (model estimate)', value: `Signal #${m.wind_signal ?? '—'}`, icon: '', note: 'Derived from forecast winds, not the official PAGASA signal' },
     { label: 'Flood Probability', value: `${(prediction.probability * 100).toFixed(1)}%`, icon: '', note: 'Model output confidence' },
     { label: 'Alert Level',       value: `Level ${prediction.alert_level}`,            icon: '', note: 'Model classification' },
   ];
@@ -2141,6 +2142,9 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* ── 2a. Official PAGASA wind signal (hidden when no active cyclone) ── */}
+      <PagasaBulletinBanner />
+
       {/* ── 2b. Your Place: personal flood check for one saved spot ───── */}
       <YourPlaceCard
         currentAlert={currentAlert}
@@ -2287,7 +2291,7 @@ export default function Dashboard() {
             numeric: !modelLoading && prediction ? prediction.probability * 100 : null,
             decimals: 0,
             unit: !modelLoading && prediction ? '%' : undefined,
-            sub: prediction ? `Wind signal #${prediction.live_metrics.wind_signal}` : 'Forecast model',
+            sub: prediction ? `Est. wind signal #${prediction.live_metrics.wind_signal}` : 'Forecast model',
             color: !prediction ? 'var(--text-muted)'
               : prediction.probability >= 0.75 ? '#ef4444' : prediction.probability >= 0.50 ? '#f97316' : prediction.probability >= 0.25 ? '#eab308' : '#22c55e',
             badge: prediction ? 'Model prediction' : null,
