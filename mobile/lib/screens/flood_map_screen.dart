@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle, HapticFeedback;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:provider/provider.dart';
 import '../main.dart';
@@ -197,6 +198,14 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   // the map isn't cluttered until the resident asks for it.
   bool _showFacilities = false;
   bool _isFullscreen = false;
+
+  // ── "Where am I?" — the user's own position on the map (blue dot) and
+  // whether it falls inside the Brgy. Triangulo boundary. HazardHunterPH and
+  // Google Flood Hub both lead with "your location"; a flood map you can't
+  // find yourself on is just a picture.
+  LatLng? _userLatLng;
+  bool _locating = false;
+  String? _locationNote; // shown in the status pill
   String _baseStyleKey = 'standard';
   double _zoom = 14.5;
   final MapController _mapController = MapController();
@@ -442,6 +451,79 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   bool get _canZoomIn => _zoom < 19.0;
   bool get _canZoomOut => _zoom > 12.0;
 
+  String _tickLabel(DateTime d) {
+    final now = DateTime.now();
+    final diff = DateTime(d.year, d.month, d.day).difference(DateTime(now.year, now.month, now.day)).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Tmrw';
+    const w = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return w[d.weekday - 1];
+  }
+
+  // Ray-casting point-in-polygon (same approach the evacuation screen uses).
+  bool _insideBoundary(LatLng p) {
+    final poly = _trianguloPolygon;
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      final yi = poly[i].latitude, xi = poly[i].longitude;
+      final yj = poly[j].latitude, xj = poly[j].longitude;
+      final crosses = ((yi > p.latitude) != (yj > p.latitude)) &&
+          (p.longitude < (xj - xi) * (p.latitude - yi) / (yj - yi) + xi);
+      if (crosses) inside = !inside;
+    }
+    return inside;
+  }
+
+  Future<void> _locateMe() async {
+    if (_locating) return;
+    setState(() => _locating = true);
+    String? note;
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        note = 'Location permission is off';
+      } else if (!await Geolocator.isLocationServiceEnabled()) {
+        note = 'Turn on GPS to see your location';
+      } else {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        );
+        final here = LatLng(pos.latitude, pos.longitude);
+        final inside = _insideBoundary(here);
+        HapticFeedback.lightImpact();
+        if (!mounted) return;
+        setState(() {
+          _userLatLng = here;
+          _locationNote = inside ? 'You are inside this flood zone' : 'You are outside Brgy. Triangulo';
+        });
+        try {
+          if (inside) {
+            _mapController.move(here, _zoom < 15.5 ? 15.5 : _zoom);
+          } else {
+            // Outside: frame the barangay AND the user so you can see how far
+            // away you are, instead of zooming into an empty street.
+            _mapController.fitCamera(CameraFit.bounds(
+              bounds: LatLngBounds.fromPoints([..._trianguloPolygon, here]),
+              padding: const EdgeInsets.all(56),
+              maxZoom: 16,
+            ));
+          }
+        } catch (_) {}
+      }
+    } catch (_) {
+      note = "Couldn't get your location";
+    }
+    if (!mounted) return;
+    setState(() {
+      _locating = false;
+      if (note != null) {
+        _locationNote = note;
+        _userLatLng = null;
+      }
+    });
+  }
+
   void _zoomBy(double delta) {
     if (!mounted) return;
     final target = (_zoom + delta).clamp(12.0, 19.0);
@@ -529,27 +611,9 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
       bottom: false,
       child: Column(
         children: [
-          if (!_isFullscreen)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-              child: Row(children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.map_rounded, color: AppColors.accent, size: 15),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Flood Map',
-                    style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w800, fontSize: 16),
-                  ),
-                ),
-              ]),
-            ),
+          // (The shared header in MainShell already says "Flood Map" — a second
+          // title row here only took vertical space away from the map.)
+          if (!_isFullscreen) const SizedBox(height: 10),
 
           // ── Map area ─────────────────────────────────────────────────────
           Expanded(
@@ -580,52 +644,70 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                         ),
                       ),
 
-                    // ── Status bar ─────────────────────────────────────────
-                    Positioned(top: 10, left: 10, right: 58, child: _statusPill(color)),
-
-                    // ── Wind direction pill (top-left, under the status
-                    // bar) — mirrors the web dashboard's map wind readout.
-                    if (_liveWindDirectionDeg != null)
-                      Positioned(top: 62, left: 10, child: _windPill()),
-
-                    // ── Vertical legend (left edge) — a continuous
-                    // blue→red gradient scale for the hourly layers (rain
-                    // probability / intensity), or a compact 4-color key
-                    // for the flood layer (see _intensityScaleBar) —
-                    // starts below the wind pill so the two never overlap.
-                    // The flood key sizes to its own content (top-only
-                    // Positioned) rather than stretching the full strip
-                    // height the gradient bar fills.
-                    if (anyTimelineData)
-                      _isFloodLayer
-                          ? Positioned(
-                              top: _liveWindDirectionDeg != null ? 104 : 62,
-                              left: 10,
-                              child: _intensityScaleBar(),
-                            )
-                          : Positioned(
-                              top: _liveWindDirectionDeg != null ? 104 : 62,
-                              bottom: 78,
-                              left: 10,
-                              child: _intensityScaleBar(),
-                            ),
-
-                    // ── Legend panel ───────────────────────────────────────
-                    if (_showLegend) Positioned(top: 62, right: 56, child: _legendPanel()),
-
-                    // ── Vertical map tool stack ────────────────────────────
+                    // ── Top-left stack: status card (it now carries the 4-level
+                    // scale, so the always-on left legend is gone), wind
+                    // readout, and — only when asked for — the legend panel.
+                    // One Column means nothing can overlap, whatever the
+                    // text size.
                     Positioned(
-                      top: 62,
+                      top: 10,
+                      left: 10,
+                      right: 58,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          GestureDetector(
+                            onTap: () => setState(() => _showLegend = !_showLegend),
+                            child: _statusPill(color),
+                          ),
+                          if (_liveWindDirectionDeg != null) ...[
+                            const SizedBox(height: 8),
+                            _windPill(),
+                          ],
+                          if (_showLegend) ...[
+                            const SizedBox(height: 8),
+                            _legendPanel(),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Rain layers still need their continuous colour scale.
+                    if (anyTimelineData && !_isFloodLayer)
+                      Positioned(top: 170, bottom: 78, left: 10, child: _intensityScaleBar()),
+
+                    // ── Tool stack: 4 buttons instead of 7. Zoom +/- are gone
+                    // (pinch and double-tap zoom, like every phone map); basemap
+                    // and facilities moved into the Layers sheet.
+                    Positioned(
+                      top: 10,
                       right: 10,
                       child: MapToolStack(children: [
-                        // "?" help button, first in the stack so it's the
-                        // first thing a resident notices — opens a plain-
-                        // language explainer for every control below it.
                         Tooltip(
-                          message: 'What do these buttons do?',
+                          message: 'Show my location',
                           child: MapToolButton(
-                            icon: Icons.help_outline_rounded,
-                            onTap: _openHelpSheet,
+                            icon: _locating
+                                ? Icons.hourglass_top_rounded
+                                : (_userLatLng != null
+                                    ? Icons.my_location_rounded
+                                    : Icons.location_searching_rounded),
+                            active: _userLatLng != null,
+                            onTap: _locateMe,
+                          ),
+                        ),
+                        Tooltip(
+                          message: 'Layers & map style',
+                          child: MapToolButton(
+                            icon: Icons.layers_rounded,
+                            active: _showFacilities || _baseStyleKey != 'standard',
+                            onTap: _openLayersSheet,
+                          ),
+                        ),
+                        Tooltip(
+                          message: 'Recenter on Barangay Triangulo',
+                          child: MapToolButton(
+                            icon: Icons.center_focus_strong_rounded,
+                            onTap: _recenter,
                           ),
                         ),
                         Tooltip(
@@ -636,78 +718,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                             onTap: () => setState(() => _isFullscreen = !_isFullscreen),
                           ),
                         ),
-                        Tooltip(
-                          message: 'What do the colors mean?',
-                          child: MapToolButton(
-                            // An info icon reads as "explain this" — the
-                            // old layers_rounded icon here looked like a
-                            // second map-layers switcher and was easy to
-                            // confuse with the "Choose what the map shows"
-                            // button below.
-                            icon: Icons.info_outline_rounded,
-                            active: _showLegend,
-                            onTap: () => setState(() => _showLegend = !_showLegend),
-                          ),
-                        ),
-                        Tooltip(
-                          message: _showFacilities
-                              ? 'Hide hospitals, schools & fire/police stations'
-                              : 'Show hospitals, schools & fire/police stations',
-                          child: MapToolButton(
-                            icon: Icons.local_hospital_rounded,
-                            active: _showFacilities,
-                            onTap: () => setState(() => _showFacilities = !_showFacilities),
-                          ),
-                        ),
-                        if (anyTimelineData)
-                          Tooltip(
-                            message: 'Choose what the map shows',
-                            child: MapToolButton(
-                              // This is the actual "which data layer" picker
-                              // (flood risk / rain chance / rainfall), so it
-                              // gets the layers icon — swapped with the
-                              // legend button above for that reason.
-                              icon: Icons.layers_rounded,
-                              onTap: _openLayersSheet,
-                            ),
-                          ),
-                        Tooltip(
-                          message: 'Recenter on Barangay Triangulo',
-                          child: MapToolButton(
-                            icon: Icons.center_focus_strong_rounded,
-                            onTap: _recenter,
-                          ),
-                        ),
-                        Tooltip(
-                          message: _canZoomIn ? 'Zoom in' : 'Maximum zoom reached',
-                          child: Opacity(
-                            opacity: _canZoomIn ? 1.0 : 0.4,
-                            child: MapToolButton(
-                              icon: Icons.add_rounded,
-                              onTap: _canZoomIn ? () => _zoomBy(1) : () {},
-                            ),
-                          ),
-                        ),
-                        Tooltip(
-                          message: _canZoomOut ? 'Zoom out' : 'Minimum zoom reached',
-                          child: Opacity(
-                            opacity: _canZoomOut ? 1.0 : 0.4,
-                            child: MapToolButton(
-                              icon: Icons.remove_rounded,
-                              onTap: _canZoomOut ? () => _zoomBy(-1) : () {},
-                            ),
-                          ),
-                        ),
                       ]),
-                    ),
-
-                    // ── Basemap style switcher — pushed up above the
-                    // timeline bar when it's showing, instead of the two
-                    // overlapping at the bottom-left corner.
-                    Positioned(
-                      bottom: anyTimelineData ? 66 : 10,
-                      left: 10,
-                      child: _styleSwitcher(),
                     ),
 
                     // ── Radar timeline scrubber (bottom) ────────────────────
@@ -740,7 +751,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           initialCenter: _trianguloCenter,
           initialZoom: _zoom,
           interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+            flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag | InteractiveFlag.doubleTapZoom,
           ),
           onPositionChanged: (position, hasGesture) {
             final z = position.zoom;
@@ -757,7 +768,9 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
             // Saves every tile viewed to disk (and serves saved tiles with
             // no signal); shares its cache with the evacuation map.
             tileProvider: TileCache.provider,
-            tileBuilder: style.monochrome
+            // The inverted (dark) basemap suits dark mode only; light mode gets the
+            // normal light tiles instead of a black map on a pale screen.
+            tileBuilder: (style.monochrome && !AppColors.isLight)
                 ? (context, tileWidget, tile) => ColorFiltered(
                       colorFilter: const ColorFilter.matrix([
                         -0.2126, -0.7152, -0.0722, 0, 255,
@@ -807,6 +820,33 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
               }).toList(),
             ),
 
+          if (_userLatLng != null)
+            MarkerLayer(markers: [
+              Marker(
+                point: _userLatLng!,
+                width: 34,
+                height: 34,
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.18),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF2563EB),
+                        border: Border.all(color: Colors.white, width: 2.5),
+                        boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 5)],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+
           RichAttributionWidget(
             alignment: AttributionAlignment.bottomRight,
             attributions: [TextSourceAttribution(style.attribution)],
@@ -849,45 +889,120 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
   Widget _statusPill(Color color) {
     final pillColor = _liveDataStale ? AppColors.textMuted : color;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: AppColors.bgDark.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: pillColor.withValues(alpha: 0.5)),
         boxShadow: [BoxShadow(color: AppColors.shadow(0.35), blurRadius: 10)],
       ),
-      child: Row(children: [
-        Container(
-          width: 22, height: 22,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: pillColor.withValues(alpha: 0.18)),
-          child: Icon(_iconForAlertKey(_alertKey), color: AppColors.ink(pillColor), size: 13),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Brgy. Triangulo · $_alertKey', style: TextStyle(
-                color: AppColors.ink(pillColor), fontSize: 11.5, fontWeight: FontWeight.w800)),
-            if (_liveDataStale)
-              Text(
-                _lastUpdated != null
-                    ? 'Live data unavailable · last update ${_timeAgo(_lastUpdated!)}'
-                    : 'Live data unavailable',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 9.5),
-              )
-            else if (_probability != null)
-              Text('${(_probability! * 100).toStringAsFixed(0)}% flood probability',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
-          ]),
-        ),
-        if (_loading)
-          SizedBox(
-            width: 12, height: 12,
-            child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 1.5),
-          )
-        else if (_liveDataStale)
-          Icon(Icons.cloud_off_rounded, color: AppColors.textMuted, size: 14),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 24, height: 24,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: pillColor.withValues(alpha: 0.18)),
+            child: Icon(_iconForAlertKey(_alertKey), color: AppColors.ink(pillColor), size: 14),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Brgy. Triangulo · $_alertKey', style: TextStyle(
+                  color: AppColors.ink(pillColor), fontSize: 12, fontWeight: FontWeight.w800)),
+              if (_liveDataStale)
+                Text(
+                  _lastUpdated != null
+                      ? 'Live data unavailable · last update ${_timeAgo(_lastUpdated!)}'
+                      : 'Live data unavailable',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 9.5),
+                )
+              else if (_probability != null)
+                Text('${(_probability! * 100).toStringAsFixed(0)}% chance of flooding',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 10)),
+              if (_locationNote != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(_locationNote!,
+                      style: TextStyle(
+                          color: AppColors.accent, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                ),
+            ]),
+          ),
+          if (_loading)
+            SizedBox(
+              width: 12, height: 12,
+              child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 1.5),
+            )
+          else if (_liveDataStale)
+            Icon(Icons.cloud_off_rounded, color: AppColors.textMuted, size: 14)
+          else
+            Icon(_showLegend ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                color: AppColors.textMuted, size: 18),
+        ]),
+        if (_probability != null && !_liveDataStale) ...[
+          const SizedBox(height: 10),
+          _riskScaleBar(_probability!.clamp(0.0, 1.0).toDouble()),
+        ],
       ]),
     );
+  }
+
+  // 4-segment Normal→Critical scale with a marker at the current probability.
+  // Replaces the old always-visible left legend: same information, drawn where
+  // the number is, so you can see how close the next level is.
+  Widget _riskScaleBar(double p) {
+    return LayoutBuilder(builder: (context, c) {
+      final w = c.maxWidth;
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+          height: 12,
+          child: Stack(clipBehavior: Clip.none, children: [
+            Positioned.fill(
+              top: 4, bottom: 4,
+              child: Row(children: [
+                for (var i = 0; i < _alertLevelKeys.length; i++)
+                  Expanded(
+                    child: Container(
+                      margin: EdgeInsets.only(right: i == _alertLevelKeys.length - 1 ? 0 : 2),
+                      decoration: BoxDecoration(
+                        color: _alertColors[_alertLevelKeys[i]]!.withValues(alpha: 0.75),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
+            Positioned(
+              left: (w * p - 6).clamp(0.0, (w - 12).clamp(0.0, double.infinity)).toDouble(),
+              top: 0,
+              child: Container(
+                width: 12, height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.bgDark, width: 2),
+                  boxShadow: [BoxShadow(color: AppColors.shadow(0.5), blurRadius: 3)],
+                ),
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 3),
+        Row(children: [
+          for (final k in _alertLevelKeys)
+            Expanded(
+              child: Text(_labelForAlertKey(k),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  style: TextStyle(
+                    color: k == _alertKey ? AppColors.ink(_alertColors[k]!) : AppColors.textMuted,
+                    fontSize: 8.5,
+                    fontWeight: k == _alertKey ? FontWeight.w800 : FontWeight.w500,
+                  )),
+            ),
+        ]),
+      ]);
+    });
   }
 
   Widget _legendPanel() {
@@ -924,6 +1039,20 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         const SizedBox(height: 2),
         Text('Barangay boundary shaded by current level',
             style: TextStyle(color: AppColors.textMuted, fontSize: 9)),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: () {
+            setState(() => _showLegend = false);
+            _openHelpSheet();
+          },
+          child: Row(children: [
+            Icon(Icons.help_outline_rounded, color: AppColors.accent, size: 13),
+            const SizedBox(width: 5),
+            Text('How to use this map',
+                style: TextStyle(
+                    color: AppColors.accent, fontSize: 10.5, fontWeight: FontWeight.w800)),
+          ]),
+        ),
         if (_showFacilities) ...[
           const SizedBox(height: 10),
           Container(height: 1, color: AppColors.bgBorder),
@@ -1198,19 +1327,39 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
             ),
           ),
         ]),
-        // One tick per day — at most 7, so no need to thin these out the
-        // way the hourly bar does every 4h.
+        // One tick per day, each with a dot in that day's alert colour — the
+        // whole week's risk pattern is visible without scrubbing, and tapping a
+        // day jumps straight to it. Short labels ("Tmrw") so nothing wraps.
         Row(
-          children: List.generate(days.length, (i) => i).map((i) {
+          children: List.generate(days.length, (i) {
             final t = DateTime.tryParse(days[i]['date']?.toString() ?? '');
+            final sel = i == index;
             return Expanded(
-              child: Text(
-                t != null ? _dayLabel(t) : '',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, fontSize: 9),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _scrubTo(i),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: sel ? 10 : 6,
+                    height: sel ? 10 : 6,
+                    decoration: BoxDecoration(color: _dailyAlertColor(days[i]), shape: BoxShape.circle),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    t != null ? _tickLabel(t) : '',
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    style: TextStyle(
+                      color: sel ? AppColors.textPri : AppColors.textMuted,
+                      fontSize: 9,
+                      fontWeight: sel ? FontWeight.w800 : FontWeight.w500,
+                    ),
+                  ),
+                ]),
               ),
             );
-          }).toList(),
+          }),
         ),
       ]),
     );
@@ -1428,6 +1577,60 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
                 icon: Icons.grain_rounded,
                 value: _RadarLayer.intensity,
                 setSheetState: setSheetState,
+              ),
+              const SizedBox(height: 20),
+              Text('Base map', style: TextStyle(
+                  color: AppColors.textPri, fontSize: 14, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Row(children: [
+                for (final e in _baseStyles.entries)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() => _baseStyleKey = e.key);
+                          setSheetState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: e.key == _baseStyleKey
+                                ? AppColors.accent.withValues(alpha: 0.12)
+                                : AppColors.bgMid,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: e.key == _baseStyleKey ? AppColors.accent : AppColors.bgBorder),
+                          ),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(e.value.icon,
+                                size: 18,
+                                color: e.key == _baseStyleKey ? AppColors.accent : AppColors.textMuted),
+                            const SizedBox(height: 4),
+                            Text(e.value.label,
+                                style: TextStyle(
+                                    color: e.key == _baseStyleKey ? AppColors.textPri : AppColors.textSec,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _showFacilities,
+                onChanged: (v) {
+                  setState(() => _showFacilities = v);
+                  setSheetState(() {});
+                },
+                secondary: Icon(Icons.local_hospital_rounded, color: AppColors.accent),
+                title: Text('Hospitals, schools, fire & police',
+                    style: TextStyle(color: AppColors.textPri, fontSize: 13, fontWeight: FontWeight.w700)),
+                subtitle: Text('Show critical facilities on the map',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
               ),
             ]),
           ),
