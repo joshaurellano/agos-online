@@ -1492,3 +1492,93 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
   .kyz-steps, .kyz-kit { grid-template-columns: 1fr; }
   .kyz-guide { padding: 16px; }
 }
+
+/* ── Know Your Risk: evacuation centers, route and legend (merged Evacuation Map) ── */
+/* Evacuation-center pins on the map */
+.kyz-center { --c: #ef4444; position: relative; width: 22px; height: 22px; cursor: pointer; }
+.kyz-center-dot {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: color-mix(in srgb, var(--c) 25%, #fff); border: 3px solid var(--c);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+}
+.kyz-center-dot::after {
+  content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--c);
+}
+.kyz-center-label {
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 5px;
+  padding: 2px 7px; border-radius: 4px; white-space: nowrap; pointer-events: none;
+  font-size: 10px; font-weight: 700; color: #fff; background: var(--c); box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.kyz-popup { display: flex; flex-direction: column; gap: 3px; min-width: 180px; color: #1f2937; }
+.kyz-popup span { font-size: 0.72rem; font-weight: 700; }
+.kyz-popup small { font-size: 0.72rem; line-height: 1.4; color: #4b5563; }
+
+/* Legend + location error over the map */
+.kyz-legend {
+  position: absolute; z-index: 4; right: 12px; top: 12px; margin-right: 44px;
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 8px;
+  font-size: 0.7rem; color: #1f2937; background: rgba(255,255,255,0.92); box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+}
+.kyz-legend span { display: flex; align-items: center; gap: 7px; }
+.kyz-legend i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.kyz-legend i.kyz-legend-line { width: 18px; height: 3px; border-radius: 2px; }
+.kyz-toast {
+  position: absolute; z-index: 6; left: 50%; top: 12px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px;
+  font-size: 0.8rem; font-weight: 600; color: #fff; background: #dc2626; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* The hint is now interactive (it holds the "use my location" button). */
+.kyz-hint { pointer-events: auto; }
+.kyz-hint button {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; padding: 4px 10px; cursor: pointer;
+  border: 0; border-radius: 999px; font-size: 0.76rem; font-weight: 700; color: #0d1f3c; background: #38bdf8;
+}
+.kyz-hint button:disabled { opacity: 0.6; cursor: default; }
+.kyz-warn {
+  display: flex; gap: 6px; align-items: flex-start; margin: 0; font-size: 0.74rem; line-height: 1.45; color: #b45309;
+}
+
+/* In-app walking steps */
+.kyz-steps-list { font-size: 0.8rem; color: var(--text-secondary); }
+.kyz-steps-list summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+.kyz-steps-list ol { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; line-height: 1.4; }
+
+/* Evacuation center list under the map */
+.kyz-centers {
+  display: flex; flex-direction: column; gap: 12px; padding: 18px 20px;
+  background: var(--blue-card); border: 1px solid var(--blue-border); border-radius: var(--radius);
+}
+.kyz-centers h3 { margin: 0; font-family: var(--font-display); font-size: 1.15rem; color: var(--text-primary); }
+.kyz-centers ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.kyz-center-card {
+  --c: #3b82f6;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 10px; padding: 12px 14px;
+  border-radius: var(--radius-sm); border: 1px solid var(--blue-border); background: var(--blue-mid);
+}
+.kyz-center-card strong { display: block; font-size: 0.92rem; color: var(--text-primary); }
+.kyz-center-type {
+  display: inline-flex; margin: 4px 0 6px; padding: 2px 7px; border-radius: 4px;
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+}
+.kyz-center-card small { display: block; font-size: 0.76rem; line-height: 1.4; color: var(--text-secondary); }
+.kyz-center-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.kyz-center-actions .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 0.76rem; }
+
+@media (max-width: 720px) {
+  .kyz-centers ul { grid-template-columns: 1fr; }
+  .kyz-legend { top: auto; bottom: auto; position: absolute; left: 8px; right: auto; margin-right: 0; }
+}
+
+/* What the zone means (result card) + live status */
+.kyz-meaning {
+  --c: #64748b;
+  margin: 0; padding: 10px 12px; border-radius: var(--radius-sm);
+  font-size: 0.82rem; line-height: 1.5; color: var(--text-secondary);
+  background: color-mix(in srgb, var(--c) 10%, transparent);
+}
+.kyz-meaning strong { color: var(--text-primary); }
+.kyz-now { display: flex; flex-direction: column; gap: 4px; }
+.kyz-now-kicker { font-size: 0.64rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.kyz-zone-depth { margin-left: auto; font-size: 0.68rem; font-weight: 600; color: var(--text-muted); }
