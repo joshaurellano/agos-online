@@ -442,7 +442,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
             </div>
             <LevelScale current={currentAlert} />
             <div className="advisory-cta">
-              <button type="button" className={`btn ${isSevere ? 'btn-danger' : 'btn-primary'}`} onClick={() => navigate('/evacuation-map')}>
+              <button type="button" className={`btn ${isSevere ? 'btn-danger' : 'btn-primary'}`} onClick={() => navigate('/know-your-hazards?locate=1')}>
                 <LuRoute size={18} aria-hidden="true" /> {t('findEvacuationRoute')}
               </button>
               <button type="button" className="btn btn-ghost" onClick={() => navigate('/alerts-log')}>

@@ -26,12 +26,12 @@ export default function QuickActionsBar() {
     ? [
         { label: t('reportWhatYouSee'), icon: <LuMegaphone size={20} />, to: '/reports',            primary: true },
         { label: 'Resident reports',    icon: <LuUsers size={20} />, to: '/community-reports' },
-        { label: t('nav.evacuationMap'),icon: <LuRoute size={20} />, to: '/evacuation-map' },
+        { label: 'Know your risk',      icon: <LuRoute size={20} />, to: '/know-your-hazards' },
         { label: t('nav.status'),       icon: <LuActivity size={20} />, to: '/dashboard' },
       ]
     : [
         { label: t('nav.status'),          icon: <LuActivity size={20} />, to: '/dashboard',      primary: true },
-        { label: t('findEvacuationRoute'), icon: <LuRoute size={20} />, to: '/evacuation-map' },
+        { label: t('findEvacuationRoute'), icon: <LuRoute size={20} />, to: '/know-your-hazards' },
         { label: t('nav.rainfall'),        icon: <LuCloudRain size={20} />, to: '/rainfall' },
       ];
 
