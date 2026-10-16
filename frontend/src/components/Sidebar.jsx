@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LuLayoutDashboard, LuCloudRain, LuMapPinned, LuActivity, LuBellRing, LuSettings,
+  LuLayoutDashboard, LuCloudRain, LuActivity, LuBellRing, LuSettings,
   LuClipboardList, LuMegaphone, LuWaves, LuUserCog, LuUsers, LuUserPlus,
   LuX, LuLogOut, LuLogIn,
 } from 'react-icons/lu';
@@ -20,7 +20,6 @@ import { isAdmin, isResident } from '../lib/roles';
 const NAV_ITEMS = [
   { path: '/dashboard',         label: 'Dashboard',        icon: LuLayoutDashboard, group: 'community' },
   { path: '/rainfall',          label: 'Rainfall',         icon: LuCloudRain,       group: 'community' },
-  { path: '/evacuation-map',    label: 'Evacuation Map',   icon: LuMapPinned,       group: 'community' },
   { path: '/know-your-hazards', label: 'Know Your Risk', icon: LuWaves,        group: 'community' },
   { path: '/alerts-log',        label: 'Alert Log',        icon: LuBellRing,        group: 'community' },
   { path: '/settings',          label: 'Settings',         icon: LuSettings,        group: 'community' },

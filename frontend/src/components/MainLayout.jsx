@@ -15,7 +15,6 @@ import { useLanguage } from '../hooks/useLanguage';
 const PAGE_TITLES = {
   '/dashboard':       'Dashboard',
   '/rainfall':        'Rainfall Accumulation',
-  '/evacuation-map':  'Evacuation Map',
   '/know-your-hazards': 'Know Your Risk',
   '/reports':         'Daily Flood Log',
   '/community-reports': 'Resident Reports',
