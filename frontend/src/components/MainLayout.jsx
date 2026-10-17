@@ -58,8 +58,25 @@ function AlertAnnouncer({ alertLevel }) {
   );
 }
 
+const SIDEBAR_KEY = 'agos-sidebar-collapsed';
+
 export default function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Desktop-only icon rail. Remembered between visits; ignored on narrow
+  // screens, where the sidebar is a drawer.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch { return false; }
+  });
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0'); } catch { /* storage unavailable */ }
+      return next;
+    });
+    // Maps size themselves from the window, so nudge them once the width
+    // animation has finished.
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+  };
   const { modelKey } = useModelSelection();
   // Single shared poller for whichever algorithm is currently selected —
   // switching algorithms here re-fetches day-1 predictions, alerts, and
@@ -76,7 +93,7 @@ export default function MainLayout() {
   }, [pageTitle]);
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout${collapsed ? ' sidebar-collapsed' : ''}`}>
       <a
         href="#main-content"
         className="skip-link"
@@ -87,6 +104,8 @@ export default function MainLayout() {
       <Sidebar
         mobileOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
       />
       <div className="main-content">
         <OfflineBanner />
