@@ -9,9 +9,9 @@ import { LuChevronDown, LuShieldCheck } from 'react-icons/lu';
 // ─────────────────────────────────────────────────────────────────────────
 const IS_DRAFT = false;
 const LAST_UPDATED = 'October 16, 2026';
-const CONTROLLER = '[Barangay Triangulo, Naga City — confirm legal name]';
-const RETENTION_RESIDENTS = '[how long, e.g. until the resident asks to be removed]';
-const RETENTION_REPORTS = '[how long reports and photos are kept]';
+const CONTROLLER = 'Barangay Triangulo, Naga City';
+const RETENTION_RESIDENTS = 'until the resident asks to be removed';
+const RETENTION_REPORTS = 'Rejected reports and their photos are deleted after 90 days. Verified reports are kept as flood records for 3 years.';
 
 const DATA_ROWS = [
   {
