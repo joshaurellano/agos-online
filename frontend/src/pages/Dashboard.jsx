@@ -23,7 +23,7 @@ import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, PIN_ASPECT, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
-import { LuRoute, LuHistory, LuClock } from 'react-icons/lu';
+import { LuRoute, LuHistory, LuClock, LuTrendingUp, LuTrendingDown, LuMinus, LuSiren } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
@@ -312,7 +312,7 @@ function RadialGauge({ value, color, size = 104, strokeWidth = 9 }) {
         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.5rem', color, lineHeight: 1 }}>
           <AnimatedNumber value={clamped} decimals={0} />%
         </span>
-        <span style={{ fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: 2 }}>
+        <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: 3 }}>
           Risk
         </span>
       </div>
@@ -376,9 +376,9 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
   const { t } = useLanguage();
   const navigate = useNavigate();
   const TREND_COPY = {
-    rising:  { icon: '↗', label: 'Rising trend', color: '#f97316' },
-    falling: { icon: '↘', label: 'Falling trend', color: '#22c55e' },
-    stable:  { icon: '→', label: 'Stable',        color: 'var(--text-muted)' },
+    rising:  { Icon: LuTrendingUp,   label: 'Rising trend',  color: '#f97316' },
+    falling: { Icon: LuTrendingDown, label: 'Falling trend', color: '#22c55e' },
+    stable:  { Icon: LuMinus,        label: 'Stable',        color: 'var(--text-secondary)' },
   };
   const trend = recentTrend ? TREND_COPY[recentTrend] : null;
   const isSevere = currentAlert === 'WARNING' || currentAlert === 'CRITICAL';
@@ -391,7 +391,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
         className={`card${isSevere ? ' alert-glow-pulse' : ''}`}
         style={{
           flex: '2 1 420px', minWidth: 320, padding: 0, overflow: 'hidden',
-          boxShadow: `var(--shadow), 0 0 24px ${hexToRgba(alertColor, 0.18)}`,
+          boxShadow: isSevere ? `var(--shadow), 0 0 24px ${hexToRgba(alertColor, 0.22)}` : 'var(--shadow)',
           transition: 'box-shadow 0.6s ease',
           '--glow-a': hexToRgba(alertColor, 0.16),
           '--glow-b': hexToRgba(alertColor, 0.5),
@@ -401,7 +401,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
             Flood Advisory Bulletin
           </span>
           <FreshnessLabel date={lastUpdated} />
@@ -423,17 +423,17 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
               <span key={currentAlert} className="level-pill" style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.4rem',
+                fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.2rem',
                 color: '#fff', background: alertColor,
-                padding: '7px 18px', borderRadius: 999, letterSpacing: '0.04em',
-                boxShadow: `0 6px 18px ${hexToRgba(alertColor, 0.4)}`,
+                padding: '7px 18px', borderRadius: 10, letterSpacing: '0.06em',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
               }}>
                 {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
               </span>
               <span className="stance" style={{ '--c': alertColor }}>{t(`alertLevel.${currentAlert}.stance`)}</span>
               {trend && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.9rem', fontWeight: 700, color: trend.color }}>
-                  {trend.icon} {trend.label}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.9rem', fontWeight: 700, color: trend.color }}>
+                  <trend.Icon size={17} strokeWidth={2.5} aria-hidden="true" /> {trend.label}
                 </span>
               )}
             </div>
@@ -458,14 +458,14 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
         <div className="title-band-bar" style={{
           padding: '11px 20px', background: 'var(--title-band)', borderBottom: '1px solid var(--blue-border)',
         }}>
-          <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.1em', color: 'var(--accent)', textTransform: 'uppercase' }}>
             {canSendAlert ? 'Dispatch Alert' : t('whatToDoNow')}
           </span>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', flex: 1 }}>
           <div className="action-callout" style={{ '--lvl': alertColor }}>
-            <div style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 6 }}>
               Recommended Action
             </div>
             <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.55, fontWeight: 500 }}>
@@ -474,9 +474,14 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
           </div>
 
           {canSendAlert && (
-            <button className="btn btn-danger" onClick={onSendAlert} style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto' }}>
-              <span aria-hidden="true"></span> Dispatch Alert
-            </button>
+            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ margin: 0, fontSize: '0.82rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+                Sends an SMS and push alert to registered residents.
+              </p>
+              <button className="btn btn-danger" onClick={onSendAlert} style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <LuSiren size={18} aria-hidden="true" /> Dispatch Alert
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LuLayoutDashboard, LuCloudRain, LuActivity, LuBellRing, LuSettings,
   LuClipboardList, LuMegaphone, LuWaves, LuUserCog, LuUsers, LuUserPlus,
-  LuX, LuLogOut, LuLogIn,
+  LuX, LuLogOut, LuLogIn, LuChevronLeft, LuChevronRight,
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import agosLogo from '../assets/agos-logo.png';
@@ -36,7 +36,56 @@ const GROUP_LABELS = {
   staff:     'Staff tools',
 };
 
-export default function Sidebar({ mobileOpen, onClose }) {
+// Desktop collapse (icon-only rail). Only applies above the tablet breakpoint;
+// on narrow screens the sidebar stays an off-canvas drawer and these rules
+// do nothing. Kept here so the collapse feature is not spread over index.css.
+const COLLAPSE_STYLES = `
+.sidebar-collapse-btn { display: none; }
+@media (min-width: 1025px) {
+  .sidebar { transition: width 0.25s ease, background 0.25s ease, border-color 0.25s ease; }
+  .main-content { transition: margin-left 0.25s ease; }
+
+  .sidebar-collapse-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    position: absolute; top: 20px; right: -17px; z-index: 2;
+    width: 34px; height: 34px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: #0284c7; color: #fff; border: 3px solid #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+  .sidebar-collapse-btn:hover { background: #0369a1; transform: scale(1.1); }
+  .sidebar-collapse-btn:focus-visible { outline: 3px solid #facc15; outline-offset: 2px; }
+
+  .sidebar-collapsed .sidebar { width: 76px; }
+  .sidebar-collapsed .main-content { margin-left: 76px; }
+  .sidebar-collapsed .sidebar-nav { overflow-x: hidden; padding: 8px 10px 12px; }
+
+  .sidebar-collapsed .sidebar-brand { justify-content: center; padding: 18px 0 16px; }
+  .sidebar-collapsed .sidebar-brand-text { display: none; }
+
+  .sidebar-collapsed .sidebar-group-label { display: none; }
+  .sidebar-collapsed .sidebar-group + .sidebar-group {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--blue-border);
+  }
+
+  .sidebar-collapsed .sidebar-link { justify-content: center; padding: 12px 0; gap: 0; }
+  .sidebar-collapsed .sidebar-link span,
+  .sidebar-collapsed .sidebar-btn-label,
+  .sidebar-collapsed .sidebar-user-text {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+
+  .sidebar-collapsed .sidebar-account { padding: 14px 10px 16px; }
+  .sidebar-collapsed .sidebar-user { justify-content: center; }
+  .sidebar-collapsed .sidebar-account-btn { padding-left: 0; padding-right: 0; gap: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .main-content { transition: none !important; }
+}
+`;
+
+export default function Sidebar({ mobileOpen, onClose, collapsed = false, onToggleCollapse }) {
   const { user, logout } = useAuth();
   const isAdminUser = isAdmin(user);
   const closeBtnRef = useRef(null);
@@ -99,6 +148,17 @@ export default function Sidebar({ mobileOpen, onClose }) {
       <div className={`sidebar-overlay${mobileOpen ? ' show' : ''}`} onClick={onClose} aria-hidden="true" />
 
       <aside id="app-sidebar" className={`sidebar${mobileOpen ? ' open' : ''}`}>
+        <style>{COLLAPSE_STYLES}</style>
+        <button
+          type="button"
+          className="sidebar-collapse-btn"
+          onClick={onToggleCollapse}
+          aria-expanded={!collapsed}
+          aria-controls="app-sidebar"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <LuChevronRight size={20} strokeWidth={3} aria-hidden="true" /> : <LuChevronLeft size={20} strokeWidth={3} aria-hidden="true" />}
+        </button>
         <div className="sidebar-brand">
           <img className="sidebar-brand-mark" src={agosLogo} alt="" width="40" height="40" />
           <div className="sidebar-brand-text">
@@ -122,6 +182,7 @@ export default function Sidebar({ mobileOpen, onClose }) {
                       <NavLink
                         to={path}
                         onClick={onClose}
+                        title={collapsed ? text : undefined}
                         className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
                       >
                         <ItemIcon aria-hidden="true" />
@@ -138,20 +199,30 @@ export default function Sidebar({ mobileOpen, onClose }) {
         <div className="sidebar-account">
           {user ? (
             <>
-              <div className="sidebar-user">
+              <div className="sidebar-user" title={collapsed ? user.name : undefined}>
                 <div className="sidebar-avatar" aria-hidden="true">{initial}</div>
                 <div className="sidebar-user-text">
                   <div className="sidebar-user-name">{user.name}</div>
                   <div className="sidebar-user-role">{user.roles?.role_desc}</div>
                 </div>
               </div>
-              <button type="button" className="btn btn-ghost sidebar-account-btn" onClick={logout}>
-                <LuLogOut size={17} aria-hidden="true" /> Sign out
+              <button
+                type="button"
+                className="btn btn-ghost sidebar-account-btn"
+                onClick={logout}
+                title={collapsed ? 'Sign out' : undefined}
+              >
+                <LuLogOut size={17} aria-hidden="true" /> <span className="sidebar-btn-label">Sign out</span>
               </button>
             </>
           ) : (
-            <NavLink to="/login" onClick={onClose} className="btn btn-primary sidebar-account-btn">
-              <LuLogIn size={17} aria-hidden="true" /> Staff sign in
+            <NavLink
+              to="/login"
+              onClick={onClose}
+              title={collapsed ? 'Staff sign in' : undefined}
+              className="btn btn-primary sidebar-account-btn"
+            >
+              <LuLogIn size={17} aria-hidden="true" /> <span className="sidebar-btn-label">Staff sign in</span>
             </NavLink>
           )}
         </div>
