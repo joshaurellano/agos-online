@@ -1,9 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  LuMegaphone, LuHourglass, LuCircleCheckBig, LuCircleX,
-  LuDroplets, LuMapPin, LuTriangleAlert,
-} from 'react-icons/lu';
+import { LuSearch, LuChevronDown, LuMapPin, LuTriangleAlert, LuInbox } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
 import { ErrorBanner, SectionLabel } from '../components/ui';
@@ -32,20 +29,119 @@ const REJECTION_REASONS = [
   'Other',
 ];
 
+const PAGE_SIZE = 20;
+
+// Styles live here so the page is one file. Colors come from the theme
+// variables, so all themes (dark, light, high contrast) stay readable.
+const STYLES = `
+.rr-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.rr-eyebrow { font-size: 0.9rem; color: var(--text-secondary); }
+.rr-title { margin: 2px 0 0; font-family: var(--font-display); font-size: 1.9rem; font-weight: 800; color: var(--text-primary); line-height: 1.2; }
+
+.rr-tabs { display: flex; gap: 28px; margin: 22px 0 18px; border-bottom: 1px solid var(--blue-border); overflow-x: auto; }
+.rr-tab {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: -1px; padding: 10px 2px 12px;
+  background: none; border: none; border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap;
+  font: inherit; font-size: 0.95rem; font-weight: 600; color: var(--text-secondary);
+}
+.rr-tab:hover { color: var(--text-primary); }
+.rr-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.rr-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.rr-tab-count {
+  min-width: 24px; padding: 1px 8px; border-radius: 999px; text-align: center; font-size: 0.75rem; font-weight: 700;
+  background: var(--blue-mid); color: var(--text-secondary); border: 1px solid var(--blue-border);
+}
+.rr-tab[aria-selected="true"] .rr-tab-count { color: var(--accent); border-color: var(--accent); }
+
+.rr-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.rr-search { position: relative; flex: 1 1 260px; max-width: 420px; }
+.rr-search svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none; }
+.rr-search input {
+  width: 100%; height: 42px; padding: 0 14px 0 40px; font: inherit; font-size: 0.92rem;
+  background: var(--blue-card); color: var(--text-primary); border: 1px solid var(--blue-border); border-radius: 10px;
+}
+.rr-search input::placeholder { color: var(--text-muted); }
+.rr-search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.rr-count { margin-left: auto; font-size: 0.88rem; color: var(--text-secondary); }
+
+.rr-card { background: var(--blue-card); border: 1px solid var(--blue-border); border-radius: var(--radius); overflow: hidden; }
+.rr-table { width: 100%; border-collapse: collapse; }
+.rr-table th {
+  padding: 12px 16px; text-align: left; font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);
+  background: var(--blue-mid); border-bottom: 1px solid var(--blue-border);
+}
+.rr-table td { padding: 14px 16px; vertical-align: middle; font-size: 0.92rem; color: var(--text-primary); border-bottom: 1px solid var(--blue-border); }
+.rr-table tr:last-child td { border-bottom: none; }
+.rr-row { cursor: pointer; transition: background 0.15s ease; }
+.rr-row:hover, .rr-row.open { background: var(--blue-mid); }
+.rr-main { display: block; max-width: 440px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rr-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; font-size: 0.82rem; color: var(--text-secondary); }
+.rr-flag { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: color-mix(in srgb, var(--orange) 60%, var(--text-primary)); }
+.rr-loc { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.rr-pill {
+  display: inline-block; padding: 3px 12px; border-radius: 6px; font-size: 0.82rem; font-weight: 700;
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+  color: color-mix(in srgb, var(--c) 55%, var(--text-primary));
+}
+.rr-time { color: var(--text-secondary); white-space: nowrap; }
+.rr-cell-chev { width: 56px; text-align: right; }
+.rr-chev {
+  display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0;
+  background: none; border: 1px solid var(--blue-border); border-radius: 8px; cursor: pointer; color: var(--text-secondary);
+}
+.rr-chev:hover { color: var(--accent); border-color: var(--accent); }
+.rr-chev:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rr-chev svg { transition: transform 0.2s ease; }
+.rr-row.open .rr-chev svg { transform: rotate(180deg); }
+
+.rr-detail td { padding: 18px 20px 20px; background: var(--blue-mid); }
+.rr-detail-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+.rr-photo { width: 200px; height: 200px; object-fit: cover; border-radius: 10px; border: 1px solid var(--blue-border); }
+.rr-detail-body { flex: 1 1 260px; min-width: 0; }
+.rr-label { margin-bottom: 5px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.rr-desc { padding: 12px 14px; border-radius: 10px; font-size: 0.92rem; line-height: 1.6; background: var(--blue-card); border: 1px solid var(--blue-border); color: var(--text-primary); }
+.rr-link { display: inline-block; margin-top: 10px; font-size: 0.88rem; font-weight: 600; color: var(--accent); }
+.rr-reason { margin-top: 10px; font-size: 0.88rem; font-weight: 600; color: color-mix(in srgb, var(--red) 65%, var(--text-primary)); }
+.rr-dup {
+  margin-top: 16px; padding: 10px 14px; border-radius: 10px; font-size: 0.86rem; color: var(--text-primary);
+  background: color-mix(in srgb, var(--orange) 12%, transparent); border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+}
+.rr-dup strong { display: block; margin-bottom: 4px; }
+.rr-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.rr-btn-verify { background: #16a34a; border-color: #16a34a; color: #fff; }
+.rr-btn-verify:hover:not(:disabled) { background: #15803d; border-color: #15803d; }
+.rr-btn-reject { color: color-mix(in srgb, var(--red) 70%, var(--text-primary)); border-color: color-mix(in srgb, var(--red) 55%, transparent); }
+.rr-btn-dup { color: color-mix(in srgb, var(--orange) 65%, var(--text-primary)); border-color: color-mix(in srgb, var(--orange) 55%, transparent); }
+
+.rr-more {
+  width: 100%; margin-top: 14px; padding: 12px; cursor: pointer; font: inherit; font-weight: 600; font-size: 0.92rem;
+  background: var(--blue-card); color: var(--text-primary); border: 1px solid var(--blue-border); border-radius: 12px;
+}
+.rr-more:hover { border-color: var(--accent); color: var(--accent); }
+.rr-empty { padding: 52px 24px; text-align: center; color: var(--text-secondary); }
+.rr-empty svg { font-size: 2rem; color: var(--text-muted); margin-bottom: 8px; }
+.rr-empty strong { display: block; font-size: 0.98rem; color: var(--text-primary); margin-bottom: 4px; }
+
+@media (max-width: 760px) {
+  .rr-title { font-size: 1.5rem; }
+  .rr-table thead { display: none; }
+  .rr-table, .rr-table tbody, .rr-table tr, .rr-table td { display: block; width: 100%; }
+  .rr-row { position: relative; padding: 12px 56px 12px 14px; border-bottom: 1px solid var(--blue-border); }
+  .rr-row td { padding: 3px 0; border: none; }
+  .rr-main { max-width: none; white-space: normal; }
+  .rr-table td.rr-cell-chev { position: absolute; top: 12px; right: 10px; width: auto; padding: 0; }
+  .rr-detail td { padding: 14px; }
+  .rr-photo { width: 100%; height: 200px; }
+  .rr-count { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .rr-row, .rr-chev svg { transition: none; } }
+`;
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatusPill({ status }) {
-  const color = STATUS_COLORS[status] ?? '#8da4be';
-  return (
-    <span style={{
-      fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em',
-      textTransform: 'uppercase',
-      background: `${color}18`, color, border: `1px solid ${color}40`,
-      borderRadius: 4, padding: '2px 8px',
-    }}>
-      {status}
-    </span>
-  );
+  const label = status.charAt(0).toUpperCase() + status.slice(1);
+  return <span className="rr-pill" style={{ '--c': STATUS_COLORS[status] ?? '#8da4be' }}>{label}</span>;
 }
 
 function RejectDialog({ onConfirm, onCancel }) {
@@ -98,11 +194,11 @@ function RejectDialog({ onConfirm, onCancel }) {
   );
 }
 
-function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPromote }) {
-  const [expanded, setExpanded]   = useState(false);
-  const [updating, setUpdating]   = useState(false);
+function ReportRow({ report, allReports, canModerate, open, onToggle, onVerify, onReject, onPromote }) {
+  const [updating, setUpdating]     = useState(false);
   const [showReject, setShowReject] = useState(false);
   const duplicates = findNearbyDuplicates(report, allReports);
+  const detailId = `rr-detail-${report.id}`;
 
   const handleVerify = async () => {
     setUpdating(true);
@@ -117,165 +213,106 @@ function ReportCard({ report, allReports, canModerate, onVerify, onReject, onPro
     setUpdating(false);
   };
 
-  // Skips the reason dialog since the reason is already known -- one
-  // click instead of four for the common "yep, that's the same flood"
+  // One click instead of four for the common "yep, that's the same flood"
   // case the duplicate check exists for.
   const handleRejectAsDuplicate = () => handleReject('Duplicate of another report');
 
+  const location = report.location_label || (report.latitude != null ? 'Pinned on map' : '—');
+
   return (
-    <div style={{
-      background: 'var(--blue-mid)',
-      border: `1px solid ${expanded ? STATUS_COLORS[report.status] + '60' : 'var(--blue-border)'}`,
-      borderRadius: 'var(--radius-sm)',
-      overflow: 'hidden',
-      transition: 'border-color 0.2s',
-    }}>
-      <div
-        onClick={() => setExpanded(e => !e)}
-        style={{ padding: '13px 16px', cursor: 'pointer', display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}
-      >
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)',
-            background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.3)',
-            borderRadius: 5, padding: '2px 8px 2px 6px',
-          }}>
-            <LuDroplets size={12} aria-hidden="true" /> Flood
-          </span>
-          <StatusPill status={report.status} />
-          {report.location_label && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              fontSize: '0.68rem', color: 'var(--text-muted)', background: 'var(--blue-card)',
-              border: '1px solid var(--blue-border)', borderRadius: 4, padding: '1px 7px',
-            }}>
-              <LuMapPin size={10} aria-hidden="true" /> {report.location_label}
-            </span>
-          )}
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {timeAgo(report.created_at)}
-          </span>
-          {duplicates.length > 0 && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              fontSize: '0.65rem', fontWeight: 700, color: '#f97316',
-              background: '#f9731618', border: '1px solid #f9731640',
-              borderRadius: 4, padding: '1px 7px',
-            }}>
-              <LuTriangleAlert size={10} aria-hidden="true" /> {duplicates.length} similar nearby
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            by <strong style={{ color: 'var(--text-secondary)' }}>{report.reporter_name}</strong>
-          </span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transition: 'transform 0.2s', display: 'inline-block', transform: expanded ? 'rotate(180deg)' : 'none' }}>▾</span>
-        </div>
-      </div>
-
-      {expanded && (
-        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--blue-border)' }}>
-          <div style={{ marginTop: 14, marginBottom: 12, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            {report.photo_url && (
-              <img
-                src={report.photo_url}
-                alt="Reported incident"
-                style={{ width: 180, height: 180, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--blue-border)' }}
-              />
+    <>
+      <tr className={`rr-row${open ? ' open' : ''}`} onClick={onToggle}>
+        <td>
+          <span className="rr-main">{report.description || 'No description'}</span>
+          <div className="rr-sub">
+            <span>by {report.reporter_name}</span>
+            {duplicates.length > 0 && (
+              <span className="rr-flag">
+                <LuTriangleAlert size={13} aria-hidden="true" /> {duplicates.length} similar nearby
+              </span>
             )}
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.08em', marginBottom: 4 }}>
-                Description
-              </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'var(--blue-card)', padding: '10px 12px', borderRadius: 6, border: '1px solid var(--blue-border)', marginBottom: 10 }}>
-                {report.description}
-              </div>
-              {report.latitude && report.longitude && (
-                <a
-                  href={`https://maps.google.com/?q=${report.latitude},${report.longitude}`}
-                  target="_blank" rel="noreferrer"
-                  style={{ fontSize: '0.75rem', color: 'var(--accent)' }}
-                >
-                  View exact pinned location
-                </a>
-              )}
-              {report.status === 'rejected' && report.rejection_reason && (
-                <div style={{ marginTop: 10, fontSize: '0.75rem', color: '#ef4444' }}>
-                  Rejected: {report.rejection_reason}
-                </div>
-              )}
-            </div>
           </div>
+        </td>
+        <td><span className="rr-loc"><LuMapPin size={14} aria-hidden="true" /> {location}</span></td>
+        <td><StatusPill status={report.status} /></td>
+        <td><span className="rr-time" title={new Date(report.created_at).toLocaleString('en-PH')}>{timeAgo(report.created_at)}</span></td>
+        <td className="rr-cell-chev">
+          <button
+            type="button"
+            className="rr-chev"
+            aria-expanded={open}
+            aria-controls={detailId}
+            aria-label={open ? 'Hide details' : 'Show details'}
+          >
+            <LuChevronDown size={18} aria-hidden="true" />
+          </button>
+        </td>
+      </tr>
 
-          {duplicates.length > 0 && (
-            <div style={{
-              marginBottom: 12, padding: '8px 12px', borderRadius: 6,
-              background: '#f9731612', border: '1px solid #f9731640',
-              fontSize: '0.76rem', color: 'var(--text-secondary)',
-            }}>
-              <div style={{ fontWeight: 700, color: '#f97316', marginBottom: 4 }}>
-                Possibly the same incident as {duplicates.length} other report{duplicates.length > 1 ? 's' : ''}
+      {open && (
+        <tr className="rr-detail" id={detailId}>
+          <td colSpan={5}>
+            <div className="rr-detail-grid">
+              {report.photo_url && <img className="rr-photo" src={report.photo_url} alt="Reported incident" />}
+              <div className="rr-detail-body">
+                <div className="rr-label">Description</div>
+                <div className="rr-desc">{report.description}</div>
+                {report.latitude && report.longitude && (
+                  <a
+                    className="rr-link"
+                    href={`https://maps.google.com/?q=${report.latitude},${report.longitude}`}
+                    target="_blank" rel="noreferrer"
+                  >
+                    View exact pinned location
+                  </a>
+                )}
+                {report.status === 'rejected' && report.rejection_reason && (
+                  <div className="rr-reason">Rejected: {report.rejection_reason}</div>
+                )}
               </div>
-              {duplicates.map(d => (
-                <div key={d.id} style={{ opacity: 0.85 }}>
-                  • <StatusPill status={d.status} /> · {timeAgo(d.created_at)}
-                  {d.location_label ? ` · ${d.location_label}` : ''}
-                </div>
-              ))}
             </div>
-          )}
 
-          {canModerate && report.status === 'pending' && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-primary"
-                disabled={updating}
-                onClick={handleVerify}
-                style={{ fontSize: '0.78rem', background: '#22c55e', borderColor: '#22c55e' }}
-              >
-                Verify & Publish
-              </button>
-              <button
-                className="btn btn-ghost"
-                disabled={updating}
-                onClick={() => setShowReject(true)}
-                style={{ fontSize: '0.78rem', color: '#ef4444', borderColor: '#ef444460' }}
-              >
-                Reject
-              </button>
-              {duplicates.length > 0 && (
-                <button
-                  className="btn btn-ghost"
-                  disabled={updating}
-                  onClick={handleRejectAsDuplicate}
-                  style={{ fontSize: '0.78rem', color: '#f97316', borderColor: '#f9731660' }}
-                >
-                  Reject as Duplicate
+            {duplicates.length > 0 && (
+              <div className="rr-dup">
+                <strong>Possibly the same incident as {duplicates.length} other report{duplicates.length > 1 ? 's' : ''}</strong>
+                {duplicates.map(d => (
+                  <div key={d.id}>
+                    <StatusPill status={d.status} /> · {timeAgo(d.created_at)}
+                    {d.location_label ? ` · ${d.location_label}` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {canModerate && report.status === 'pending' && (
+              <div className="rr-actions">
+                <button className="btn btn-primary rr-btn-verify" disabled={updating} onClick={handleVerify}>
+                  Verify &amp; publish
                 </button>
-              )}
-            </div>
-          )}
+                <button className="btn btn-ghost rr-btn-reject" disabled={updating} onClick={() => setShowReject(true)}>
+                  Reject
+                </button>
+                {duplicates.length > 0 && (
+                  <button className="btn btn-ghost rr-btn-dup" disabled={updating} onClick={handleRejectAsDuplicate}>
+                    Reject as duplicate
+                  </button>
+                )}
+              </div>
+            )}
 
-          {canModerate && report.status === 'verified' && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-ghost"
-                onClick={() => onPromote(report)}
-                style={{ fontSize: '0.78rem', color: 'var(--accent)', borderColor: 'var(--accent)60' }}
-              >
-                Open in Flood Log
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            {canModerate && report.status === 'verified' && (
+              <div className="rr-actions">
+                <button className="btn btn-ghost" onClick={() => onPromote(report)}>
+                  Open in Flood Log
+                </button>
+              </div>
+            )}
 
-      {showReject && (
-        <RejectDialog onConfirm={handleReject} onCancel={() => setShowReject(false)} />
+            {showReject && <RejectDialog onConfirm={handleReject} onCancel={() => setShowReject(false)} />}
+          </td>
+        </tr>
       )}
-    </div>
+    </>
   );
 }
 
@@ -351,134 +388,141 @@ export default function CommunityReportsPage() {
     navigate('/reports', { state: { logDate: key } });
   };
 
-  const filtered = reports.filter(r => {
-    if (filterStatus !== 'ALL' && r.status !== filterStatus) return false;
-    return true;
-  });
+  const [openId, setOpenId] = useState(null);
+  const [query, setQuery] = useState('');
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const tabRefs = useRef([]);
 
-  const pendingCount = reports.filter(r => r.status === 'pending').length;
-  const verifiedCount = reports.filter(r => r.status === 'verified').length;
-  const rejectedCount = reports.filter(r => r.status === 'rejected').length;
+  const counts = useMemo(() => ({
+    pending:  reports.filter(r => r.status === 'pending').length,
+    verified: reports.filter(r => r.status === 'verified').length,
+    rejected: reports.filter(r => r.status === 'rejected').length,
+    ALL:      reports.length,
+  }), [reports]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return reports.filter(r => {
+      if (filterStatus !== 'ALL' && r.status !== filterStatus) return false;
+      if (!q) return true;
+      return [r.reporter_name, r.description, r.location_label]
+        .some(v => (v ?? '').toLowerCase().includes(q));
+    });
+  }, [reports, filterStatus, query]);
+
+  useEffect(() => { setVisible(PAGE_SIZE); setOpenId(null); }, [filterStatus, query]);
+
+  const selectTab = (i) => {
+    setFilterStatus(STATUS_FILTERS[i].key);
+    tabRefs.current[i]?.focus();
+  };
+  const onTabKey = (e, i) => {
+    const last = STATUS_FILTERS.length - 1;
+    if (e.key === 'ArrowRight') { e.preventDefault(); selectTab(i === last ? 0 : i + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); selectTab(i === 0 ? last : i - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); selectTab(0); }
+    else if (e.key === 'End') { e.preventDefault(); selectTab(last); }
+  };
+
+  const activeLabel = STATUS_FILTERS.find(f => f.key === filterStatus)?.label.toLowerCase();
+  const shown = filtered.slice(0, visible);
 
   return (
     <div className="fade-in">
+      <style>{STYLES}</style>
       {errorMsg && <ErrorBanner>{errorMsg}</ErrorBanner>}
 
-      {/* ── Page header ────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-          background: 'rgba(56,189,248,0.14)', color: 'var(--accent)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <LuMegaphone size={19} aria-hidden="true" />
-        </div>
-        <div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>
-            Resident Reports
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Flood reports submitted by residents through the mobile app, awaiting review.
-          </div>
-        </div>
+      <div>
+        <div className="rr-eyebrow">Submitted through the mobile app</div>
+        <h2 className="rr-title">Resident reports</h2>
       </div>
 
-      {/* ── Stat strip ─────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 12, margin: '18px 0', flexWrap: 'wrap' }}>
-        {[
-          { key: 'pending',  label: 'Awaiting Review', count: pendingCount,  color: '#eab308', Icon: LuHourglass },
-          { key: 'verified', label: 'Verified',         count: verifiedCount, color: '#22c55e', Icon: LuCircleCheckBig },
-          { key: 'rejected', label: 'Rejected',         count: rejectedCount, color: '#ef4444', Icon: LuCircleX },
-        ].map(s => (
-          <div
-            key={s.key}
-            className="card"
-            style={{
-              flex: '1 1 170px', minWidth: 170, padding: '14px 18px',
-              display: 'flex', alignItems: 'center', gap: 14,
-            }}
+      <div className="rr-tabs" role="tablist" aria-label="Report status">
+        {STATUS_FILTERS.map((f, i) => (
+          <button
+            key={f.key}
+            ref={el => { tabRefs.current[i] = el; }}
+            type="button"
+            role="tab"
+            id={`rr-tab-${f.key}`}
+            aria-selected={filterStatus === f.key}
+            aria-controls="rr-panel"
+            tabIndex={filterStatus === f.key ? 0 : -1}
+            className="rr-tab"
+            onClick={() => setFilterStatus(f.key)}
+            onKeyDown={(e) => onTabKey(e, i)}
           >
-            <div style={{
-              width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-              background: `${s.color}20`, color: s.color,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <s.Icon size={18} aria-hidden="true" />
-            </div>
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 800, color: s.color, lineHeight: 1 }}>
-                {s.count}
-              </div>
-              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 3 }}>
-                {s.label}
-              </div>
-            </div>
-          </div>
+            {f.label}
+            {counts[f.key] > 0 && <span className="rr-tab-count">{counts[f.key]}</span>}
+          </button>
         ))}
       </div>
 
-      {/* ── Filter ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SectionLabel>Reports</SectionLabel>
-        <div
-          className="view-toggle-group"
-          style={{
-            marginLeft: 'auto', display: 'flex', gap: 0,
-            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-            borderRadius: 8, overflow: 'hidden',
-          }}
-        >
-          {STATUS_FILTERS.map(f => (
-            <button
-              key={f.key}
-              type="button"
-              className="toggle-pill"
-              onClick={() => setFilterStatus(f.key)}
-              style={{
-                padding: '7px 16px', fontSize: '0.76rem', fontWeight: 700,
-                letterSpacing: '0.02em', cursor: 'pointer', border: 'none',
-                background: filterStatus === f.key ? 'var(--accent)' : 'transparent',
-                color: filterStatus === f.key ? '#fff' : 'var(--text-muted)',
-                transition: 'all 0.2s',
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
+      <div className="rr-toolbar">
+        <div className="rr-search">
+          <LuSearch size={17} aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search reports"
+            aria-label="Search reports"
+          />
         </div>
+        <span className="rr-count" aria-live="polite">
+          {filtered.length} {filtered.length === 1 ? 'report' : 'reports'}
+        </span>
       </div>
 
-      {/* ── List ───────────────────────────────────────────────────── */}
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[0, 1, 2].map(i => (
-            <div key={i} className="skeleton" style={{ height: 64 }} />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '40px 24px', color: 'var(--text-muted)' }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-            No reports match this filter.
+      <div id="rr-panel" role="tabpanel" aria-labelledby={`rr-tab-${filterStatus}`}>
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[0, 1, 2].map(i => <div key={i} className="skeleton" style={{ height: 64 }} />)}
           </div>
-          <div style={{ fontSize: '0.78rem' }}>
-            Try switching to a different status above.
+        ) : filtered.length === 0 ? (
+          <div className="rr-card rr-empty">
+            <LuInbox aria-hidden="true" />
+            <strong>{query ? 'No reports match your search.' : `No ${activeLabel === 'all' ? '' : `${activeLabel} `}reports.`}</strong>
+            <span>{query ? 'Try a different name or place.' : 'New reports appear here as residents send them.'}</span>
           </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filtered.map(r => (
-            <ReportCard
-              key={r.id}
-              report={r}
-              allReports={reports}
-              canModerate={canModerate}
-              onVerify={handleVerify}
-              onReject={handleReject}
-              onPromote={handlePromote}
-            />
-          ))}
-        </div>
-      )}
+        ) : (
+          <>
+            <div className="rr-card">
+              <table className="rr-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Report</th>
+                    <th scope="col">Location</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Reported</th>
+                    <th scope="col"><span className="rr-sr">Details</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map(r => (
+                    <ReportRow
+                      key={r.id}
+                      report={r}
+                      allReports={reports}
+                      canModerate={canModerate}
+                      open={openId === r.id}
+                      onToggle={() => setOpenId(openId === r.id ? null : r.id)}
+                      onVerify={handleVerify}
+                      onReject={handleReject}
+                      onPromote={handlePromote}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filtered.length > shown.length && (
+              <button type="button" className="rr-more" onClick={() => setVisible(v => v + PAGE_SIZE)}>
+                Load more
+              </button>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

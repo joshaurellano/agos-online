@@ -4,11 +4,12 @@ import { LuChevronDown, LuShieldCheck } from 'react-icons/lu';
 
 // ─────────────────────────────────────────────────────────────────────────
 // EDIT THESE before launch. Anything still in [square brackets] is a
-// placeholder. Set IS_DRAFT to false once everything is filled in.
+// placeholder that the barangay / school data protection officer must fill
+// in. Set IS_DRAFT to false once the notice has been reviewed.
 // ─────────────────────────────────────────────────────────────────────────
 const IS_DRAFT = false;
 const LAST_UPDATED = 'October 16, 2026';
-const CONTROLLER = 'Barangay Triangulo, Naga City';
+const CONTROLLER = '[Barangay Triangulo, Naga City — confirm legal name]';
 const RETENTION_RESIDENTS = '[how long, e.g. until the resident asks to be removed]';
 const RETENTION_REPORTS = '[how long reports and photos are kept]';
 
@@ -101,6 +102,26 @@ const ITEMS = [
           <li>Verified flood reports, with the pinned location, show on the flood map.</li>
         </ul>
         <p>We share information with others only when the law requires it.</p>
+      </>
+    ),
+  },
+  {
+    id: 'p-cookies',
+    title: 'Cookies and browser storage',
+    body: () => (
+      <>
+        <p>We do not use tracking or advertising cookies.</p>
+        <ul>
+          <li>
+            Your browser stores your sign-in, theme, language, accessibility settings, and any place
+            you pin on the map. These stay on your device.
+          </li>
+          <li>
+            Maps, fonts, weather data, and the PAGASA bulletin come from outside services. They can see
+            your IP address when the page loads.
+          </li>
+        </ul>
+        <p>You can clear this data any time in your browser settings.</p>
       </>
     ),
   },
