@@ -6,6 +6,7 @@ import { logger } from '../lib/logger';
 import { detectPhoneNetwork, NETWORK_INFO } from '../lib/phoneNetwork';
 import { RESIDENT_ROLE_ID } from '../lib/roles';
 import { checkPassword, isValidUsername, isValidPhone, generatePassword } from '../lib/credentials';
+import PrivacyConsentModal from '../components/PrivacyConsentModal';
 
 // One page, two modes (same layout, same controls):
 //   /register      admin creates a staff login
@@ -48,6 +49,7 @@ function StaffForm() {
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState(null);
+  const [askConsent, setAskConsent] = useState(false);
 
   useEffect(() => {
     clearError();
@@ -79,10 +81,16 @@ function StaffForm() {
   const valid = Object.values(errors).every((m) => !m);
   const show = (name) => (touched[name] ? errors[name] : '');
 
-  const submit = async (e) => {
+  // Submit only validates; the privacy modal then asks for confirmation and
+  // calls create() when the person agrees.
+  const submit = (e) => {
     e.preventDefault();
     setTouched({ name: true, phone: true, username: true, password: true, confirm: true, role_id: true });
     if (!valid || busy) return;
+    setAskConsent(true);
+  };
+
+  const create = async () => {
     setBusy(true);
     const ok = await createUser({
       name: form.name.trim(),
@@ -92,6 +100,7 @@ function StaffForm() {
       role_id: Number(form.role_id),
     });
     setBusy(false);
+    setAskConsent(false);
     if (ok) {
       setCreated({ name: form.name.trim(), username: form.username });
       setForm(EMPTY_STAFF);
@@ -174,6 +183,14 @@ function StaffForm() {
           {busy ? 'Creating…' : 'Create account'}
         </button>
       </div>
+
+      <PrivacyConsentModal
+        open={askConsent}
+        variant="staff"
+        busy={busy}
+        onConfirm={create}
+        onCancel={() => setAskConsent(false)}
+      />
     </form>
   );
 }
@@ -183,8 +200,8 @@ function StaffForm() {
 function ResidentForm() {
   const { user } = useAuth();
   const [form, setForm] = useState({ name: '', phone: '' });
-  const [consent, setConsent] = useState(false);
   const [smsAck, setSmsAck] = useState(false);
+  const [askConsent, setAskConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
@@ -192,11 +209,18 @@ function ResidentForm() {
   const phoneOk = isValidPhone(form.phone);
   const network = phoneOk ? detectPhoneNetwork(form.phone) : null;
   const needsAck = !!network && !network.deliverable;
-  const canSubmit = !busy && form.name.trim() && phoneOk && consent && (!needsAck || smsAck);
+  const canSubmit = !busy && form.name.trim() && phoneOk && (!needsAck || smsAck);
 
-  const submit = async (e) => {
+  // Submit opens the privacy and consent modal; save() runs once the
+  // resident's consent is confirmed there.
+  const submit = (e) => {
     e.preventDefault();
     if (!canSubmit) return;
+    setError('');
+    setAskConsent(true);
+  };
+
+  const save = async () => {
     setBusy(true);
     setError('');
     const { error: insertError } = await supabase.from('residents').insert({
@@ -208,6 +232,7 @@ function ResidentForm() {
       consent_given: true,
     });
     setBusy(false);
+    setAskConsent(false);
     if (insertError) {
       logger.error('Resident insert failed:', insertError.message);
       // phone has a unique constraint -- the usual cause of a failed insert
@@ -216,7 +241,6 @@ function ResidentForm() {
     }
     setDone(true);
     setForm({ name: '', phone: '' });
-    setConsent(false);
     setSmsAck(false);
   };
 
@@ -249,11 +273,6 @@ function ResidentForm() {
           autoComplete="off" aria-describedby="res-phone-msg" placeholder="09123456789" />
       </Field>
 
-      <label className="registry-check">
-        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-        <span>Resident is present, identified, and signed the consent form for AGOS SMS alerts.</span>
-      </label>
-
       {needsAck && (
         <label className="registry-check">
           <input type="checkbox" checked={smsAck} onChange={(e) => setSmsAck(e.target.checked)} />
@@ -269,6 +288,14 @@ function ResidentForm() {
           {busy ? 'Saving…' : 'Add resident'}
         </button>
       </div>
+
+      <PrivacyConsentModal
+        open={askConsent}
+        variant="resident"
+        busy={busy}
+        onConfirm={save}
+        onCancel={() => setAskConsent(false)}
+      />
     </form>
   );
 }
