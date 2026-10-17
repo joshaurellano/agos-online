@@ -4,13 +4,14 @@ import { LuChevronDown, LuShieldCheck } from 'react-icons/lu';
 
 // ─────────────────────────────────────────────────────────────────────────
 // EDIT THESE before launch. Anything still in [square brackets] is a
-// placeholder. Set IS_DRAFT to false once everything is filled in.
+// placeholder that the barangay / school data protection officer must fill
+// in. Set IS_DRAFT to false once the notice has been reviewed.
 // ─────────────────────────────────────────────────────────────────────────
 const IS_DRAFT = false;
 const LAST_UPDATED = 'October 16, 2026';
-const CONTROLLER = '[Barangay Triangulo, Naga City — confirm legal name]';
-const RETENTION_RESIDENTS = '[how long, e.g. until the resident asks to be removed]';
-const RETENTION_REPORTS = '[how long reports and photos are kept]';
+const CONTROLLER = 'Barangay Triangulo, Naga City';
+const RETENTION_RESIDENTS = 'until the resident asks to be removed';
+const RETENTION_REPORTS = 'Rejected reports and their photos are deleted after 90 days. Verified reports are kept as flood records for 3 years.';
 
 const DATA_ROWS = [
   {
