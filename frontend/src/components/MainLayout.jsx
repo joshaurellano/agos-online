@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import QuickActionsBar from './QuickActionsBar';
+import Footer from './Footer';
 import ErrorBoundary from './ErrorBoundary';
 import OfflineBanner from './OfflineBanner';
 import AlertChangeToast from './AlertChangeToast';
@@ -102,6 +103,7 @@ export default function MainLayout() {
             </Suspense>
           </ErrorBoundary>
         </main>
+        <Footer />
         <QuickActionsBar />
       </div>
     </div>
