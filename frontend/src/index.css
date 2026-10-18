@@ -1796,3 +1796,8 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
   .topbar-model-select { display: block; }
 }
 .topbar-model-label { gap: 5px; font-size: 0.76rem; font-weight: 600; }
+
+/* Things to do lists */
+.todo-label { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; }
+.todo-list { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; font-size: 0.92rem; line-height: 1.45; color: var(--text-primary); font-weight: 500; }
+.todo-list li::marker { color: var(--lvl, var(--accent)); }

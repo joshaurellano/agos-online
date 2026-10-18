@@ -118,6 +118,7 @@ export default function StaffPage() {
       .from('profiles').select(`${columns}, is_active`).neq('role_id', RESIDENT_ROLE_ID).order('name');
     if (loadError?.code === '42703') {
       // is_active not created yet: the latest migration has not been applied
+      logger.warn('profiles.is_active is missing. Apply the latest migration.');
       setCanDisable(false);
       ({ data, error: loadError } = await supabase
         .from('profiles').select(columns).neq('role_id', RESIDENT_ROLE_ID).order('name'));
@@ -173,7 +174,7 @@ export default function StaffPage() {
   return (
     <div className="fade-in">
       {error && <ErrorBanner>{error}</ErrorBanner>}
-      {!canDisable && <ErrorBanner>Disabling accounts needs the latest database update.</ErrorBanner>}
+      {!canDisable && <ErrorBanner>Disabling accounts is not available right now.</ErrorBanner>}
 
       <div className="registry-toolbar">
         <span className="registry-count">{people.length} {people.length === 1 ? 'account' : 'accounts'}</span>

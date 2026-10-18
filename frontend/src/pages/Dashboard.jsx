@@ -20,6 +20,8 @@ import {
   ReferenceLine, ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
 import TrendChart from '../components/TrendChart';
+import { RESIDENT_ACTIONS, STAFF_ACTIONS } from '../data/levelActions';
+import ProbabilityLineChart from '../components/ProbabilityLineChart';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, PIN_ASPECT, facilityIconSvgMarkup } from '../data/criticalFacilities';
@@ -390,7 +392,8 @@ function LevelScale({ current }) {
 }
 
 function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, probabilityPct, onSendAlert, canSendAlert, lastUpdated }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const residentSteps = (RESIDENT_ACTIONS[lang] ?? RESIDENT_ACTIONS.en)[currentAlert] ?? [];
   const navigate = useNavigate();
   const TREND_COPY = {
     rising:  { Icon: LuTrendingUp,   label: 'Rising trend',  color: '#f97316' },
@@ -477,13 +480,20 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', flex: 1 }}>
           <div className="action-callout" style={{ '--lvl': alertColor }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 6 }}>
-              Recommended Action
-            </div>
-            <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.55, fontWeight: 500 }}>
-              {currentAlert === 'CRITICAL' ? <><strong>{t('evacuateNow')}.</strong> Proceed to the designated evacuation centers.</> : alertInfo.action}
-            </div>
+            <div className="todo-label">{canSendAlert ? 'For residents' : t('whatToDoNow')}</div>
+            <ul className="todo-list">
+              {residentSteps.map((step) => <li key={step}>{step}</li>)}
+            </ul>
           </div>
+
+          {canSendAlert && (
+            <div className="action-callout" style={{ '--lvl': alertColor }}>
+              <div className="todo-label">For the barangay</div>
+              <ul className="todo-list">
+                {(STAFF_ACTIONS[currentAlert] ?? []).map((step) => <li key={step}>{step}</li>)}
+              </ul>
+            </div>
+          )}
 
           {canSendAlert && (
             <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1022,16 +1032,16 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
 
 function AlertLevelTable({ currentAlert }) {
   const levels = [
-    { key: 'NORMAL',   range: '< 25%',     action: 'Continue normal activities. Monitor updates.' },
-    { key: 'ADVISORY', range: '25 – 49%', action: 'Stay alert. Prepare emergency go-bags.' },
-    { key: 'WARNING',  range: '50 – 74%', action: 'Move valuables to higher ground. Be ready to evacuate.' },
-    { key: 'CRITICAL', range: '≥ 75%',     action: 'Evacuate immediately to designated evacuation centers.' },
+    { key: 'NORMAL',   range: '< 25%',     action: 'Keep drains clear. Carry on as usual.' },
+    { key: 'ADVISORY', range: '25 – 49%', action: 'Keep drains clear. Charge your phone. Check updates.' },
+    { key: 'WARNING',  range: '50 – 74%', action: 'Move valuables and vehicles higher. Avoid low roads.' },
+    { key: 'CRITICAL', range: '≥ 75%',     action: 'Pack your go-bag. Avoid floodwater. Follow barangay announcements.' },
   ];
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--blue-border)' }}>
-          {['Class', 'Probability', 'Recommended Action'].map((h, i) => (
+          {['Level', 'Chance', 'What to do'].map((h, i) => (
             <th key={h} style={{
               textAlign: 'left', padding: '0 8px 8px', fontSize: '0.6rem',
               fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
@@ -1471,14 +1481,11 @@ function FloodForecastChart() {
             </div>
           )}
 
-          <TrendChart
+          <ProbabilityLineChart
             data={chartData}
             valueKey="floodRisk"
-            unit="%"
-            valueLabel="Flood probability"
-            domain={[0, 100]}
             height={280}
-            colorFor={(row) => getRiskColor(row.value)}
+            colorFor={(v) => getRiskColor(v)}
             thresholds={[
               { y: 25, label: 'Advisory', color: '#eab308' },
               { y: 50, label: 'Warning', color: '#f97316' },
@@ -1835,13 +1842,21 @@ function RainfallTrendCard() {
 
   return (
     <div className="card panel-card">
-      <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr" />
+      <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr, with trend line" />
       <div className="panel-body">
         {loading ? <div className="skeleton" style={{ height: 300 }} />
           : !rows.length ? <div className="panel-empty">No rainfall readings yet.</div>
-          : <TrendChart data={rows} valueKey="rainfall" unit="mm" valueLabel="Rainfall" colorFor={color} lineMode="cumulative" height={300}
-            domain={[0, (m) => Math.max(1, Math.ceil(m))]}
-            rightDomain={[0, (m) => Math.max(1, Math.ceil(m))]} />}
+          : (
+            <TrendChart
+              data={rows}
+              valueKey="rainfall"
+              unit="mm"
+              valueLabel="Rainfall"
+              colorFor={color}
+              domain={[0, (m) => Math.max(1, Math.ceil(m))]}
+              height={300}
+            />
+          )}
       </div>
     </div>
   );
@@ -2101,9 +2116,9 @@ export default function Dashboard() {
   const weatherCondition = forecast?.[0]?.condition ?? null;
 
   const EVACUATION_PRESETS = [
-    { label: 'Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated. Stay alert and prepare your emergency go-bags.' },
-    { label: 'Warning',  type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
-    { label: 'Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent. EVACUATE NOW to designated evacuation centers.' },
+    { label: 'Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flooding is possible. Keep drains clear, charge your phone and check updates.' },
+    { label: 'Warning',  type: 'WARNING',  msg: 'WARNING: Flooding is likely. Move valuables and vehicles higher, avoid low roads and know your evacuation route.' },
+    { label: 'Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is very likely. Pack your go-bag, avoid floodwater and follow barangay announcements.' },
     { label: 'Custom',   type: null,       msg: '' },
   ];
 

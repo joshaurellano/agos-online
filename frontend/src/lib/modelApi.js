@@ -70,9 +70,9 @@ function formatTimestamp(date) {
 // built client-side for the level-change dispatch that fires while the
 // dashboard is open.
 const ALERT_MESSAGES = {
-  ADVISORY: (pct) => `${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Elevated water levels; minor flooding possible in low-lying areas. Residents near waterways should stay alert and prepare emergency go-bags.`,
-  WARNING:  (pct) => `${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
-  CRITICAL: (pct) => `${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  ADVISORY: (pct) => `${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Flooding is possible. Keep drains clear, charge your phone and check updates.`,
+  WARNING:  (pct) => `${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Flooding is likely. Move valuables and vehicles higher, avoid low roads and know your evacuation route.`,
+  CRITICAL: (pct) => `${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Flooding is very likely. Pack your go-bag, avoid floodwater and follow barangay announcements.`,
   NORMAL:   () => `${formatTimestamp(new Date())} Situation in ${LOCATION} has returned to Normal. Flood risk has subsided. Continue monitoring for updates.`,
 };
 
