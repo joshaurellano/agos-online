@@ -1504,7 +1504,7 @@ function FloodForecastChart() {
       )}
 
       <div style={{ marginTop: 10, fontSize: '0.62rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-        <span>No physical sensor · For situational awareness only</span>
+        <span>Model estimate, not an official warning. There is no physical water sensor. Follow barangay announcements.</span>
       </div>
     </div>
   );
@@ -2275,7 +2275,7 @@ export default function Dashboard() {
 
       {/* Charts: bars colored by level, trend line on top */}
       <div className="dash-grid-2">
-        {user && <FloodForecastChart />}
+        <FloodForecastChart />
         <RainfallTrendCard />
       </div>
 
@@ -2429,11 +2429,6 @@ export default function Dashboard() {
             <FloodForecast14Day />
           </div>
 
-          {/* ── 8. GRU Flood Probability Chart ───────────────────── */}
-          {/* Trend chart is staff/admin/resident-only — kept out of the public
-              view. Current status (bulletin, conditions strip, map, alert
-              reference) stays public; the historical/predicted probability
-              trend is reserved for signed-in accounts. */}
         </>
       ))}
 
