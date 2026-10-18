@@ -284,37 +284,53 @@ function hexToRgba(hex, alpha) {
 // pill. Draws from empty on mount/color-change, then eases in.
 function RadialGauge({ value, color, size = 104, strokeWidth = 9 }) {
   const clamped = Math.max(0, Math.min(100, value ?? 0));
-  const radius = (size - strokeWidth) / 2;
+  const radius = (size - strokeWidth) / 2 - 2;
+  const c = size / 2;
   const circumference = 2 * Math.PI * radius;
-  const [offset, setOffset] = useState(circumference);
+  const SWEEP = 270;                       // open at the bottom, like an instrument dial
+  const arcLen = (SWEEP / 360) * circumference;
+  const [filled, setFilled] = useState(0);
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      setOffset(circumference - (clamped / 100) * circumference);
-    });
+    const id = requestAnimationFrame(() => setFilled((clamped / 100) * arcLen));
     return () => cancelAnimationFrame(id);
-  }, [clamped, circumference]);
+  }, [clamped, arcLen]);
+
+  // Small gaps at the 25 / 50 / 75 thresholds, matching the alert levels.
+  const ticks = [25, 50, 75].map((p) => {
+    const rad = ((135 + (SWEEP * p) / 100) * Math.PI) / 180;
+    const r1 = radius - strokeWidth / 2 - 1;
+    const r2 = radius + strokeWidth / 2 + 1;
+    return { x1: c + r1 * Math.cos(rad), y1: c + r1 * Math.sin(rad), x2: c + r2 * Math.cos(rad), y2: c + r2 * Math.sin(rad) };
+  });
 
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--blue-mid)" strokeWidth={strokeWidth} />
+      <svg width={size} height={size} role="img" aria-label={`Flood risk ${Math.round(clamped)} percent`}>
         <circle
-          cx={size / 2} cy={size / 2} r={radius} fill="none"
-          stroke={color} strokeWidth={strokeWidth} strokeLinecap="round"
-          strokeDasharray={circumference} strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.22,1,0.36,1), stroke 0.5s ease' }}
+          cx={c} cy={c} r={radius} fill="none"
+          stroke="var(--blue-border)" strokeOpacity={0.7} strokeWidth={strokeWidth}
+          strokeDasharray={`${arcLen} ${circumference}`} transform={`rotate(135 ${c} ${c})`}
         />
+        <circle
+          cx={c} cy={c} r={radius} fill="none"
+          stroke={color} strokeWidth={strokeWidth}
+          strokeDasharray={`${filled} ${circumference}`} transform={`rotate(135 ${c} ${c})`}
+          style={{ transition: 'stroke-dasharray 1s cubic-bezier(0.22,1,0.36,1), stroke 0.5s ease' }}
+        />
+        {ticks.map((t, i) => (
+          <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke="var(--blue-card)" strokeWidth={2.5} />
+        ))}
       </svg>
       <div style={{
         position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center', justifyContent: 'center', paddingBottom: 6,
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.5rem', color, lineHeight: 1 }}>
-          <AnimatedNumber value={clamped} decimals={0} />%
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: size >= 120 ? '2.1rem' : '1.5rem', color: 'var(--text-primary)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          <AnimatedNumber value={clamped} decimals={0} /><span style={{ fontSize: '0.5em', fontWeight: 700, color: 'var(--text-muted)', marginLeft: 1 }}>%</span>
         </span>
-        <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: 3 }}>
-          Risk
+        <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: 5 }}>
+          Flood risk
         </span>
       </div>
     </div>
@@ -411,12 +427,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', padding: '18px 22px' }}>
           {typeof probabilityPct === 'number' && (
             <div style={{ position: 'relative', flexShrink: 0 }}>
-              <div aria-hidden="true" style={{
-                position: 'absolute', inset: -18, borderRadius: '50%',
-                background: `radial-gradient(circle, ${hexToRgba(alertColor, 0.16)} 0%, transparent 70%)`,
-                pointerEvents: 'none',
-              }} />
-              <RadialGauge value={probabilityPct} color={alertColor} size={140} strokeWidth={12} />
+              <RadialGauge value={probabilityPct} color={alertColor} size={160} strokeWidth={10} />
             </div>
           )}
 
@@ -1828,7 +1839,9 @@ function RainfallTrendCard() {
       <div className="panel-body">
         {loading ? <div className="skeleton" style={{ height: 300 }} />
           : !rows.length ? <div className="panel-empty">No rainfall readings yet.</div>
-          : <TrendChart data={rows} valueKey="rainfall" unit="mm" valueLabel="Rainfall" colorFor={color} lineMode="cumulative" height={300} />}
+          : <TrendChart data={rows} valueKey="rainfall" unit="mm" valueLabel="Rainfall" colorFor={color} lineMode="cumulative" height={300}
+            domain={[0, (m) => Math.max(1, Math.ceil(m))]}
+            rightDomain={[0, (m) => Math.max(1, Math.ceil(m))]} />}
       </div>
     </div>
   );
@@ -1836,25 +1849,36 @@ function RainfallTrendCard() {
 
 function RecentAlertsCard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let live = true;
+    // Clear on every sign-in/sign-out so rows loaded under one session never
+    // linger on screen after the permissions change.
+    setAlerts([]); setFailed(false); setLoading(true);
     const load = () => supabase.from('alerts').select('id, type, message, created_at')
       .order('created_at', { ascending: false }).limit(4)
-      .then(({ data }) => { if (live) { setAlerts(data ?? []); setLoading(false); } });
+      .then(({ data, error }) => {
+        if (!live) return;
+        if (error) { logger.warn('Alerts fetch failed:', error.message); setFailed(true); setAlerts([]); }
+        else { setFailed(false); setAlerts(data ?? []); }
+        setLoading(false);
+      });
     load();
     const ch = supabase.channel('dash_recent_alerts')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alerts' }, load).subscribe();
     return () => { live = false; supabase.removeChannel(ch); };
-  }, []);
+  }, [user?.id]);
 
   return (
     <div className="card panel-card">
       <PanelHeader title="Recent alerts" right={<button type="button" className="panel-link" onClick={() => navigate('/alerts-log')}>View all</button>} />
       <div className="panel-body" style={{ padding: 0 }}>
         {loading ? <div className="skeleton" style={{ height: 120, margin: 16 }} />
+          : failed ? <div className="panel-empty">Alerts could not be loaded.</div>
           : !alerts.length ? <div className="panel-empty">No alerts sent yet.</div>
           : alerts.map(a => (
             <div key={a.id} className="alert-row">

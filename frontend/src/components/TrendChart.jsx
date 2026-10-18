@@ -49,7 +49,11 @@ export default function TrendChart({
   trendWindow,
   lineMode = 'average',
   lineLabel,
+  axisUnit,
+  rightDomain,
 }) {
+  const tickUnit = axisUnit ?? (unit === '%' ? '%' : '');
+  const fmt = (v) => `${Number(Number(v).toFixed(2))}${tickUnit}`;
   const cumulative = lineMode === 'cumulative';
   const lineName = lineLabel ?? (cumulative ? 'Total so far' : 'Trend');
   const rows = useMemo(() => {
@@ -72,29 +76,31 @@ export default function TrendChart({
       </div>
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={rows} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
-          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
+          <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="2 4" vertical={false} />
           <XAxis
             dataKey={xKey}
-            tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
+            tick={{ fill: 'var(--chart-axis)', fontSize: 10.5 }}
             tickLine={false}
-            axisLine={{ stroke: 'var(--chart-grid)' }}
+            axisLine={{ stroke: 'var(--chart-axis)', strokeOpacity: 0.35 }}
+            tickMargin={8}
             interval={interval}
           />
           <YAxis
             yAxisId="left"
             domain={domain}
-            tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
+            tick={{ fill: 'var(--chart-axis)', fontSize: 10.5 }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v) => `${v}${unit}`}
-            width={46}
+            tickFormatter={fmt}
+            width={44}
           />
           {cumulative && (
             <YAxis
               yAxisId="right" orientation="right"
-              tick={{ fill: 'var(--chart-axis)', fontSize: 11 }}
+              tick={{ fill: 'var(--chart-axis)', fontSize: 10.5 }}
               tickLine={false} axisLine={false}
-              tickFormatter={(v) => `${v}${unit}`} width={46}
+              tickFormatter={fmt} width={44}
+              domain={rightDomain}
             />
           )}
           <Tooltip
@@ -107,14 +113,14 @@ export default function TrendChart({
               yAxisId="left"
               y={t.y}
               stroke={t.color}
-              strokeDasharray="4 4"
-              strokeOpacity={0.55}
+              strokeDasharray="3 5"
+              strokeOpacity={0.4}
               label={{ value: t.label, position: 'insideTopLeft', fill: t.color, fontSize: 10 }}
             />
           ))}
-          <Bar yAxisId="left" dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={34}>
+          <Bar yAxisId="left" dataKey="value" radius={[2, 2, 0, 0]} maxBarSize={16}>
             {rows.map((row, i) => (
-              <Cell key={i} fill={colorFor(row)} fillOpacity={i === rows.length - 1 ? 1 : 0.72} />
+              <Cell key={i} fill={colorFor(row)} fillOpacity={i === rows.length - 1 ? 0.95 : 0.5} />
             ))}
           </Bar>
           <Line
@@ -122,9 +128,11 @@ export default function TrendChart({
             yAxisId={cumulative ? 'right' : 'left'}
             dataKey="trend"
             stroke="var(--chart-line)"
-            strokeWidth={2.5}
-            dot={false}
-            activeDot={{ r: 5, fill: 'var(--chart-line)', stroke: 'var(--blue-card)', strokeWidth: 2 }}
+            strokeWidth={1.75}
+            dot={({ cx, cy, index }) => index === rows.length - 1
+              ? <circle key="end" cx={cx} cy={cy} r={3.5} fill="var(--chart-line)" stroke="var(--blue-card)" strokeWidth={2} />
+              : <g key={index} />}
+            activeDot={{ r: 4, fill: 'var(--chart-line)', stroke: 'var(--blue-card)', strokeWidth: 2 }}
           />
         </ComposedChart>
       </ResponsiveContainer>

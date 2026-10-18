@@ -1273,7 +1273,7 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 /* Keep the page title readable on mid-width screens: shed the clock and the
    "Model" caption first (the model buttons themselves stay). */
 @media (max-width: 1240px) {
-  .topbar-clock, .topbar-model-label { display: none !important; }
+  .topbar-clock { display: none !important; }
 }
 .weather-hourly-row {
   scroll-snap-type: x proximity;
@@ -1720,8 +1720,8 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
 /* Bar + trend chart */
 .trend-legend { display: flex; gap: 18px; margin: 0 0 10px; font-size: 0.78rem; color: var(--text-secondary); }
 .trend-legend span { display: inline-flex; align-items: center; gap: 7px; }
-.trend-swatch.bar { width: 10px; height: 10px; border-radius: 3px; background: linear-gradient(135deg, #22c55e, #eab308); }
-.trend-swatch.line { width: 16px; height: 3px; border-radius: 2px; background: var(--chart-line); }
+.trend-swatch.bar { width: 10px; height: 10px; border-radius: 2px; background: var(--text-muted); opacity: 0.6; }
+.trend-swatch.line { width: 16px; height: 2px; border-radius: 1px; background: var(--chart-line); }
 .trend-tip {
   background: var(--blue-panel); border: 1px solid var(--blue-border); border-radius: 10px;
   padding: 10px 14px; font-size: 0.8rem; color: var(--text-secondary);
@@ -1774,3 +1774,25 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
 .hour-bar span { display: block; width: 100%; border-radius: 6px 6px 0 0; }
 .hour-pop { font-size: 0.8rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .hour-temp { font-size: 0.74rem; color: var(--text-muted); }
+
+
+/* ── Header ── */
+.topbar { padding: 12px 24px; gap: 16px; }
+.topbar-titles h1 { font-size: 1.15rem !important; letter-spacing: -0.01em; }
+.topbar-controls { gap: 8px; padding: 4px; border: 1px solid var(--blue-border); border-radius: 12px; background: var(--blue-mid); }
+.topbar-controls > * { flex-shrink: 0; }
+.topbar-select { border: none; background: transparent; border-radius: 8px; padding: 6px 8px; font-size: 0.82rem; font-weight: 600; }
+.topbar-select:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.topbar-model { border: none; background: var(--blue-card); border-radius: 8px; padding: 2px; }
+.topbar-model-label { display: inline-flex; align-items: center; padding: 0 6px; color: var(--text-muted); }
+.topbar-clock { display: flex; align-items: baseline; gap: 8px; padding: 0 10px 0 12px; border-left: 1px solid var(--blue-border); white-space: nowrap; }
+.topbar-clock-time { font-family: var(--font-display); font-size: 0.95rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.topbar-clock-date { font-size: 0.78rem; color: var(--text-muted); }
+.topbar-signin { border-radius: 8px; padding: 7px 14px; font-size: 0.82rem; }
+@media (max-width: 760px) { .topbar-controls { border: none; background: transparent; padding: 0; } }
+
+.topbar-model-select { display: none; }
+@media (max-width: 760px) {
+  .topbar-model-select { display: block; }
+}
+.topbar-model-label { gap: 5px; font-size: 0.76rem; font-weight: 600; }

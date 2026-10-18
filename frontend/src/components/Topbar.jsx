@@ -13,14 +13,14 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  const { lang, setLang, languages, t } = useLanguage();
+  const { t } = useLanguage();
   const { isMock, toggleDataSource } = useDataSource();
   const { modelKey, setModelKey, options: modelOptions } = useModelSelection();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
+    const id = setInterval(() => setTime(new Date()), 30_000);
+    return () => clearInterval(id);
   }, []);
 
   const levelColors = { NORMAL: '#22c55e', ADVISORY: '#eab308', WARNING: '#f97316', CRITICAL: '#ef4444' };
@@ -96,9 +96,9 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
           className="hide-mobile topbar-model"
           role="group"
           aria-label="Forecast model"
-          title="Switch which trained algorithm powers predictions and forecasts"
+          title="Compare results from different trained models, like the model picker in weather apps"
         >
-          <span className="topbar-model-label"><LuCpu size={13} aria-hidden="true" /> Model</span>
+          <span className="topbar-model-label"><LuCpu size={14} aria-hidden="true" /> Model</span>
           {modelOptions.map((opt) => (
             <button
               key={opt.key}
@@ -112,6 +112,16 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
             </button>
           ))}
         </div>
+
+        {/* Phones: same choice as a compact dropdown */}
+        <select
+          value={modelKey}
+          onChange={e => setModelKey(e.target.value)}
+          aria-label="Forecast model"
+          className="topbar-select topbar-model-select"
+        >
+          {modelOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
+        </select>
 
         {/* Dev-only, admin-only: Live / Mock data source toggle.
             import.meta.env.DEV is Vite's build-time flag — true in `npm run dev`
@@ -138,19 +148,6 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
           </button>
         )}
 
-        {/* Language — alert wording and evacuation guidance are translated;
-            covers Naga City's everyday languages so the highest-stakes
-            text during an emergency isn't English-only. */}
-        <select
-          value={lang}
-          onChange={e => setLang(e.target.value)}
-          aria-label="Choose language"
-          title="Choose language"
-          className="topbar-select"
-        >
-          {languages.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
-        </select>
-
         {/* Dark / Light toggle */}
         <button
           className="theme-toggle hide-mobile"
@@ -165,14 +162,14 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
           <span className="theme-toggle-knob" aria-hidden="true" />
         </button>
 
-        {/* Clock */}
-        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }} className="hide-mobile hide-tablet topbar-clock">
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.05em' }}>
-            {time.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {time.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-          </div>
+        {/* Date and time, one line, no ticking seconds */}
+        <div className="hide-mobile hide-tablet topbar-clock">
+          <span className="topbar-clock-time">
+            {time.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}
+          </span>
+          <span className="topbar-clock-date">
+            {time.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}
+          </span>
         </div>
 
         {/* Sign-in — the app is fully browsable without an account (this
