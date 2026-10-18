@@ -4,7 +4,7 @@ const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(
-    () => localStorage.getItem('agos-theme') || 'dark'
+    () => localStorage.getItem('agos-theme') || 'light'
   );
 
   useEffect(() => {

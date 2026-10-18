@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
+import TrendChart from '../components/TrendChart';
 import { supabase } from '../lib/supabaseClient';
 import { SectionLabel } from '../components/ui';
 import { LuChartColumn, LuTable, LuTimer, LuGauge, LuCloudRain, LuCloudOff, LuDroplets, LuSun, LuTrendingUp } from 'react-icons/lu';
@@ -453,46 +454,16 @@ export default function RainfallPage() {
             <p className="empty-state-text">Readings appear here once AGOS starts recording. Check back in a few minutes.</p>
           </div>
         ) : view === 'chart' ? (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--blue-border)" />
-              <XAxis
-                dataKey={dataKey}
-                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                tickLine={false}
-                interval={period === 'hourly' ? Math.floor(data.length / 8) : 0}
-              />
-              <YAxis
-                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                unit="mm"
-                tickLine={false}
-              />
-              <Tooltip content={<CustomTooltip period={period} />} />
-
-              {/* Dynamic reference lines based on active threshold set */}
-              {activeThresholds.slice(1).map(t => (
-                <ReferenceLine
-                  key={t.label}
-                  y={t.min}
-                  stroke={t.color}
-                  strokeWidth={1}
-                  strokeDasharray="4 3"
-                  label={{
-                    value: `${t.label} (${t.min}mm)`,
-                    fill: t.color,
-                    fontSize: 10,
-                    position: 'insideTopRight',
-                  }}
-                />
-              ))}
-
-              <Bar dataKey="rainfall" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                {data.map((row, i) => (
-                  <Cell key={i} fill={getRainfallCategory(row.rainfall, period).color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <TrendChart
+            data={data}
+            xKey={dataKey}
+            valueKey="rainfall"
+            unit="mm"
+            valueLabel={period === 'hourly' ? 'Rainfall per hour' : 'Rainfall per day'}
+            height={320}
+            colorFor={(row) => getRainfallCategory(row.value, period).color}
+            thresholds={activeThresholds.slice(1).map(t => ({ y: t.min, label: t.label, color: t.color }))}
+          />
         ) : (
           <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: 300 }}>
             <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse', fontSize: '0.8rem' }}>

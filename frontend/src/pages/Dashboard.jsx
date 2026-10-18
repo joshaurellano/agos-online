@@ -19,6 +19,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
+import TrendChart from '../components/TrendChart';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, PIN_ASPECT, facilityIconSvgMarkup } from '../data/criticalFacilities';
@@ -611,41 +612,26 @@ function CommunityTrustStrip() {
 // panel than a consumer app widget.
 function ConditionsStrip({ items }) {
   return (
-    <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${items.length}, 1fr)`,
-      }}>
-        {items.map((it, i) => (
-          <div
-            key={it.label}
-            className="stat-cell"
-            style={{
-              padding: '16px 18px',
-              borderLeft: i === 0 ? 'none' : '1px solid var(--blue-border)',
-              
-            }}
-          >
-            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-              {it.label}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.55rem', fontWeight: 800, color: it.color || 'var(--text-primary)', lineHeight: 1 }}>
+    <div className="kpi-grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+      {items.map((it) => (
+        <div key={it.label} className="kpi-card">
+          <div className="kpi-card-label">{it.label}</div>
+          <div className="kpi-card-main">
+            <div>
+              <span className="kpi-card-value" style={{ color: it.color || 'var(--text-primary)' }}>
                 {typeof it.numeric === 'number' ? <AnimatedNumber value={it.numeric} decimals={it.decimals ?? 0} /> : it.value}
               </span>
-              {it.unit && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{it.unit}</span>}
-            </div>
-            <div style={{ fontSize: '0.68rem', color: it.badgeColor || 'var(--text-secondary)', marginTop: 5, fontWeight: it.badge ? 700 : 400 }}>
-              {it.badge || it.sub || (it.noData ? 'Waiting for the model server…' : null)}
+              {it.unit && <span className="kpi-card-unit">{it.unit}</span>}
             </div>
             {it.sparkline && it.sparkline.length >= 2 && (
-              <div style={{ marginTop: 7 }}>
-                <Sparkline data={it.sparkline} color={it.color || 'var(--accent)'} />
-              </div>
+              <Sparkline data={it.sparkline} color={it.color || 'var(--accent)'} width={96} height={34} />
             )}
           </div>
-        ))}
-      </div>
+          <div className="kpi-card-sub" style={{ color: it.badgeColor || undefined }}>
+            {it.badge || it.sub || (it.noData ? 'Waiting for the model server…' : null)}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1305,12 +1291,20 @@ function FloodForecastChart() {
 
       if (error) { logger.warn('Fetch failed:', error.message); setLoading(false); return; }
 
-      setChartData((data ?? []).map(row => ({
-        label: new Date(row.created_at).toLocaleTimeString('en-PH', {
-          hour: 'numeric', minute: '2-digit', hour12: true,
-        }),
-        time: new Date(row.created_at),
-        floodRisk: Math.min(Math.round((row.probability ?? 0) * 100), 100),
+      const buckets = new Map();
+      (data ?? []).forEach(row => {
+        const t = new Date(row.created_at);
+        t.setMinutes(0, 0, 0);
+        const key = t.getTime();
+        const b = buckets.get(key) ?? { time: t, sum: 0, n: 0 };
+        b.sum += Math.min((row.probability ?? 0) * 100, 100);
+        b.n += 1;
+        buckets.set(key, b);
+      });
+      setChartData([...buckets.values()].sort((a, b) => a.time - b.time).map(b => ({
+        label: b.time.toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true }),
+        time: b.time,
+        floodRisk: Math.round(b.sum / b.n),
       })));
     } else {
       const { data, error } = await supabase.rpc('get_daily_flood_avg', { days_back: 7 });
@@ -1466,58 +1460,20 @@ function FloodForecastChart() {
             </div>
           )}
 
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={chartData} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
-              <defs>
-                <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#a855f7" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#a855f7" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: '#4a6080', fontSize: 10, fontWeight: 600 }}
-                tickLine={false}
-                axisLine={{ stroke: '#1e3a5f' }}
-                interval={view === 'hourly' ? Math.floor(chartData.length / 6) : 0}
-              />
-              <YAxis
-                domain={[0, 100]}
-                tick={{ fill: '#4a6080', fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={v => `${v}%`}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <ReferenceLine y={25} stroke="#eab308" strokeDasharray="4 3" strokeOpacity={0.4}
-                label={{ value: 'Elevated', position: 'insideTopLeft', fill: '#eab308', fontSize: 9 }} />
-              <ReferenceLine y={50} stroke="#f97316" strokeDasharray="4 3" strokeOpacity={0.4}
-                label={{ value: 'High', position: 'insideTopLeft', fill: '#f97316', fontSize: 9 }} />
-              <ReferenceLine y={75} stroke="#ef4444" strokeDasharray="4 3" strokeOpacity={0.4}
-                label={{ value: 'Critical', position: 'insideTopLeft', fill: '#ef4444', fontSize: 9 }} />
-              <Area
-                type="monotone"
-                dataKey="floodRisk"
-                name="Flood Probability"
-                stroke="#a855f7"
-                strokeWidth={2.5}
-                fill="url(#riskGradient)"
-                dot={(props) => {
-                  const { cx, cy, payload } = props;
-                  if (view === 'hourly' && chartData.length > 48) return null;
-                  const color = getRiskColor(payload.floodRisk);
-                  return (
-                    <circle key={`dot-${payload.label}`}
-                      cx={cx} cy={cy} r={4}
-                      fill={color} stroke={color} strokeWidth={1.5}
-                    />
-                  );
-                }}
-                activeDot={{ r: 6, strokeWidth: 2, stroke: '#a855f7' }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <TrendChart
+            data={chartData}
+            valueKey="floodRisk"
+            unit="%"
+            valueLabel="Flood probability"
+            domain={[0, 100]}
+            height={280}
+            colorFor={(row) => getRiskColor(row.value)}
+            thresholds={[
+              { y: 25, label: 'Advisory', color: '#eab308' },
+              { y: 50, label: 'Warning', color: '#f97316' },
+              { y: 75, label: 'Critical', color: '#ef4444' },
+            ]}
+          />
 
           {view === 'daily' && (
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${chartData.length}, 1fr)`, gap: 4, marginTop: 12 }}>
@@ -1820,6 +1776,127 @@ function defaultMapView() {
     const canvas = document.createElement('canvas');
     return canvas.getContext('webgl2') || canvas.getContext('webgl') ? '3d' : '2d';
   } catch { return '2d'; }
+}
+
+// ── Dashboard side panels ────────────────────────────────────────────────
+function PanelHeader({ title, sub, right }) {
+  return (
+    <div className="panel-head title-band-bar">
+      <div>
+        <div className="card-title" style={{ marginBottom: 0 }}>{title}</div>
+        {sub && <div className="panel-head-sub">{sub}</div>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function RainfallTrendCard() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('flood_snapshots')
+      .select('created_at, rainfall_mm')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true })
+      .limit(10000);
+    if (error) { logger.warn('Rainfall fetch failed:', error.message); setLoading(false); return; }
+    const buckets = new Map();
+    (data ?? []).forEach(r => {
+      const t = new Date(r.created_at); t.setMinutes(0, 0, 0);
+      const b = buckets.get(t.getTime()) ?? { time: t, sum: 0, n: 0 };
+      b.sum += r.rainfall_mm ?? 0; b.n += 1;
+      buckets.set(t.getTime(), b);
+    });
+    setRows([...buckets.values()].sort((a, b) => a.time - b.time).map(b => ({
+      label: b.time.toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true, timeZone: 'Asia/Manila' }),
+      rainfall: Math.round((b.sum / b.n) * 10) / 10,
+    })));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
+
+  const color = (row) => (row.value >= 7.5 ? '#ef4444' : row.value >= 2.5 ? '#f97316' : row.value >= 0.5 ? '#0ea5e9' : '#7dd3fc');
+
+  return (
+    <div className="card panel-card">
+      <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr" />
+      <div className="panel-body">
+        {loading ? <div className="skeleton" style={{ height: 300 }} />
+          : !rows.length ? <div className="panel-empty">No rainfall readings yet.</div>
+          : <TrendChart data={rows} valueKey="rainfall" unit="mm" valueLabel="Rainfall" colorFor={color} lineMode="cumulative" height={300} />}
+      </div>
+    </div>
+  );
+}
+
+function RecentAlertsCard() {
+  const navigate = useNavigate();
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let live = true;
+    const load = () => supabase.from('alerts').select('id, type, message, created_at')
+      .order('created_at', { ascending: false }).limit(4)
+      .then(({ data }) => { if (live) { setAlerts(data ?? []); setLoading(false); } });
+    load();
+    const ch = supabase.channel('dash_recent_alerts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alerts' }, load).subscribe();
+    return () => { live = false; supabase.removeChannel(ch); };
+  }, []);
+
+  return (
+    <div className="card panel-card">
+      <PanelHeader title="Recent alerts" right={<button type="button" className="panel-link" onClick={() => navigate('/alerts-log')}>View all</button>} />
+      <div className="panel-body" style={{ padding: 0 }}>
+        {loading ? <div className="skeleton" style={{ height: 120, margin: 16 }} />
+          : !alerts.length ? <div className="panel-empty">No alerts sent yet.</div>
+          : alerts.map(a => (
+            <div key={a.id} className="alert-row">
+              <span className="alert-row-bar" style={{ background: ALERT_COLORS[a.type] ?? '#38bdf8' }} />
+              <div className="alert-row-text">
+                <div className="alert-row-title">{ALERT_LEVELS[a.type]?.label ?? a.type}</div>
+                <div className="alert-row-msg">{a.message}</div>
+              </div>
+              <div className="alert-row-time">{reportTimeAgo(a.created_at)}</div>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+function NextHoursCard({ hourly }) {
+  const now = Date.now();
+  const hours = (hourly ?? []).filter(h => new Date(h.time).getTime() >= now - 30 * 60 * 1000).slice(0, 6);
+  return (
+    <div className="card panel-card">
+      <PanelHeader title="Next 6 hours" sub="Chance of rain and temperature" />
+      <div className="panel-body">
+        {!hours.length ? <div className="panel-empty">Forecast is loading.</div> : (
+          <div className="hours-grid">
+            {hours.map(h => {
+              const pop = Math.round(h.rain_probability_pct ?? 0);
+              const c = pop >= 70 ? '#ef4444' : pop >= 40 ? '#f97316' : pop >= 20 ? '#eab308' : '#22c55e';
+              return (
+                <div key={h.time} className="hour-cell">
+                  <div className="hour-time">{new Date(h.time).toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true, timeZone: 'Asia/Manila' })}</div>
+                  <div className="hour-bar"><span style={{ height: `${Math.max(pop, 4)}%`, background: c }} /></div>
+                  <div className="hour-pop" style={{ color: c }}>{pop}%</div>
+                  <div className="hour-temp">{h.temperature_c != null ? `${Math.round(h.temperature_c)}°` : '—'}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -2141,7 +2218,69 @@ export default function Dashboard() {
       <PagasaBulletinBanner />
 
       {/* ── 4. Flood Status Map ──────────────────────────────────── */}
-      <div ref={mapCardRef} id="flood-status-map" className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
+      {/* ── 3. Current Conditions Strip ─────────────────────────── */}
+      {/* Same two cards for every role -- residents used to see Alert
+          Level + Rainfall (Alert Level is already shown above in the
+          Advisory Bulletin, so it was redundant here), while staff/admin
+          saw three cards including a standalone Humidity card. Humidity
+          is real data but a weak flood signal on its own, so it's now
+          folded into the Rainfall card's sub-line instead of taking a
+          whole card. */}
+      <ConditionsStrip
+        items={[
+          {
+            label: 'Rainfall Intensity',
+            value: '—',
+            numeric: prediction ? rainfallMm : null,
+            decimals: 1,
+            unit: 'mm/hr',
+            color: 'var(--accent)',
+            sub: prediction
+              ? [
+                  rainfallMm > 10 ? 'Heavy' : rainfallMm > 2 ? 'Moderate' : 'Light',
+                  humidityVal !== null ? `${humidityVal}% humidity` : null,
+                ].filter(Boolean).join(' · ')
+              : null,
+            noData: !prediction,
+          },
+          {
+            label: 'Flood Probability',
+            value: modelLoading ? '…' : probabilityPct,
+            numeric: !modelLoading && prediction ? prediction.probability * 100 : null,
+            decimals: 0,
+            unit: !modelLoading && prediction ? '%' : undefined,
+            sub: prediction ? `Est. wind signal #${prediction.live_metrics.wind_signal}` : 'Forecast model',
+            color: !prediction ? 'var(--text-muted)'
+              : prediction.probability >= 0.75 ? '#ef4444' : prediction.probability >= 0.50 ? '#f97316' : prediction.probability >= 0.25 ? '#eab308' : '#22c55e',
+            badge: prediction ? 'Model prediction' : null,
+            noData: !prediction,
+            sparkline: probHistory,
+          },
+          {
+            label: 'Temperature',
+            value: forecast?.[0]?.temperature_c != null ? Math.round(forecast[0].temperature_c) : '—',
+            unit: forecast?.[0]?.temperature_c != null ? '°C' : undefined,
+            sub: weatherCondition,
+            color: 'var(--text-primary)',
+          },
+          {
+            label: 'Wind',
+            value: forecast?.[0]?.wind_speed_kph != null ? Math.round(forecast[0].wind_speed_kph) : '—',
+            unit: forecast?.[0]?.wind_speed_kph != null ? 'km/h' : undefined,
+            sub: prediction ? `Signal #${prediction.live_metrics.wind_signal}` : null,
+            color: 'var(--text-primary)',
+          },
+        ]}
+      />
+
+      {/* Charts: bars colored by level, trend line on top */}
+      <div className="dash-grid-2">
+        {user && <FloodForecastChart />}
+        <RainfallTrendCard />
+      </div>
+
+      <div className="dash-split">
+      <div ref={mapCardRef} id="flood-status-map" className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 0 }}>
         <div className="title-band-bar" style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
           padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
@@ -2183,7 +2322,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <ExpandableMapFrame height={typeof window !== 'undefined' && window.innerWidth < 700 ? 'clamp(460px, 72vh, 620px)' : 'clamp(560px, 84vh, 940px)'}>
+        <ExpandableMapFrame height={typeof window !== 'undefined' && window.innerWidth < 700 ? 'clamp(460px, 72vh, 620px)' : 'clamp(520px, 72vh, 780px)'}>
         {mapView === '2d' ? (
           <FloodMap
             currentAlert={currentAlert}
@@ -2246,48 +2385,12 @@ export default function Dashboard() {
           </span>
         </div>
       </div>
+      <div className="dash-side">
+        <RecentAlertsCard />
+        <NextHoursCard hourly={forecast} />
+      </div>
+      </div>
 
-
-      {/* ── 3. Current Conditions Strip ─────────────────────────── */}
-      {/* Same two cards for every role -- residents used to see Alert
-          Level + Rainfall (Alert Level is already shown above in the
-          Advisory Bulletin, so it was redundant here), while staff/admin
-          saw three cards including a standalone Humidity card. Humidity
-          is real data but a weak flood signal on its own, so it's now
-          folded into the Rainfall card's sub-line instead of taking a
-          whole card. */}
-      <ConditionsStrip
-        items={[
-          {
-            label: 'Rainfall Intensity',
-            value: '—',
-            numeric: prediction ? rainfallMm : null,
-            decimals: 1,
-            unit: 'mm/hr',
-            color: 'var(--accent)',
-            sub: prediction
-              ? [
-                  rainfallMm > 10 ? 'Heavy' : rainfallMm > 2 ? 'Moderate' : 'Light',
-                  humidityVal !== null ? `${humidityVal}% humidity` : null,
-                ].filter(Boolean).join(' · ')
-              : null,
-            noData: !prediction,
-          },
-          {
-            label: 'Flood Probability',
-            value: modelLoading ? '…' : probabilityPct,
-            numeric: !modelLoading && prediction ? prediction.probability * 100 : null,
-            decimals: 0,
-            unit: !modelLoading && prediction ? '%' : undefined,
-            sub: prediction ? `Est. wind signal #${prediction.live_metrics.wind_signal}` : 'Forecast model',
-            color: !prediction ? 'var(--text-muted)'
-              : prediction.probability >= 0.75 ? '#ef4444' : prediction.probability >= 0.50 ? '#f97316' : prediction.probability >= 0.25 ? '#eab308' : '#22c55e',
-            badge: prediction ? 'Model prediction' : null,
-            noData: !prediction,
-            sparkline: probHistory,
-          },
-        ]}
-      />
 
       <div ref={tabAnchorRef} />
       <TabBar idPrefix="dash" label="Dashboard sections" tabs={tabs} active={activeTab} onChange={selectTab} />
@@ -2331,7 +2434,6 @@ export default function Dashboard() {
               view. Current status (bulletin, conditions strip, map, alert
               reference) stays public; the historical/predicted probability
               trend is reserved for signed-in accounts. */}
-          {user && <FloodForecastChart />}
         </>
       ))}
 
