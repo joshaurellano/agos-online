@@ -18,10 +18,14 @@ function formatTimestamp(date: Date) {
 // with a shorter, unbranded-but-vague copy ("ADVISORY level reached..."),
 // which is why real (non-mock) alerts looked different from the dashboard's
 // mock-test ones.
+// Wording rule: the model forecasts how LIKELY a flood is, not how deep it will
+// get, so these say "possible / likely / very likely" and give light, easy-to-undo
+// steps. Evacuation is announced by the barangay after someone checks the water
+// on the ground (see src/data/levelActions.js).
 const ALERT_MESSAGES: Record<string, (pct: number | null) => string> = {
-  ADVISORY: (pct) => `${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Elevated water levels; minor flooding possible in low-lying areas. Residents near waterways should stay alert and prepare emergency go-bags.`,
-  WARNING:  (pct) => `${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Significant flooding expected. Move valuables to higher ground and prepare for possible evacuation.`,
-  CRITICAL: (pct) => `${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Severe flooding imminent. EVACUATE IMMEDIATELY to your designated evacuation center.`,
+  ADVISORY: (pct) => `${formatTimestamp(new Date())} Flood Advisory in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Flooding is possible. Keep drains clear, charge your phone and check updates.`,
+  WARNING:  (pct) => `${formatTimestamp(new Date())} Flood Warning in effect for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Flooding is likely. Move valuables and vehicles higher, avoid low roads and know your evacuation route.`,
+  CRITICAL: (pct) => `${formatTimestamp(new Date())} Flood CRITICAL alert for ${LOCATION}${pct != null ? ` — ${pct}% flood probability` : ''}. Flooding is very likely. Pack your go-bag, avoid floodwater and follow barangay announcements.`,
   NORMAL:   () => `${formatTimestamp(new Date())} Situation in ${LOCATION} has returned to Normal. Flood risk has subsided. Continue monitoring for updates.`,
 }
 

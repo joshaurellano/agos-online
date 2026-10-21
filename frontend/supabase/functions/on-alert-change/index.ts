@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const ALERT_TITLES: Record<string, string> = {
   ADVISORY: '🟡 ADVISORY',
   WARNING:  '🟠 WARNING',
-  CRITICAL: '🔴 EVACUATION ALERT',
+  CRITICAL: '🔴 CRITICAL FLOOD ALERT',
   NORMAL:   '🟢 All Clear',
   OUTLOOK:  '🔵 Rising risk in 3 days',
 };
