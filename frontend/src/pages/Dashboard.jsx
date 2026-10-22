@@ -158,7 +158,6 @@ const TRIANGULO_AREA = {
 import { TRIANGULO_BOUNDARY, TRIANGULO_CENTER } from '../data/triangulo';
 import { hazardAtPoint, HAZARD_LABELS } from '../lib/hazard';
 import { YourPlaceProvider } from '../hooks/useYourPlace';
-import YourPlaceMapLayer from '../components/YourPlaceMapLayer';
 import ZoneBoundaryLayer from '../components/ZoneBoundaryLayer';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -793,7 +792,6 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   const [showBoundary, setShowBoundary] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [showReports, setShowReports] = useState(true);
-  const [showEvac, setShowEvac] = useState(true);
   const facilityMarkerRefs = useRef({});
   const mapRef = useRef(null);
   const navigate = useNavigate();
@@ -980,9 +978,6 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           );
         })}
 
-        {/* Your Place now lives on the Know Your Zone page; this layer only draws evacuation centers here. */}
-        <YourPlaceMapLayer currentAlert={currentAlert} showEvac={showEvac} showPlace={false} />
-
         <FloodMapFocusController
           focusRequest={focusRequest}
           markerRefs={facilityMarkerRefs}
@@ -1020,13 +1015,11 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           { key: 'zones', label: 'Purok Zones', visible: showZones },
           { key: 'reports', label: 'Reports', visible: showReports },
           { key: 'facilities', label: 'Critical Facilities', visible: showFacilities },
-          { key: 'evac', label: 'Evacuation Centers', visible: showEvac },
         ]}
         onToggle={(key) => {
           if (key === 'boundary') setShowBoundary(v => !v);
           else if (key === 'zones') setShowZones(v => !v);
           else if (key === 'reports') setShowReports(v => !v);
-          else if (key === 'evac') setShowEvac(v => !v);
           else setShowFacilities(v => !v);
         }}
       />
