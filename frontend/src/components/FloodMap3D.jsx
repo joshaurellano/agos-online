@@ -18,6 +18,7 @@ import WindDirectionArrow, { degToCardinal } from './WindDirectionArrow';
 import { MapRecenterButton } from './ui';
 import { useYourPlaceMap3D } from '../hooks/useYourPlaceMap3D';
 import PlacePickBanner from './PlacePickBanner';
+import { addZoneLines, createZoneMarkers, setZoneLinesVisible, setZoneMarkersVisible } from '../lib/zoneLayers';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
 // two views read consistently (trunk/primary thicker, service thinner).
@@ -35,7 +36,7 @@ const BUILDING_COLOR = [
   '#c9d3df',
 ];
 
-// Which 25-yr hazard zone a point sits in (null = outside the mapped zones).
+// Which 100-yr hazard zone a point sits in (null = outside the mapped zones).
 // Plain ray-casting over the hazard MultiPolygons -- 3 features, so cheap.
 function ringContains(ring, x, y) {
   let inside = false;
@@ -63,7 +64,7 @@ const WATER_COLOR = '#1e88e5';
 // can never drift apart.
 const DEFAULT_VIEW = { center: [123.1905, 13.618], zoom: 16.2, pitch: 55, bearing: -17 };
 
-// 25-yr rainfall return period hazard zones, clipped to the barangay
+// 100-yr rainfall return period hazard zones, clipped to the barangay
 // boundary. Extruded a little per class (not real depth data -- just a
 // legibility cue) so Low/Medium/High read distinctly at a glance in 3D.
 const HAZARD_HEIGHT = ['match', ['get', 'hazard_class'], 1, 1.5, 2, 3, 3, 4.5, 1.5];
@@ -212,9 +213,12 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   const [showWind, setShowWind] = useState(true);
   const [showRainFx, setShowRainFx] = useState(true);
   const [showEvac, setShowEvac] = useState(true);
+  const [showZones, setShowZones] = useState(true);
   // null = live conditions; otherwise the forecast frame picked on the timeline.
   const [forecastFrame, setForecastFrame] = useState(null);
   const facilityMarkersRef = useRef([]);
+  const zoneMarkersRef = useRef([]);
+  const showZonesRef = useRef(true);
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
   const [showBuildings, setShowBuildings] = useState(true);
@@ -225,6 +229,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   showBuildingsRef.current = showBuildings;
   const showHazardRef = useRef(showHazard);
   showHazardRef.current = showHazard;
+  showZonesRef.current = showZones;
   const showFacilitiesRef = useRef(showFacilities);
   showFacilitiesRef.current = showFacilities;
 
@@ -314,7 +319,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
 
-    // 25-yr flood hazard overlay -- own toggle, independent of the live
+    // 100-yr flood hazard overlay -- own toggle, independent of the live
     // alert-driven water slab above. Added after the water slab / before
     // the boundary outline so the dashed boundary still renders crisply
     // on top of it.
@@ -405,6 +410,9 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
 
+    // Purok zone dividers (style layers, so re-added after a basemap switch).
+    addZoneLines(map, showZonesRef.current);
+
     // Sky layer -- optional; wrapped in try/catch since older style JSON or
     // a MapLibre version mismatch could omit 'sky' layer-type support.
     if (!map.getLayer('triangulo-sky')) {
@@ -477,7 +485,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
             ${slabNote ? `<div style="margin-top:3px;">${slabNote}</div>` : ''}
           </div>
           <div style="font-size:0.58rem; color:#94a3b8; margin-top:6px;">
-            Hazard: 25-yr rainfall return period map. Building outline © OpenStreetMap contributors.
+            Hazard: 100-yr rainfall return period map. Building outline © OpenStreetMap contributors.
           </div>
         </div>
       `)
@@ -530,6 +538,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       addDataLayers(map);
       applyTimeOfDay(map);
       addFacilityMarkers(map);
+      zoneMarkersRef.current = createZoneMarkers(maplibregl, map, showZonesRef.current);
     });
 
     // Keeps the canvas correctly sized whenever the container's box
@@ -550,6 +559,8 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       resizeObserver.disconnect();
       facilityMarkersRef.current.forEach(marker => marker.remove());
       facilityMarkersRef.current = [];
+      zoneMarkersRef.current.forEach(marker => marker.remove());
+      zoneMarkersRef.current = [];
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -622,6 +633,16 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     if (map.isStyleLoaded()) apply();
     else map.once('load', apply);
   }, [showBuildings]);
+
+  // Purok zone overlay: divider lines are a style layer, badges are DOM markers.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    setZoneMarkersVisible(zoneMarkersRef.current, showZones);
+    const apply = () => setZoneLinesVisible(map, showZones);
+    if (map.isStyleLoaded()) apply();
+    else map.once('load', apply);
+  }, [showZones]);
 
   // Toggle the flood hazard overlay's visibility without touching any
   // other layer.
@@ -796,7 +817,8 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
               Layers
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-              <LayerChip active={showHazard} label="Hazard" title="25-yr rainfall return period flood hazard" onClick={() => setShowHazard(v => !v)} />
+              <LayerChip active={showHazard} label="Hazard" title="100-yr rainfall return period flood hazard" onClick={() => setShowHazard(v => !v)} />
+              <LayerChip active={showZones} label="Zones" title="Purok zone boundaries 1-7 (from the official Naga City barangay map)" onClick={() => setShowZones(v => !v)} />
               <LayerChip active={showFacilities} label="Facilities" title="Hospitals and schools -- exposure layer" onClick={() => setShowFacilities(v => !v)} />
               <LayerChip active={showBuildings} label="Buildings" title="Building footprints in 3D (heights partly estimated)" onClick={() => setShowBuildings(v => !v)} />
               <LayerChip active={showWind} label="Wind flow" title="Animated wind direction and strength (barangay-wide reading)" onClick={() => setShowWind(v => !v)} />

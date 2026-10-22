@@ -159,6 +159,7 @@ import { TRIANGULO_BOUNDARY, TRIANGULO_CENTER } from '../data/triangulo';
 import { hazardAtPoint, HAZARD_LABELS } from '../lib/hazard';
 import { YourPlaceProvider } from '../hooks/useYourPlace';
 import YourPlaceMapLayer from '../components/YourPlaceMapLayer';
+import ZoneBoundaryLayer from '../components/ZoneBoundaryLayer';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -790,6 +791,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
   const [basemap, setBasemap] = useState('street');
   const [reports, setReports] = useState([]);
   const [showBoundary, setShowBoundary] = useState(true);
+  const [showZones, setShowZones] = useState(true);
   const [showReports, setShowReports] = useState(true);
   const [showEvac, setShowEvac] = useState(true);
   const facilityMarkerRefs = useRef({});
@@ -867,6 +869,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
             </LeafletTooltip>
           </LeafletPolygon>
         )}
+        {showZones && <ZoneBoundaryLayer />}
 
         <MarkerClusterGroup chunkedLoading maxClusterRadius={55} iconCreateFunction={createReportClusterIcon}>
           {showReports && reports.map(report => {
@@ -1014,12 +1017,14 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
       <LayerToggle
         layers={[
           { key: 'boundary', label: 'Boundary', visible: showBoundary },
+          { key: 'zones', label: 'Purok Zones', visible: showZones },
           { key: 'reports', label: 'Reports', visible: showReports },
           { key: 'facilities', label: 'Critical Facilities', visible: showFacilities },
           { key: 'evac', label: 'Evacuation Centers', visible: showEvac },
         ]}
         onToggle={(key) => {
           if (key === 'boundary') setShowBoundary(v => !v);
+          else if (key === 'zones') setShowZones(v => !v);
           else if (key === 'reports') setShowReports(v => !v);
           else if (key === 'evac') setShowEvac(v => !v);
           else setShowFacilities(v => !v);

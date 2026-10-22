@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline, Marker, P
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import EvacuationMap3D from '../components/EvacuationMap3D';
+import ZoneBoundaryLayer from '../components/ZoneBoundaryLayer';
 import { SectionLabel, ExpandableMapFrame, MapRecenterButton } from '../components/ui';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { buildRoadGraph, findNearestCenterByRoad, OFF_NETWORK_THRESHOLD_KM, OUTSIDE_BARANGAY_THRESHOLD_KM } from '../lib/routing';
@@ -192,6 +193,7 @@ export default function FloodMapPage() {
             <LegendItem color="#ef4444" label="Primary Evacuation Center" />
             <LegendItem color="#3b82f6" label="School Evacuation Center" />
             <LegendItem color="#38bdf8" label="Barangay Boundary" shape="line" />
+            <LegendItem color="#fbbf24" label="Purok Zone Boundaries" shape="line" />
             {route && <LegendItem color="#22c55e" label="Route (via roads)" shape="line" />}
             {route && (route.startSnapKm > OFF_NETWORK_THRESHOLD_KM || route.destSnapKm > OFF_NETWORK_THRESHOLD_KM) && (
               <LegendItem color="#94a3b8" label="Off mapped roads (straight line)" shape="line" />
@@ -285,6 +287,8 @@ export default function FloodMapPage() {
                 fillOpacity: 0.08,
               }}
             />
+
+            <ZoneBoundaryLayer />
 
             {route && (
               <>
