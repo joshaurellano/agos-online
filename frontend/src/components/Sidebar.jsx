@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LuLayoutDashboard, LuCloudRain, LuActivity, LuBellRing, LuSettings,
-  LuClipboardList, LuMegaphone, LuWaves, LuUserCog, LuUsers, LuUserPlus,
+  LuClipboardList, LuMegaphone, LuWaves, LuUserCog, LuUsers, LuUserPlus, LuRadio,
   LuX, LuLogOut, LuLogIn, LuChevronLeft, LuChevronRight,
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
@@ -25,6 +25,7 @@ const NAV_ITEMS = [
   { path: '/settings',          label: 'Settings',         icon: LuSettings,        group: 'community' },
   { path: '/reports',           label: 'Flood Log',        icon: LuClipboardList,   staffOnly: true, group: 'staff' },
   { path: '/community-reports', label: 'Resident Reports', icon: LuMegaphone,       staffOnly: true, group: 'staff' },
+  { path: '/team-chat',         label: 'Team Coordination', icon: LuRadio,          staffOnly: true, group: 'staff' },
   { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        adminOnly: true, group: 'staff' },
   { path: '/staff',             label: 'Staff',            icon: LuUserCog,         adminOnly: true, group: 'staff' },
   { path: '/residents',         label: 'Residents',        icon: LuUsers,           staffOnly: true, group: 'staff' },

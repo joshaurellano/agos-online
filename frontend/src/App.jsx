@@ -23,6 +23,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const RainfallPage = lazy(() => import('./pages/RainfallPage'));
 const KnowYourHazardsPage = lazy(() => import('./pages/KnowYourHazardsPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const TeamChatPage = lazy(() => import('./pages/TeamChatPage'));
 const CommunityReportsPage = lazy(() => import('./pages/CommunityReportsPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const AlertsLogPage = lazy(() => import('./pages/AlertsLogPage'));
@@ -83,6 +84,12 @@ function App() {
                   <AdminRoute>
                     <StaffPage />
                   </AdminRoute>
+                } />
+
+                <Route path="/team-chat" element={
+                  <ResidentRoute>
+                    <TeamChatPage />
+                  </ResidentRoute>
                 } />
 
                 <Route path="/register" element={
