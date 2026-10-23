@@ -537,10 +537,10 @@ body {
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 
 /* Weather forecast widget */
-.weather-day-tabs { display: flex; gap: 8px; overflow-x: scroll; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--blue-border) var(--blue-mid); }
+.weather-day-tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--blue-border) var(--blue-mid); }
 .weather-hero-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .weather-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
-.weather-hourly-row { display: flex; gap: 6px; overflow-x: scroll; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--blue-border) var(--blue-mid); }
+.weather-hourly-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--blue-border) var(--blue-mid); }
 @media (max-width: 900px) {
   .weather-hero-grid { grid-template-columns: minmax(0, 1fr); }
 }

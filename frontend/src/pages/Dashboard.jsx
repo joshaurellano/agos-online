@@ -2209,7 +2209,6 @@ export default function Dashboard() {
                 loading={forecastLoading}
                 generatedAt={forecastGeneratedAt}
                 outlook={forecastOutlook}
-                weatherCache={forecastCache}
                 pagasaCalibration={pagasaCalibration}
               />
             </CollapsibleSection>
