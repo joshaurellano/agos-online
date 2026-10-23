@@ -8,7 +8,6 @@ import trianguloRoads from '../data/trianguloRoads.json';
 let buildingsPromise = null;
 const loadBuildings = () => (buildingsPromise ??= import('../data/trianguloBuildings.json').then((m) => m.default));
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
-import { CRITICAL_FACILITIES, FACILITY_STYLE, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
 import MapTimeline from './MapTimeline';
@@ -26,21 +25,10 @@ const ROAD_WEIGHT = {
   unclassified: 2, residential: 2, service: 1,
 };
 
-// Building colours: buildings matched to a verified critical facility pick up
-// that facility's marker colour; everything else is a neutral grey-blue.
-const BUILDING_COLOR = [
-  'match', ['get', 'c'],
-  ...Object.entries(FACILITY_STYLE).flatMap(([type, st]) => [type, st.color]),
-  '#c9d3df',
-];
-
-// Same facility colours, but the neutral grey-blue is lighter so buildings
-// still read against the darkened ground.
-const NIGHT_BUILDING_COLOR = [
-  'match', ['get', 'c'],
-  ...Object.entries(FACILITY_STYLE).flatMap(([type, st]) => [type, st.color]),
-  '#8ea2bf',
-];
+// Neutral building colours (day / night -- the night grey is lighter so
+// buildings still read against the darkened ground).
+const BUILDING_COLOR = '#c9d3df';
+const NIGHT_BUILDING_COLOR = '#8ea2bf';
 
 const BOUNDARY_COLOR = '#38bdf8';
 const WATER_COLOR = '#1e88e5';
@@ -219,21 +207,6 @@ function roadWidthExpression() {
   return expr;
 }
 
-// Plain DOM element for a maplibregl.Marker -- these live outside the
-// style/source/layer system entirely, so (unlike everything in
-// addDataLayers) they survive a setStyle() basemap switch without needing
-// to be re-added. Teardrop pin, same markup as the 2D map.
-function createFacilityMarkerEl(facility) {
-  const style = FACILITY_STYLE[facility.facilityType];
-  const el = document.createElement('div');
-  el.style.display = 'flex';
-  el.style.alignItems = 'center';
-  el.style.justifyContent = 'center';
-  el.style.cursor = 'pointer';
-  el.innerHTML = facilityIconSvgMarkup(facility.facilityType, { size: 30, color: style.color, shape: 'pin' });
-  return el;
-}
-
 // Small pill toggle used for the map's layer switches.
 function LayerChip({ active, label, title, onClick }) {
   return (
@@ -254,7 +227,7 @@ function LayerChip({ active, label, title, onClick }) {
   );
 }
 
-export default function FloodMap3D({ currentAlert, probabilityPct = null, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly, focusRequest, showFacilities, setShowFacilities }) {
+export default function FloodMap3D({ currentAlert, probabilityPct = null, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
@@ -266,7 +239,6 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   const [showZones, setShowZones] = useState(true);
   // null = live conditions; otherwise the forecast frame picked on the timeline.
   const [forecastFrame, setForecastFrame] = useState(null);
-  const facilityMarkersRef = useRef([]);
   const zoneMarkersRef = useRef([]);
   const baseColorsRef = useRef({});
   const appliedBucketRef = useRef(null);
@@ -280,37 +252,6 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   const showBuildingsRef = useRef(showBuildings);
   showBuildingsRef.current = showBuildings;
   showZonesRef.current = showZones;
-  const showFacilitiesRef = useRef(showFacilities);
-  showFacilitiesRef.current = showFacilities;
-
-  // Critical-facility markers (hospitals/schools) -- plain maplibregl.Marker
-  // DOM overlays, not style layers, so they're created once on load rather
-  // than inside addDataLayers (which re-runs on every basemap switch and
-  // would otherwise duplicate them).
-  const addFacilityMarkers = (map) => {
-    if (facilityMarkersRef.current.length > 0) return;
-    facilityMarkersRef.current = CRITICAL_FACILITIES.map(facility => {
-      const el = createFacilityMarkerEl(facility);
-      const style = FACILITY_STYLE[facility.facilityType];
-      const popup = new maplibregl.Popup({ offset: 38, closeButton: false }).setHTML(`
-        <div style="min-width:160px; padding:2px;">
-          <div style="font-weight:700; font-size:0.85rem; margin-bottom:4px;">${facility.name}</div>
-          <div style="display:inline-block; font-size:0.6rem; font-weight:700; text-transform:uppercase;
-                      letter-spacing:0.04em; color:${style.color}; background:${style.color}18;
-                      border:1px solid ${style.color}40; border-radius:4px; padding:2px 6px;">
-            ${style.label}
-          </div>
-        </div>
-      `);
-      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([facility.position.lng, facility.position.lat])
-        .setPopup(popup)
-        .addTo(map);
-      marker._facilityId = facility.id; // plain JS property, for lookup on focus-request below
-      el.style.display = showFacilitiesRef.current ? 'flex' : 'none';
-      return marker;
-    });
-  };
 
   // Hides the basemap's own extruded buildings while ours are showing.
   // Flat building footprints from the basemap stay visible either way.
@@ -531,7 +472,6 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     map.on('load', () => {
       addDataLayers(map);
       applyTimeOfDay(map);
-      addFacilityMarkers(map);
       zoneMarkersRef.current = createZoneMarkers(maplibregl, map, showZonesRef.current);
     });
 
@@ -551,42 +491,12 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       clearInterval(lightTimer);
       buildingPopupRef.current?.remove();
       resizeObserver.disconnect();
-      facilityMarkersRef.current.forEach(marker => marker.remove());
-      facilityMarkersRef.current = [];
       zoneMarkersRef.current.forEach(marker => marker.remove());
       zoneMarkersRef.current = [];
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Toggle critical-facility marker visibility. Markers are plain DOM
-  // overlays (not a style layer), so this just flips each element's
-  // display rather than touching map state.
-  useEffect(() => {
-    facilityMarkersRef.current.forEach(marker => {
-      marker.getElement().style.display = showFacilities ? 'flex' : 'none';
-    });
-  }, [showFacilities]);
-
-  // Fly to + pop open a facility marker when a Critical Facilities card is
-  // clicked (focusRequest set by the Dashboard). ts in focusRequest makes
-  // re-clicking the same facility retrigger this even though the id repeats.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!focusRequest || !map) return;
-    const facility = CRITICAL_FACILITIES.find(f => f.id === focusRequest.id);
-    if (!facility) return;
-    setShowFacilities(true);
-    const flyAndPop = () => {
-      map.flyTo({ center: [facility.position.lng, facility.position.lat], zoom: 18, pitch: 55, duration: 1200 });
-      const marker = facilityMarkersRef.current.find(m => m._facilityId === facility.id);
-      const popup = marker?.getPopup();
-      if (popup && !popup.isOpen()) marker.togglePopup();
-    };
-    if (map.isStyleLoaded()) flyAndPop();
-    else map.once('load', flyAndPop);
-  }, [focusRequest]);
 
   // Keep road color AND water slab height/opacity in sync with alert level.
   useEffect(() => {
@@ -796,23 +706,11 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
               <LayerChip active={showZones} label="Zones" title="Purok zone boundaries 1-7 (from the official Naga City barangay map)" onClick={() => setShowZones(v => !v)} />
-              <LayerChip active={showFacilities} label="Facilities" title="Hospitals and schools -- exposure layer" onClick={() => setShowFacilities(v => !v)} />
               <LayerChip active={showBuildings} label="Buildings" title="Building footprints in 3D (heights partly estimated)" onClick={() => setShowBuildings(v => !v)} />
               <LayerChip active={showWind} label="Wind flow" title="Animated wind direction and strength (barangay-wide reading)" onClick={() => setShowWind(v => !v)} />
               <LayerChip active={showRainFx} label="Rain" title="Animated rain / cloud effect" onClick={() => setShowRainFx(v => !v)} />
             </div>
           </div>
-
-          {showFacilities && (
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-              {Object.values(FACILITY_STYLE).map(({ label, color }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.58rem', color: '#8da4be' }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         </div>
         </div>
