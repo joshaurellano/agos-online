@@ -2064,12 +2064,6 @@ export default function Dashboard() {
         ]}
       />
 
-      {/* Charts: bars colored by level, trend line on top */}
-      <div className="dash-grid-2">
-        <FloodForecastChart />
-        <RainfallTrendCard />
-      </div>
-
       <div className="dash-split">
       <div ref={mapCardRef} id="flood-status-map" className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 0 }}>
         <div className="title-band-bar" style={{
@@ -2174,6 +2168,12 @@ export default function Dashboard() {
         <RecentAlertsCard />
         <NextHoursCard hourly={forecast} />
       </div>
+      </div>
+
+      {/* Charts: bars colored by level, trend line on top */}
+      <div className="dash-grid-2">
+        <FloodForecastChart />
+        <RainfallTrendCard />
       </div>
 
 
