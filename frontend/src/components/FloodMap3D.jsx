@@ -25,10 +25,8 @@ const ROAD_WEIGHT = {
   unclassified: 2, residential: 2, service: 1,
 };
 
-// Neutral building colours (day / night -- the night grey is lighter so
-// buildings still read against the darkened ground).
+// Neutral building colour.
 const BUILDING_COLOR = '#c9d3df';
-const NIGHT_BUILDING_COLOR = '#8ea2bf';
 
 const BOUNDARY_COLOR = '#38bdf8';
 const WATER_COLOR = '#1e88e5';
@@ -56,110 +54,20 @@ const STYLE_URLS = {
 };
 const STYLE_LABELS = { liberty: 'Liberty', bright: 'Bright', positron: 'Positron' };
 
-// ─── Time-of-day lighting presets ──────────────────────────────────────────
-// Stylistic only -- not real sun-position astronomy, just four buckets that
-// make the 3D buildings/sky read as day/dawn/dusk/night based on the
-// viewer's local clock. map.setLight() (radial/azimuthal/polar + color +
-// intensity) is core MapLibre style-spec API, shared across all three
-// OpenFreeMap styles, not tied to any one of them.
-function getLightBucket(hour) {
-  if (hour >= 5 && hour < 7) return 'dawn';
-  if (hour >= 7 && hour < 17) return 'day';
-  if (hour >= 17 && hour < 20) return 'dusk';
-  return 'night';
-}
-
-const LIGHT_PRESETS = {
-  day:   { light: { color: '#ffffff', intensity: 0.5, position: [1.5, 210, 45] },
-           sky: { color: '#bcdcff', halo: '#ffffff', sunPos: [210, 45], opacity: 1 },
-           bg: '#dce9f5' },
-  dawn:  { light: { color: '#ffcf9e', intensity: 0.35, position: [1.5, 100, 82] },
-           sky: { color: '#ffd9a8', halo: '#fff2d9', sunPos: [100, 82], opacity: 1 },
-           bg: '#f3dcc2' },
-  dusk:  { light: { color: '#ff9d66', intensity: 0.3, position: [1.5, 280, 84] },
-           sky: { color: '#7a5a7a', halo: '#ff9d66', sunPos: [280, 84], opacity: 1 },
-           bg: '#4a3b57', dark: 0.5 },
-  night: { light: { color: '#8fa6d6', intensity: 0.35, position: [1.5, 200, 60] },
-           sky: { color: '#050b1a', halo: '#16284a', sunPos: [180, 100], opacity: 1 },
-           bg: '#0c1830', dark: 1 },
+// ─── Fixed daytime lighting ────────────────────────────────────────────────
+// The map always uses the same bright daytime look, whatever the clock says.
+// map.setLight() is core MapLibre style-spec API, shared across all three
+// OpenFreeMap styles.
+const DAY_LIGHT = { color: '#ffffff', intensity: 0.5, position: [1.5, 210, 45] };
+const DAY_SKY = {
+  'sky-color': '#bcdcff',
+  'horizon-color': '#ffffff',
+  'fog-color': '#ffffff',
+  'sky-horizon-blend': 0.6,
+  'horizon-fog-blend': 0.6,
+  'fog-ground-blend': 0.2,
+  'atmosphere-blend': 0.8,
 };
-
-// ─── Night basemap recolouring ─────────────────────────────────────────────
-// The OpenFreeMap styles are all daytime palettes, and map.setLight() only
-// shades 3D extrusions -- the flat land, water, roads and labels would stay
-// bright at night. So at dusk/night every simple colour in the basemap style
-// is darkened (and text lightened) in place. Originals are cached so the map
-// can return to day without reloading the style.
-const COLOR_PROPS = ['background-color', 'fill-color', 'fill-outline-color', 'line-color', 'fill-extrusion-color'];
-const TEXT_PROPS = ['text-color', 'icon-color'];
-const HALO_PROPS = ['text-halo-color', 'icon-halo-color'];
-
-function parseColor(str) {
-  if (typeof str !== 'string') return null;
-  const v = str.trim().toLowerCase();
-  let m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
-  if (m) {
-    let h = m[1];
-    if (h.length === 3) h = h.split('').map(c => c + c).join('');
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 1];
-  }
-  m = v.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
-  if (m) return [+m[1], +m[2], +m[3], m[4] == null ? 1 : +m[4]];
-  m = v.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+)\s*)?\)$/);
-  if (m) {
-    const h = +m[1] / 360, s2 = +m[2] / 100, l = +m[3] / 100;
-    const f = (p, q, t) => {
-      if (t < 0) t += 1; if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-    const q = l < 0.5 ? l * (1 + s2) : l + s2 - l * s2, p = 2 * l - q;
-    return [f(p, q, h + 1 / 3) * 255, f(p, q, h) * 255, f(p, q, h - 1 / 3) * 255, m[4] == null ? 1 : +m[4]];
-  }
-  return null;
-}
-
-function rgbToHsl(r, g, b) {
-  r /= 255; g /= 255; b /= 255;
-  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
-  if (mx === mn) return [0, 0, l];
-  const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
-  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return [h * 60, s, l];
-}
-
-// Ground colour -> night colour. Lightness is squashed with a cubic so that
-// light-vs-dark differences (land vs park vs water vs road) survive, colour is
-// desaturated, then everything is tinted toward navy.
-function nightGround([r, g, b, a], t) {
-  const [h, s, l] = rgbToHsl(r, g, b);
-  const nl = 0.05 + 0.28 * l ** 3;
-  const L = l * (1 - t) + nl * t;
-  const S = s * (1 - t * 0.45);
-  const dark = parseColor(`hsla(${h}, ${(S * 100).toFixed(1)}%, ${(L * 100).toFixed(1)}%, ${a})`);
-  return mixTo(dark, [10, 22, 52], 0.22 * t);
-}
-
-const mixTo = ([r, g, b, a], [tr, tg, tb], t) =>
-  `rgba(${Math.round(r + (tr - r) * t)}, ${Math.round(g + (tg - g) * t)}, ${Math.round(b + (tb - b) * t)}, ${a})`;
-
-// Walks a paint value (plain colour, stop function or expression) and maps
-// every literal colour string in it.
-function mapColors(value, fn) {
-  if (typeof value === 'string') {
-    const c = parseColor(value);
-    return c ? fn(c) : value;
-  }
-  if (Array.isArray(value)) return value.map(v => mapColors(v, fn));
-  if (value && typeof value === 'object') {
-    const out = {};
-    for (const k of Object.keys(value)) out[k] = mapColors(value[k], fn);
-    return out;
-  }
-  return value;
-}
 
 function roadsToGeoJSON(roads) {
   return {
@@ -240,8 +148,6 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   // null = live conditions; otherwise the forecast frame picked on the timeline.
   const [forecastFrame, setForecastFrame] = useState(null);
   const zoneMarkersRef = useRef([]);
-  const baseColorsRef = useRef({});
-  const appliedBucketRef = useRef(null);
   const showZonesRef = useRef(true);
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
@@ -383,54 +289,12 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     addZoneLines(map, showZonesRef.current);
   };
 
-  // Dusk/night: darken the basemap's own colours (see nightGround above);
-  // day/dawn: put the cached originals back.
-  const applyBasemapTone = (map, preset) => {
-    const t = preset.dark ?? 0;
-    const layers = map.getStyle()?.layers ?? [];
-    layers.forEach(l => {
-      if (l.id.startsWith('triangulo-')) return;
-      const paint = l.paint || {};
-      const props = [...COLOR_PROPS, ...TEXT_PROPS, ...HALO_PROPS].filter(p => paint[p] !== undefined || baseColorsRef.current[`${l.id}|${p}`] !== undefined);
-      props.forEach(p => {
-        const key = `${l.id}|${p}`;
-        if (baseColorsRef.current[key] === undefined) baseColorsRef.current[key] = paint[p];
-        const orig = baseColorsRef.current[key];
-        let next = orig;
-        if (t > 0) {
-          if (TEXT_PROPS.includes(p)) next = mapColors(orig, c => mixTo(c, [214, 226, 245], t));
-          else if (HALO_PROPS.includes(p)) next = mapColors(orig, c => mixTo(c, [8, 16, 34], t));
-          else next = mapColors(orig, c => nightGround(c, t));
-        }
-        try { map.setPaintProperty(l.id, p, next); } catch { /* property not valid for this layer */ }
-      });
-    });
-  };
-
-  const applyTimeOfDay = (map) => {
-    const bucket = getLightBucket(new Date().getHours());
-    const preset = LIGHT_PRESETS[bucket];
-    map.setLight(preset.light);
+  const applyDayLighting = (map) => {
+    map.setLight(DAY_LIGHT);
     // MapLibre has no 'sky' layer type -- the sky is a style-level property.
     try {
-      map.setSky({
-        'sky-color': preset.sky.color,
-        'horizon-color': preset.sky.halo,
-        'fog-color': preset.sky.halo,
-        'sky-horizon-blend': 0.6,
-        'horizon-fog-blend': 0.6,
-        'fog-ground-blend': 0.2,
-        'atmosphere-blend': preset.dark ? 0 : 0.8,
-      });
+      map.setSky(DAY_SKY);
     } catch { /* sky not supported -- lighting still applies */ }
-    if (appliedBucketRef.current !== bucket) {
-      applyBasemapTone(map, preset);
-      appliedBucketRef.current = bucket;
-    }
-    // The building extrusions need a lighter fill at night to stand off the dark ground.
-    if (map.getLayer('triangulo-buildings-3d')) {
-      map.setPaintProperty('triangulo-buildings-3d', 'fill-extrusion-color', preset.dark ? NIGHT_BUILDING_COLOR : BUILDING_COLOR);
-    }
   };
 
   // Init map once on mount.
@@ -471,7 +335,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
 
     map.on('load', () => {
       addDataLayers(map);
-      applyTimeOfDay(map);
+      applyDayLighting(map);
       zoneMarkersRef.current = createZoneMarkers(maplibregl, map, showZonesRef.current);
     });
 
@@ -481,14 +345,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     const resizeObserver = new ResizeObserver(() => map.resize());
     resizeObserver.observe(containerRef.current);
 
-    // Re-lights every 5 minutes so a long-running demo still drifts with
-    // the real clock instead of freezing at whatever time the page opened.
-    const lightTimer = setInterval(() => {
-      if (mapRef.current && mapRef.current.isStyleLoaded()) applyTimeOfDay(mapRef.current);
-    }, 5 * 60 * 1000);
-
     return () => {
-      clearInterval(lightTimer);
       buildingPopupRef.current?.remove();
       resizeObserver.disconnect();
       zoneMarkersRef.current.forEach(marker => marker.remove());
@@ -550,12 +407,10 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     setStyleKey(key);
     const map = mapRef.current;
     if (!map) return;
-    baseColorsRef.current = {};
-    appliedBucketRef.current = null;
     map.setStyle(STYLE_URLS[key]);
     map.once('style.load', () => {
       addDataLayers(map);
-      applyTimeOfDay(map);
+      applyDayLighting(map);
     });
   };
 
