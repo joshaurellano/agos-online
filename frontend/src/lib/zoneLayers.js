@@ -20,7 +20,9 @@ const linesGeoJSON = () => ({
 
 // Style layers: wiped by map.setStyle(), so call again after each style load
 // (safe to call repeatedly -- it skips anything that already exists).
-export function addZoneLines(map, visible = true) {
+// `beforeId` (optional) inserts the lines under that layer, e.g. under the
+// basemap's labels so street names stay readable on top of them.
+export function addZoneLines(map, visible = true, beforeId) {
   if (!map.getSource(SOURCE_ID)) {
     map.addSource(SOURCE_ID, { type: 'geojson', data: linesGeoJSON() });
   }
@@ -32,7 +34,7 @@ export function addZoneLines(map, visible = true) {
       source: SOURCE_ID,
       layout: { 'line-join': 'round', visibility },
       paint: { 'line-color': ZONE_COLOR, 'line-width': 7, 'line-opacity': 0.18 },
-    });
+    }, beforeId);
   }
   if (!map.getLayer(LINE_ID)) {
     map.addLayer({
@@ -41,7 +43,7 @@ export function addZoneLines(map, visible = true) {
       source: SOURCE_ID,
       layout: { 'line-join': 'round', visibility },
       paint: { 'line-color': ZONE_COLOR, 'line-width': 2.2, 'line-opacity': 0.95, 'line-dasharray': [4, 2] },
-    });
+    }, beforeId);
   }
 }
 

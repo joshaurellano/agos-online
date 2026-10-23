@@ -69,6 +69,116 @@ const DAY_SKY = {
   'atmosphere-blend': 0.8,
 };
 
+// ─── Basemap look: labels + per-style tone ─────────────────────────────────
+// The three OpenFreeMap styles all ship small, pale labels, and once the
+// roads/buildings/zone overlays are on top they look nearly identical. So
+// after every style load we (1) make the basemap's text darker, bigger and
+// haloed, and (2) give each style its own ground tone and building colour.
+// Originals are cached so a style can be re-toned without reloading it.
+const LABEL_SCALE = 1.2;
+
+const STYLE_LOOKS = {
+  // Natural OSM colours, left as shipped.
+  liberty:  { building: '#cdd6e2', sat: 1,    mix: null,            mixAmount: 0 },
+  // Same map, noticeably more saturated, with warm sand buildings.
+  bright:   { building: '#f0dcc0', sat: 1.5,  mix: null,            mixAmount: 0 },
+  // Near-greyscale with a cool blue-grey cast; white buildings so the
+  // coloured overlays stand out.
+  positron: { building: '#ffffff', sat: 0.15, mix: [214, 224, 238], mixAmount: 0.3 },
+};
+
+const COLOR_PROPS = ['background-color', 'fill-color', 'fill-outline-color', 'line-color'];
+
+function parseColor(str) {
+  if (typeof str !== 'string') return null;
+  const v = str.trim().toLowerCase();
+  let m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+  if (m) {
+    let h = m[1];
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 1];
+  }
+  m = v.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
+  if (m) return [+m[1], +m[2], +m[3], m[4] == null ? 1 : +m[4]];
+  m = v.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+)\s*)?\)$/);
+  if (m) {
+    const h = +m[1] / 360, s2 = +m[2] / 100, l = +m[3] / 100;
+    const f = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s2) : l + s2 - l * s2, p = 2 * l - q;
+    return [f(p, q, h + 1 / 3) * 255, f(p, q, h) * 255, f(p, q, h - 1 / 3) * 255, m[4] == null ? 1 : +m[4]];
+  }
+  return null;
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  if (mx === mn) return [0, 0, l];
+  const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+const hsla = (h, s, l, a) => `hsla(${h.toFixed(1)}, ${(Math.min(1, s) * 100).toFixed(1)}%, ${(l * 100).toFixed(1)}%, ${a})`;
+
+// Walks a paint value (plain colour, stop function or expression) and maps
+// every literal colour string in it.
+function mapColors(value, fn) {
+  if (typeof value === 'string') {
+    const c = parseColor(value);
+    return c ? fn(c) : value;
+  }
+  if (Array.isArray(value)) return value.map(v => mapColors(v, fn));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const k of Object.keys(value)) out[k] = mapColors(value[k], fn);
+    return out;
+  }
+  return value;
+}
+
+// Ground colour -> this style's tone (saturation scale, then a tint).
+function toneGround([r, g, b, a], look) {
+  const [h, s, l] = rgbToHsl(r, g, b);
+  let [nr, ng, nb] = parseColor(hsla(h, s * look.sat, l, a));
+  if (look.mix) {
+    nr += (look.mix[0] - nr) * look.mixAmount;
+    ng += (look.mix[1] - ng) * look.mixAmount;
+    nb += (look.mix[2] - nb) * look.mixAmount;
+  }
+  return `rgba(${Math.round(nr)}, ${Math.round(ng)}, ${Math.round(nb)}, ${a})`;
+}
+
+// Label colour -> same hue, much darker, so it reads on any ground.
+function darkenText([r, g, b, a]) {
+  const [h, s, l] = rgbToHsl(r, g, b);
+  return hsla(h, Math.max(s, 0.1), Math.min(l, 0.22), a);
+}
+
+// Scales a text-size value (number, legacy stops, or interpolate/step
+// expression) when every output is a plain number; otherwise leaves it.
+function scaleSize(v, k) {
+  const sc = n => +(n * k).toFixed(2);
+  if (typeof v === 'number') return sc(v);
+  if (v && typeof v === 'object' && !Array.isArray(v) && Array.isArray(v.stops)) {
+    return v.stops.every(st => typeof st[1] === 'number') ? { ...v, stops: v.stops.map(([z, n]) => [z, sc(n)]) } : v;
+  }
+  if (Array.isArray(v) && (v[0] === 'interpolate' || v[0] === 'step')) {
+    const first = v[0] === 'interpolate' ? 4 : 2;
+    const idx = [];
+    for (let i = first; i < v.length; i += 2) idx.push(i);
+    if (!idx.every(i => typeof v[i] === 'number')) return v;
+    return v.map((x, i) => (idx.includes(i) ? sc(x) : x));
+  }
+  return v;
+}
+
 function roadsToGeoJSON(roads) {
   return {
     type: 'FeatureCollection',
@@ -148,6 +258,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   // null = live conditions; otherwise the forecast frame picked on the timeline.
   const [forecastFrame, setForecastFrame] = useState(null);
   const zoneMarkersRef = useRef([]);
+  const baseStyleRef = useRef({});
   const showZonesRef = useRef(true);
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
@@ -177,11 +288,18 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     const color = alertColors[currentAlertRef.current] || alertColors.NORMAL;
     const water = ALERT_WATER[currentAlertRef.current] || ALERT_WATER.NORMAL;
 
+    // Our overlays go UNDER the basemap's first text label, so street and
+    // place names are never covered by the road/zone/boundary lines.
+    const labelAnchor = (map.getStyle()?.layers ?? []).find(
+      l => l.type === 'symbol' && l.layout?.['text-field'] !== undefined && !l.id.startsWith('triangulo-'),
+    )?.id;
+    const addBelowLabels = (layer) => map.addLayer(layer, labelAnchor);
+
     if (!map.getSource('triangulo-roads')) {
       map.addSource('triangulo-roads', { type: 'geojson', data: roadsToGeoJSON(trianguloRoads) });
     }
     if (!map.getLayer('triangulo-roads-line')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-roads-line',
         type: 'line',
         source: 'triangulo-roads',
@@ -203,7 +321,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       map.addSource('triangulo-water', { type: 'geojson', data: boundaryToPolygonGeoJSON(boundary) });
     }
     if (!map.getLayer('triangulo-water-fill')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-water-fill',
         type: 'fill-extrusion',
         source: 'triangulo-water',
@@ -228,7 +346,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
     if (!map.getLayer('triangulo-buildings-3d')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-buildings-3d',
         type: 'fill-extrusion',
         source: 'triangulo-buildings',
@@ -242,7 +360,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
     if (!map.getLayer('triangulo-buildings-hl')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-buildings-hl',
         type: 'fill-extrusion',
         source: 'triangulo-buildings',
@@ -262,7 +380,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       map.addSource('triangulo-boundary', { type: 'geojson', data: boundaryToLineGeoJSON(boundary) });
     }
     if (!map.getLayer('triangulo-boundary-halo')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-boundary-halo',
         type: 'line',
         source: 'triangulo-boundary',
@@ -271,7 +389,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
     if (!map.getLayer('triangulo-boundary-line')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-boundary-line',
         type: 'line',
         source: 'triangulo-boundary',
@@ -286,7 +404,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     }
 
     // Purok zone dividers (style layers, so re-added after a basemap switch).
-    addZoneLines(map, showZonesRef.current);
+    addZoneLines(map, showZonesRef.current, labelAnchor);
   };
 
   const applyDayLighting = (map) => {
@@ -295,6 +413,52 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     try {
       map.setSky(DAY_SKY);
     } catch { /* sky not supported -- lighting still applies */ }
+  };
+
+  // Per-style ground tone + building colour, and clearer basemap labels.
+  const applyStyleLook = (map, key) => {
+    const look = STYLE_LOOKS[key] ?? STYLE_LOOKS.liberty;
+    const cache = baseStyleRef.current;
+    const layers = map.getStyle()?.layers ?? [];
+    const retone = look.sat !== 1 || look.mix;
+
+    layers.forEach(l => {
+      if (l.id.startsWith('triangulo-')) return;
+      const paint = l.paint || {};
+      const layout = l.layout || {};
+
+      // Ground colours (land, water, parks, roads...). Skipped for symbols.
+      if (l.type !== 'symbol') {
+        COLOR_PROPS.forEach(p => {
+          const ck = `${l.id}|${p}`;
+          if (paint[p] === undefined && cache[ck] === undefined) return;
+          if (cache[ck] === undefined) cache[ck] = paint[p];
+          try { map.setPaintProperty(l.id, p, retone ? mapColors(cache[ck], c => toneGround(c, look)) : cache[ck]); } catch { /* not valid for this layer */ }
+        });
+        return;
+      }
+
+      // Labels: darker, haloed, bigger. Light-on-dark text (e.g. road
+      // shields) is left alone.
+      if (layout['text-field'] === undefined) return;
+      const tk = `${l.id}|text-color`;
+      if (cache[tk] === undefined) cache[tk] = paint['text-color'] ?? '#000000';
+      const lit = parseColor(cache[tk]);
+      if (lit && rgbToHsl(lit[0], lit[1], lit[2])[2] >= 0.62) return;
+      try {
+        map.setPaintProperty(l.id, 'text-color', mapColors(cache[tk], c => (rgbToHsl(c[0], c[1], c[2])[2] < 0.62 ? darkenText(c) : c)));
+        map.setPaintProperty(l.id, 'text-halo-color', '#ffffff');
+        map.setPaintProperty(l.id, 'text-halo-width', 2);
+        map.setPaintProperty(l.id, 'text-halo-blur', 0.4);
+        const sk = `${l.id}|text-size`;
+        if (cache[sk] === undefined) cache[sk] = layout['text-size'] ?? 16;
+        map.setLayoutProperty(l.id, 'text-size', scaleSize(cache[sk], LABEL_SCALE));
+      } catch { /* property not valid for this layer */ }
+    });
+
+    if (map.getLayer('triangulo-buildings-3d')) {
+      map.setPaintProperty('triangulo-buildings-3d', 'fill-extrusion-color', look.building);
+    }
   };
 
   // Init map once on mount.
@@ -336,6 +500,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     map.on('load', () => {
       addDataLayers(map);
       applyDayLighting(map);
+      applyStyleLook(map, 'liberty');
       zoneMarkersRef.current = createZoneMarkers(maplibregl, map, showZonesRef.current);
     });
 
@@ -407,10 +572,12 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     setStyleKey(key);
     const map = mapRef.current;
     if (!map) return;
+    baseStyleRef.current = {};
     map.setStyle(STYLE_URLS[key]);
     map.once('style.load', () => {
       addDataLayers(map);
       applyDayLighting(map);
+      applyStyleLook(map, key);
     });
   };
 
