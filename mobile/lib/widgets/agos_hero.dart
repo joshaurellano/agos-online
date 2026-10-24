@@ -443,7 +443,7 @@ class _GaugePainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
 
     // 1. Four faint zone segments with tiny gaps (the "scale").
-    final gap = 0.035; // radians
+    const gap = 0.035; // radians
     for (var i = 0; i < 4; i++) {
       final a0 = _start + _sweep * (i / 4) + (i == 0 ? 0 : gap / 2);
       final a1 = _sweep / 4 - (i == 0 || i == 3 ? gap / 2 : gap);

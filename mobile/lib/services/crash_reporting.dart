@@ -11,7 +11,6 @@
 //
 // Android also needs the Crashlytics Gradle plugin for readable native
 // stack traces — see docs/RELEASE_CHECKLIST.md.
-import 'dart:ui';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';

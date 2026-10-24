@@ -321,7 +321,7 @@ class _AlertScreenState extends State<AlertScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.12),
+                  color: AppColors.accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(Icons.notifications_rounded, color: AppColors.accent, size: 15),
@@ -347,9 +347,9 @@ class _AlertScreenState extends State<AlertScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.15),
+                    color: AppColors.accent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     '$_unreadCount unread',
@@ -466,9 +466,9 @@ class _FilterChip extends StatelessWidget {
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: active ? _color.withOpacity(0.15) : AppColors.bgMid,
+        color: active ? _color.withValues(alpha: 0.15) : AppColors.bgMid,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: active ? _color.withOpacity(0.5) : AppColors.bgBorder),
+        border: Border.all(color: active ? _color.withValues(alpha: 0.5) : AppColors.bgBorder),
       ),
       child: Text(
         label,
@@ -504,10 +504,10 @@ class _AlertCard extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: log.read ? AppColors.bgCard : color.withOpacity(0.07),
+              color: log.read ? AppColors.bgCard : color.withValues(alpha: 0.07),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: log.read ? AppColors.bgBorder : color.withOpacity(0.25),
+                color: log.read ? AppColors.bgBorder : color.withValues(alpha: 0.25),
               ),
             ),
             child: Column(
@@ -519,7 +519,7 @@ class _AlertCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.15),
+                      color: color.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(

@@ -51,7 +51,7 @@ class PanahonHeader extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [AppColors.chromeTop, AppColors.chromeMid, AppColors.chromeBottom],
-                stops: [0.0, 0.6, 1.0],
+                stops: const [0.0, 0.6, 1.0],
               ),
             ),
             child: Stack(

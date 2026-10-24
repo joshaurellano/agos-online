@@ -23,7 +23,7 @@ class Hotline {
   const Hotline(this.name, this.number, this.note);
 }
 
-/// TODO(thesis): add the numbers your barangay / city DRRMO actually
+/// NOTE(thesis): add the numbers your barangay / city DRRMO actually
 /// answers (Brgy. Triangulo hall, Naga City DRRMO, nearest fire station).
 /// Only add numbers you've verified — a wrong number here is worse than none.
 const kEmergencyHotlines = <Hotline>[
@@ -94,46 +94,15 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
   }
 
   Future<void> _addContact() async {
-    final nameCtl = TextEditingController();
-    final numCtl = TextEditingController();
+    // The dialog owns its text controllers and disposes them itself once it is
+    // truly gone. (Disposing them here, right after showDialog returns, broke
+    // the app: the dialog is still animating out at that moment and its
+    // TextFields rebuilt with already-disposed controllers.)
     final result = await showDialog<_Contact>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgMid,
-        title: Text('Add family contact',
-            style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w800, fontSize: 16)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(
-            controller: nameCtl,
-            textCapitalization: TextCapitalization.words,
-            style: TextStyle(color: AppColors.textPri),
-            decoration: const InputDecoration(labelText: 'Name'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: numCtl,
-            keyboardType: TextInputType.phone,
-            style: TextStyle(color: AppColors.textPri),
-            decoration: const InputDecoration(labelText: 'Mobile number', hintText: '09XX XXX XXXX'),
-          ),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final digits = numCtl.text.replaceAll(RegExp(r'[^0-9+]'), '');
-              final name = nameCtl.text.trim();
-              if (digits.length < 7) return;
-              Navigator.pop(ctx, _Contact(name.isEmpty ? digits : name, digits));
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (_) => const _AddContactDialog(),
     );
-    nameCtl.dispose();
-    numCtl.dispose();
-    if (result == null) return;
+    if (result == null || !mounted) return;
     setState(() => _contacts.add(result));
     await _save();
   }
@@ -281,4 +250,68 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
           ]),
         ),
       );
+}
+
+
+// ── Add-contact dialog ────────────────────────────────────────────────────────
+class _AddContactDialog extends StatefulWidget {
+  const _AddContactDialog();
+
+  @override
+  State<_AddContactDialog> createState() => _AddContactDialogState();
+}
+
+class _AddContactDialogState extends State<_AddContactDialog> {
+  final _nameCtl = TextEditingController();
+  final _numCtl = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameCtl.dispose();
+    _numCtl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final digits = _numCtl.text.replaceAll(RegExp(r'[^0-9+]'), '');
+    final name = _nameCtl.text.trim();
+    if (digits.length < 7) {
+      setState(() => _error = 'Enter a valid mobile number.');
+      return;
+    }
+    Navigator.pop(context, _Contact(name.isEmpty ? digits : name, digits));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.bgMid,
+      title: Text('Add family contact',
+          style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w800, fontSize: 16)),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(
+          controller: _nameCtl,
+          textCapitalization: TextCapitalization.words,
+          style: TextStyle(color: AppColors.textPri),
+          decoration: const InputDecoration(labelText: 'Name'),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _numCtl,
+          keyboardType: TextInputType.phone,
+          style: TextStyle(color: AppColors.textPri),
+          decoration: InputDecoration(
+            labelText: 'Mobile number',
+            hintText: '09XX XXX XXXX',
+            errorText: _error,
+          ),
+        ),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
+    );
+  }
 }

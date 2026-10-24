@@ -143,7 +143,6 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
 
   // Nearest center
   _EvacCenter? _nearest;
-  double? _nearestDist;
 
   // Real street-following route to whichever center is currently "the
   // one" (the selected center if any, otherwise the nearest). Was already
@@ -269,7 +268,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       }
 
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
 
       final userLatLng = LatLng(pos.latitude, pos.longitude);
@@ -294,7 +293,6 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       setState(() {
         _userLocation = userLatLng;
         _nearest = nearest;
-        _nearestDist = nearestDist;
         _locating = false;
         _selectedCenterId = nearest?.id;
       });
@@ -782,7 +780,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                       color: const Color(0xFF22C55E),
                       strokeWidth: 3.5,
                       pattern: _routePoints == null
-                          ? StrokePattern.dashed(segments: [12, 6])
+                          ? StrokePattern.dashed(segments: const [12, 6])
                           : const StrokePattern.solid(),
                     ),
                   ]),

@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../main.dart';
 import '../services/auth_service.dart';
 
 // ─── Animated grid painter ────────────────────────────────────────────────────
@@ -13,7 +12,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF00B4FF).withOpacity(0.04)
+      ..color = const Color(0xFF00B4FF).withValues(alpha: 0.04)
       ..strokeWidth = 1;
 
     const step = 48.0;
@@ -56,14 +55,14 @@ class _RingPainter extends CustomPainter {
 
     for (int i = 0; i < dashCount; i++) {
       final startAngle = i * dashAngle;
-      final sweepAngle = dashAngle * (1 - gapFraction);
+      const sweepAngle = dashAngle * (1 - gapFraction);
 
       // Fade segments so it looks like the gradient on web
       final t = i / dashCount;
       final opacity = (0.2 + 0.6 * math.sin(t * math.pi)).clamp(0.0, 1.0);
 
       final paint = Paint()
-        ..color = const Color(0xFF38BDF8).withOpacity(opacity * 0.85)
+        ..color = const Color(0xFF38BDF8).withValues(alpha: opacity * 0.85)
         ..strokeWidth = 1.5
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
@@ -214,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        const Color(0xFF00A0FF).withOpacity(0.12),
+                        const Color(0xFF00A0FF).withValues(alpha: 0.12),
                         Colors.transparent,
                       ],
                     ),
@@ -239,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        const Color(0xFF0050C8).withOpacity(0.10),
+                        const Color(0xFF0050C8).withValues(alpha: 0.10),
                         Colors.transparent,
                       ],
                     ),
@@ -264,7 +263,7 @@ class _LoginScreenState extends State<LoginScreen>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        const Color(0xFF00DCFF).withOpacity(0.07),
+                        const Color(0xFF00DCFF).withValues(alpha: 0.07),
                         Colors.transparent,
                       ],
                     ),
@@ -327,7 +326,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   boxShadow: [
                                     BoxShadow(
                                       color: const Color(0xFF0EA5E9)
-                                          .withOpacity(0.4),
+                                          .withValues(alpha: 0.4),
                                       blurRadius: 24,
                                     ),
                                   ],
@@ -343,15 +342,15 @@ class _LoginScreenState extends State<LoginScreen>
                         const SizedBox(height: 20),
 
                         // ── AGOS gradient title ────────────────
-                        _GradientText(
+                        const _GradientText(
                           'AGOS',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 48,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 6,
                             height: 1,
                           ),
-                          gradient: const LinearGradient(
+                          gradient: LinearGradient(
                             colors: [
                               Color(0xFFE0F2FE),
                               Color(0xFF38BDF8),
@@ -509,7 +508,7 @@ class _LoginCard extends StatelessWidget {
         color: const Color(0xCC08162A), // rgba(8,22,42,0.80)
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFF00A0FF).withOpacity(0.15),
+          color: const Color(0xFF00A0FF).withValues(alpha: 0.15),
         ),
         boxShadow: const [
           BoxShadow(
@@ -577,7 +576,7 @@ class _LoginCard extends StatelessWidget {
                         showPassword
                             ? Icons.visibility_rounded
                             : Icons.visibility_off_rounded,
-                        color: const Color(0xFF64A0DC).withOpacity(0.5),
+                        color: const Color(0xFF64A0DC).withValues(alpha: 0.5),
                         size: 18,
                       ),
                       onPressed: onTogglePassword,
@@ -592,10 +591,10 @@ class _LoginCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEF4444).withOpacity(0.08),
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: const Color(0xFFEF4444).withOpacity(0.3),
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -670,7 +669,7 @@ class _AgosInputState extends State<_AgosInput> {
           boxShadow: _focused
               ? [
                   BoxShadow(
-                    color: const Color(0xFF0EA5E9).withOpacity(0.08),
+                    color: const Color(0xFF0EA5E9).withValues(alpha: 0.08),
                     blurRadius: 20,
                     spreadRadius: 3,
                   ),
@@ -693,7 +692,7 @@ class _AgosInputState extends State<_AgosInput> {
             ),
             prefixIcon: Icon(
               widget.prefixIcon,
-              color: const Color(0xFF64A0DC).withOpacity(0.4),
+              color: const Color(0xFF64A0DC).withValues(alpha: 0.4),
               size: 17,
             ),
             suffixIcon: widget.suffixIcon,
@@ -706,13 +705,13 @@ class _AgosInputState extends State<_AgosInput> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(
-                color: const Color(0xFF0078C8).withOpacity(0.2),
+                color: const Color(0xFF0078C8).withValues(alpha: 0.2),
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(
-                color: const Color(0xFF0078C8).withOpacity(0.2),
+                color: const Color(0xFF0078C8).withValues(alpha: 0.2),
               ),
             ),
             focusedBorder: OutlineInputBorder(
@@ -788,7 +787,7 @@ class _AgosButtonState extends State<_AgosButton>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0EA5E9).withOpacity(0.25),
+                  color: const Color(0xFF0EA5E9).withValues(alpha: 0.25),
                   blurRadius: 24,
                   offset: const Offset(0, 4),
                 ),
@@ -804,7 +803,7 @@ class _AgosButtonState extends State<_AgosButton>
                       borderRadius: BorderRadius.circular(10),
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withOpacity(0.10),
+                          Colors.white.withValues(alpha: 0.10),
                           Colors.transparent,
                         ],
                         begin: Alignment.topLeft,

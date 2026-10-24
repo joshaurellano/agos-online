@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle, HapticFeedback;
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -29,7 +28,6 @@ String _requireEnv(String key) {
   return v;
 }
 
-String get _modelUrl => _requireEnv('MODEL_API_URL');
 // Hourly weather forecast — same endpoint dashboard_screen.dart already
 // polls for its hourly strip. Powers the radar-style timeline scrubber
 // below (rain probability / intensity + the RainOverlay animation at
@@ -220,7 +218,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
 
   // ── Radar-style hourly timeline ──────────────────────────────────────────
   List<Map<String, dynamic>> _hourly = [];
-  bool _hourlyLoading = true;
   int _timelineIndex = 0;
   bool _isPlaying = false;
   Timer? _playTimer;
@@ -318,7 +315,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     }
     setState(() {
       _hourly = list.take(_timelineHours).toList();
-      _hourlyLoading = false;
       if (_timelineIndex >= _hourly.length) _timelineIndex = 0;
     });
   }
@@ -335,7 +331,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
       _applyHourly(result);
     } catch (e) {
       debugPrint('AGOS: hourly forecast fetch failed: $e');
-      if (mounted) setState(() => _hourlyLoading = false);
     }
   }
 
@@ -448,9 +443,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
     return '${diff.inHours}h ago';
   }
 
-  bool get _canZoomIn => _zoom < 19.0;
-  bool get _canZoomOut => _zoom > 12.0;
-
   String _tickLabel(DateTime d) {
     final now = DateTime.now();
     final diff = DateTime(d.year, d.month, d.day).difference(DateTime(now.year, now.month, now.day)).inDays;
@@ -462,7 +454,7 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
 
   // Ray-casting point-in-polygon (same approach the evacuation screen uses).
   bool _insideBoundary(LatLng p) {
-    final poly = _trianguloPolygon;
+    const poly = _trianguloPolygon;
     var inside = false;
     for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
       final yi = poly[i].latitude, xi = poly[i].longitude;
@@ -522,18 +514,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
         _userLatLng = null;
       }
     });
-  }
-
-  void _zoomBy(double delta) {
-    if (!mounted) return;
-    final target = (_zoom + delta).clamp(12.0, 19.0);
-    if (target == _zoom) return; // already at limit
-    setState(() => _zoom = target);
-    try {
-      _mapController.move(_mapController.camera.center, target);
-    } catch (_) {
-      // Map not currently attached — safe to ignore.
-    }
   }
 
   void _recenter() {
@@ -1074,33 +1054,6 @@ class _FloodMapScreenState extends State<FloodMapScreen> {
           }),
         ],
       ]),
-    );
-  }
-
-  Widget _styleSwitcher() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.bgDark.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.bgBorder),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(mainAxisSize: MainAxisSize.min, children: _baseStyles.entries.map((entry) {
-        final key = entry.key;
-        final def = entry.value;
-        final selected = key == _baseStyleKey;
-        return Tooltip(
-          message: def.label,
-          child: GestureDetector(
-            onTap: () => setState(() => _baseStyleKey = key),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              color: selected ? AppColors.accent : Colors.transparent,
-              child: Icon(def.icon, size: 15, color: selected ? Colors.white : AppColors.textMuted),
-            ),
-          ),
-        );
-      }).toList()),
     );
   }
 

@@ -394,7 +394,7 @@ class _CommunityReportsScreenState extends State<CommunityReportsScreen> {
                     style: TextStyle(color: AppColors.textMuted, fontSize: 11.5, fontWeight: FontWeight.w600)),
                 if (_live) ...[
                   const SizedBox(width: 8),
-                  Container(width: 7, height: 7, decoration: BoxDecoration(color: AppColors.green, shape: BoxShape.circle)),
+                  Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle)),
                   const SizedBox(width: 4),
                   Text('Live', style: TextStyle(color: AppColors.ink(AppColors.green), fontSize: 11, fontWeight: FontWeight.w700)),
                 ],

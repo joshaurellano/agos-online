@@ -313,11 +313,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: 'Restores defaults. Saved offline data is kept.',
                 actionLabel: 'Reset',
                 onTap: () async {
-                  final ok = await _confirm('Reset settings?', 'Appearance, text size, contrast, refresh interval and notification choices go back to their defaults.', 'Reset');
-                  if (!ok || !mounted) return;
+                  // Grab everything from context BEFORE awaiting.
                   final a = context.read<AccessibilitySettings>();
                   final s = context.read<AppSettings>();
-                  await context.read<ThemeSettings>().setMode(AppThemeMode.dark);
+                  final theme = context.read<ThemeSettings>();
+                  final ok = await _confirm('Reset settings?', 'Appearance, text size, contrast, refresh interval and notification choices go back to their defaults.', 'Reset');
+                  if (!ok || !mounted) return;
+                  await theme.setMode(AppThemeMode.dark);
                   await a.setTextScale(1.0);
                   await a.setHighContrast(false);
                   await flood.setRefreshInterval(FloodStatusService.defaultInterval);
@@ -610,7 +612,7 @@ class _Divider extends StatelessWidget {
   const _Divider();
   @override
   Widget build(BuildContext context) =>
-      Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1, color: AppColors.bgBorder));
+      Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1, color: AppColors.bgBorder));
 }
 
 class _SwitchRow extends StatelessWidget {
