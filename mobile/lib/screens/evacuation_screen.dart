@@ -5,7 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
+import '../services/flood_status_service.dart';
 import '../theme/panahon_ui.dart';
 import '../services/routing_service.dart';
 import '../services/tile_cache.dart';
@@ -140,12 +143,6 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
 
   // Nearest center
   _EvacCenter? _nearest;
-  // The "Nearest Evacuation Center" banner used to have no way to close
-  // it once it appeared — it just sat there permanently covering the top
-  // of the map after the first "Locate me" tap. This tracks whether the
-  // user has dismissed it; reset to false in _locate() so a fresh locate
-  // shows it again.
-  bool _nearestBannerDismissed = false;
   double? _nearestDist;
 
   // Real street-following route to whichever center is currently "the
@@ -161,53 +158,22 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
   bool _routing = false;
 
   final MapController _mapController = MapController();
-  final ScrollController _scrollController = ScrollController();
-  final TextEditingController _searchCtrl = TextEditingController();
+  // Swipeable cards along the bottom of the map (Google Maps / Uber style):
+  // one card per center, nearest first once we know where the user is.
+  final PageController _pageController = PageController(viewportFraction: 0.9);
 
-  bool _showLegend = false;
-  // Same "fullscreen" convention as flood_map_screen.dart: fills this
-  // tab's whole content area by hiding the detail-cards section below
-  // the map. The persistent AGOS header/bottom nav (owned by MainShell)
-  // stay either way — this isn't OS-level edge-to-edge fullscreen.
-  bool _isFullscreen = false;
-  double _zoom = 14.5;
-  String? _searchError;
+  bool _showLegend = false; // legend + "during a flood" tips panel
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCenterId = _centers.first.id;
+  }
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
+    _pageController.dispose();
     super.dispose();
-  }
-
-  // ── Search: find an evacuation center by name and fly to it ────────────────
-  void _search(String query) {
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return;
-    final match = _centers.where((c) => c.name.toLowerCase().contains(q)).toList();
-    if (match.isEmpty) {
-      setState(() => _searchError = 'No evacuation center matches "$query"');
-      return;
-    }
-    final c = match.first;
-    setState(() {
-      _searchError = null;
-      _selectedCenterId = c.id;
-    });
-    _fetchRoute(c);
-    _mapController.move(LatLng(c.lat, c.lng), 16.5);
-    HapticFeedback.selectionClick();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(0,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-      }
-    });
-  }
-
-  void _zoomBy(double delta) {
-    final target = (_zoom + delta).clamp(12.0, 19.0);
-    setState(() => _zoom = target);
-    _mapController.move(_mapController.camera.center, target);
   }
 
   // ── Street-following route to a center ─────────────────────────────────────
@@ -331,28 +297,16 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         _nearestDist = nearestDist;
         _locating = false;
         _selectedCenterId = nearest?.id;
-        // A fresh "locate me" should show the summary again even if the
-        // user dismissed it earlier this session.
-        _nearestBannerDismissed = false;
       });
 
       if (nearest != null) {
-        final midLat = (pos.latitude + nearest.lat) / 2;
-        final midLng = (pos.longitude + nearest.lng) / 2;
-        _zoom = 14.8;
-        _mapController.move(LatLng(midLat, midLng), _zoom);
+        _fitPoints([userLatLng, LatLng(nearest.lat, nearest.lng)]);
       }
       _fetchRoute(nearest);
 
-      // Scroll list to top so the highlighted card is visible
+      // Nearest is now first in the card strip — bring it into view.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOut,
-          );
-        }
+        if (_pageController.hasClients) _pageController.jumpToPage(0);
       });
     } catch (e) {
       setState(() {
@@ -362,28 +316,418 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
     }
   }
 
-  // Search bar sits at top=10, height=42 → banners start right below it.
-  static const double _searchBarBottom = 60;
-  double get _bannerTop => _searchBarBottom;
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  static const _green = Color(0xFF22C55E);
+
+  List<_EvacCenter> get _sortedCenters {
+    final list = List<_EvacCenter>.from(_centers);
+    final u = _userLocation;
+    if (u != null) {
+      list.sort((a, b) => _haversine(u.latitude, u.longitude, a.lat, a.lng)
+          .compareTo(_haversine(u.latitude, u.longitude, b.lat, b.lng)));
+    }
+    return list;
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // Frames the given points above the card strip (which covers the bottom
+  // ~230 px of the map) and below the status strip at the top.
+  void _fitPoints(List<LatLng> pts) {
+    if (pts.isEmpty) return;
+    try {
+      if (pts.length < 2) {
+        _mapController.move(pts.first, 16.2);
+        return;
+      }
+      _mapController.fitCamera(CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(pts),
+        padding: const EdgeInsets.fromLTRB(48, 110, 48, 240),
+        maxZoom: 17,
+      ));
+    } catch (_) {}
+  }
+
+  void _fitAll() {
+    HapticFeedback.selectionClick();
+    _fitPoints([
+      ..._centers.map((c) => LatLng(c.lat, c.lng)),
+      if (_userLocation != null) _userLocation!,
+    ]);
+  }
+
+  // Swiping the card strip selects that center and flies the map to it.
+  void _onPageChanged(int i) {
+    final list = _sortedCenters;
+    if (i < 0 || i >= list.length) return;
+    final c = list[i];
+    if (c.id == _selectedCenterId) return;
+    HapticFeedback.selectionClick();
+    _selectCenter(c.id);
+    _fitPoints(_userLocation != null
+        ? [_userLocation!, LatLng(c.lat, c.lng)]
+        : [LatLng(c.lat, c.lng)]);
+  }
+
+  // Tapping a marker selects it and brings its card into view.
+  void _focusCenter(_EvacCenter c) {
+    HapticFeedback.selectionClick();
+    _selectCenter(c.id);
+    final i = _sortedCenters.indexWhere((x) => x.id == c.id);
+    if (i >= 0 && _pageController.hasClients) _pageController.jumpToPage(i);
+  }
+
+  // Real turn-by-turn: hands off to Google Maps (or whatever maps app the
+  // phone uses) with the center as the walking destination. The in-app route
+  // line is an overview; this is what you actually follow while walking.
+  Future<void> _openDirections(_EvacCenter c) async {
+    HapticFeedback.mediumImpact();
+    final uri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}&travelmode=walking');
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) _toast("Couldn't open a maps app.");
+    } catch (_) {
+      _toast("Couldn't open a maps app.");
+    }
+  }
+
+  // Opens the SMS app with a ready-made message (no recipient chosen, so the
+  // resident picks who to tell) — where I'm going, and where I am now.
+  Future<void> _shareTrip(_EvacCenter c) async {
+    HapticFeedback.selectionClick();
+    final u = _userLocation;
+    final msg = StringBuffer("I'm heading to ${c.name} (${c.note}). ")
+      ..write('Map: https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}');
+    if (u != null) {
+      msg.write(' My location now: https://www.google.com/maps/search/?api=1&query=${u.latitude},${u.longitude}');
+    }
+    msg.write(' — sent from AGOS');
+    try {
+      final ok = await launchUrl(Uri.parse('sms:?body=${Uri.encodeComponent(msg.toString())}'));
+      if (!ok) _toast("Couldn't open your messaging app.");
+    } catch (_) {
+      _toast("Couldn't open your messaging app.");
+    }
+  }
+
+  String _fmtMeters(double m) =>
+      m < 1000 ? '${m.round()} m' : '${(m / 1000).toStringAsFixed(2)} km';
+
+  // ── Map marker for one center ──────────────────────────────────────────────
+  // The name label only shows on the selected center — the old always-on 7 px
+  // labels were unreadable and overlapped when centers sat close together.
+  Marker _centerMarker(_EvacCenter c) {
+    final isNearest = _nearest?.id == c.id;
+    final isSelected = _selectedCenterId == c.id;
+    final tint = isNearest ? _green : c.color;
+    final halo = isSelected ? 46.0 : 34.0;
+    return Marker(
+      point: LatLng(c.lat, c.lng),
+      width: 56,
+      height: 56,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => _focusCenter(c),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            if (isSelected)
+              Positioned(
+                top: -20,
+                left: -60,
+                right: -60,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: tint,
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: [BoxShadow(color: AppColors.shadow(0.35), blurRadius: 5)],
+                    ),
+                    child: Text(c.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: halo,
+              height: halo,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: tint.withValues(alpha: isSelected ? 0.28 : 0.18),
+                border: Border.all(color: tint, width: isSelected ? 2.5 : 2),
+              ),
+            ),
+            CustomPaint(size: const Size(20, 26), painter: _PinPainter(color: tint)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Top strip: what the flood level means for EVACUATION right now ─────────
+  Widget _statusStrip(String alertKey) {
+    final urgent = alertKey == 'WARNING' || alertKey == 'CRITICAL';
+    final target = _routeTarget ?? _centers.first;
+    late final Color tint;
+    late final IconData icon;
+    late final String title;
+    late final String sub;
+    switch (alertKey) {
+      case 'CRITICAL':
+        tint = AppColors.red;
+        icon = Icons.crisis_alert_rounded;
+        title = 'Evacuate now';
+        sub = 'Go to ${target.name}';
+        break;
+      case 'WARNING':
+        tint = AppColors.orange;
+        icon = Icons.warning_amber_rounded;
+        title = 'Be ready to evacuate';
+        sub = 'Nearest: ${target.name}';
+        break;
+      case 'ADVISORY':
+        tint = AppColors.yellow;
+        icon = Icons.info_outline_rounded;
+        title = 'Advisory · know your route';
+        sub = 'Pick a center and save the route now';
+        break;
+      default:
+        tint = AppColors.green;
+        icon = Icons.check_circle_outline_rounded;
+        title = 'No evacuation needed';
+        sub = 'Good time to learn where the centers are';
+    }
+    return GestureDetector(
+      onTap: urgent ? () => _openDirections(target) : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: urgent ? tint : AppColors.bgDark.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: tint.withValues(alpha: urgent ? 1 : 0.5)),
+          boxShadow: [BoxShadow(color: AppColors.shadow(0.35), blurRadius: 10)],
+        ),
+        child: Row(children: [
+          Icon(icon, size: 20, color: urgent ? Colors.white : AppColors.ink(tint)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: urgent ? Colors.white : AppColors.textPri,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800)),
+              Text(sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: urgent ? Colors.white.withValues(alpha: 0.9) : AppColors.textMuted,
+                      fontSize: 10.5)),
+            ]),
+          ),
+          if (urgent) const Icon(Icons.directions_walk_rounded, color: Colors.white, size: 20),
+        ]),
+      ),
+    );
+  }
+
+  // ── Legend + tips panel ────────────────────────────────────────────────────
+  Widget _legendRow(Widget swatch, String label) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(children: [
+          swatch,
+          const SizedBox(width: 8),
+          Expanded(child: Text(label, style: TextStyle(color: AppColors.textSec, fontSize: 11))),
+        ]),
+      );
+
+  Widget _dot(Color c) => Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle));
+  Widget _line(Color c) => Container(width: 18, height: 3, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2)));
+
+  Widget _infoPanel() => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.bgDark.withValues(alpha: 0.97),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.bgBorder),
+          boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 12)],
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text('MAP KEY',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          const SizedBox(height: 8),
+          _legendRow(_dot(_colorPrimary), 'Primary center'),
+          _legendRow(_dot(_colorSchool), 'School center'),
+          _legendRow(_dot(_green), 'Nearest to you / your position'),
+          _legendRow(_line(AppColors.accent.withValues(alpha: 0.8)), 'Barangay boundary'),
+          _legendRow(_line(_green), 'Walking route (overview)'),
+          const SizedBox(height: 4),
+          Divider(height: 1, color: AppColors.divider),
+          const SizedBox(height: 10),
+          Text('IF YOU HAVE TO EVACUATE',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          const SizedBox(height: 6),
+          Text(
+            '• Go early, before water rises\n'
+            '• Bring IDs, medicines, phone + power bank\n'
+            '• Avoid walking through floodwater\n'
+            '• Follow barangay officials\u2019 instructions',
+            style: TextStyle(color: AppColors.textSec, fontSize: 11, height: 1.5),
+          ),
+        ]),
+      );
+
+  // ── One card in the bottom strip ───────────────────────────────────────────
+  Widget _centerCard(_EvacCenter c) {
+    final isNearest = _nearest?.id == c.id;
+    final isSel = _selectedCenterId == c.id;
+    final u = _userLocation;
+    final straight = u == null ? null : _haversine(u.latitude, u.longitude, c.lat, c.lng);
+    final tint = isNearest ? _green : c.color;
+
+    late final String metric;
+    if (u == null) {
+      metric = 'Tap “Find nearest” to see your distance';
+    } else if (isSel && _routing) {
+      metric = 'Finding walking route…';
+    } else if (isSel && _routeDistanceMeters != null && _routeDurationSeconds != null) {
+      metric = '${_formatDuration(_routeDurationSeconds!)} walk · ${_fmtMeters(_routeDistanceMeters!)}';
+    } else {
+      metric = _formatDistance(straight!);
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isSel ? tint : AppColors.bgBorder, width: isSel ? 1.8 : 1),
+        boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 14, offset: const Offset(0, 4))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(color: tint.withValues(alpha: 0.16), shape: BoxShape.circle),
+            child: Icon(isNearest ? Icons.navigation_rounded : Icons.location_on_rounded,
+                color: AppColors.ink(tint), size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(c.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: AppColors.textPri, fontSize: 13.5, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 2),
+              Row(children: [
+                Flexible(
+                  child: Text(c.type,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: AppColors.ink(c.color), fontSize: 10.5, fontWeight: FontWeight.w700)),
+                ),
+                if (isNearest) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                    decoration: BoxDecoration(color: _green.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(4)),
+                    child: Text('NEAREST',
+                        style: TextStyle(color: AppColors.greenText, fontSize: 8.5, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                  ),
+                ],
+              ]),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Icon(Icons.directions_walk_rounded, size: 14, color: AppColors.greenText),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(metric,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.greenText, fontSize: 11.5, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        const SizedBox(height: 3),
+        Text(c.note,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: AppColors.textMuted, fontSize: 10.5, height: 1.3)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () => _openDirections(c),
+              icon: const Icon(Icons.directions_rounded, size: 16),
+              label: const Text('Directions', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+              style: FilledButton.styleFrom(
+                backgroundColor: _green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                minimumSize: const Size(0, 36),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () => _shareTrip(c),
+            icon: const Icon(Icons.sms_rounded, size: 15),
+            label: const Text('Tell family', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              side: BorderSide(color: AppColors.accent.withValues(alpha: 0.5)),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: const Size(0, 36),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // ── Map ───────────────────────────────────────────────────────────────
-        Expanded(
-          flex: 11,
-          child: Stack(children: [
+    // Flood level drives the top strip (calm → "know your route", severe →
+    // a big red "Evacuate now" button straight to directions).
+    final alertKey =
+        (context.watch<FloodStatusService>().rawJson?['alert_level']?.toString() ?? 'NORMAL').toUpperCase();
+    final centers = _sortedCenters;
+
+    // The map now fills the whole tab; the old half-screen list of long cards
+    // is replaced by a swipeable card strip over the map.
+    return Stack(children: [
+      Positioned.fill(
+        child: Stack(children: [
             FlutterMap(
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: _trianguloCenter,
                 initialZoom: 14.5,
                 // Tapping the map clears the selection highlight
-                onTap: (_, __) => _selectCenter(null),
-                onPositionChanged: (pos, _) => _zoom = pos.zoom,
+                onTap: (_, __) {
+                  if (_showLegend) setState(() => _showLegend = false);
+                },
                 interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+                  flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag | InteractiveFlag.doubleTapZoom,
                 ),
               ),
               children: [
@@ -485,763 +829,115 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                         ),
                       ),
 
-                    // Evacuation center markers
-                    ..._centers.map((c) {
-                      final isNearest = _nearest != null && _nearest!.id == c.id;
-                      return Marker(
-                        point: LatLng(c.lat, c.lng),
-                        width: 60,
-                        height: 60,
-                        child: GestureDetector(
-                          onTap: () {
-                            _selectCenter(_selectedCenterId == c.id ? null : c.id);
-                            // Scroll list so the tapped card is visible at top
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (_scrollController.hasClients) {
-                                _scrollController.animateTo(
-                                  0,
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeOut,
-                                );
-                              }
-                            });
-                          },
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: isNearest ? const Color(0xFF22C55E) : c.color,
-                                  borderRadius: BorderRadius.circular(4),
-                                  boxShadow: [
-                                    BoxShadow(color: AppColors.shadow(0.3), blurRadius: 4),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (isNearest)
-                                      const Padding(
-                                        padding: EdgeInsets.only(right: 3),
-                                        child: Icon(Icons.navigation_rounded, color: Colors.white, size: 8),
-                                      ),
-                                    Flexible(
-                                      child: Text(
-                                        c.name.split(' ').take(2).join(' '),
-                                        style: const TextStyle(
-                                            color: Colors.white, fontSize: 7, fontWeight: FontWeight.w700),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              // Circle halo surrounding the pin icon — mirrors
-                              // the translucent ring drawn around each
-                              // evacuation marker on the web dashboard's map
-                              // (createCenterIcon in FloodMapPage.jsx), so the
-                              // same visual language carries over to mobile.
-                              Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Container(
-                                    width: 34,
-                                    height: 34,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: (isNearest ? const Color(0xFF22C55E) : c.color)
-                                          .withValues(alpha: 0.2),
-                                      border: Border.all(
-                                          color: isNearest ? const Color(0xFF22C55E) : c.color,
-                                          width: 2),
-                                    ),
-                                  ),
-                                  CustomPaint(
-                                    size: const Size(20, 26),
-                                    painter: _PinPainter(
-                                        color: isNearest ? const Color(0xFF22C55E) : c.color),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
+                    // Evacuation centers
+                    ..._centers.map(_centerMarker),
                   ],
                 ),
               ],
             ),
 
-            // ── Search bar (PANaHON-style) ───────────────────────────────
-            Positioned(
-              top: 10, left: 10, right: 58,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  PanahonSearchBar(
-                    hint: 'Search evacuation center…',
-                    controller: _searchCtrl,
-                    onSubmitted: _search,
-                    trailing: GestureDetector(
-                      onTap: () => _search(_searchCtrl.text),
-                      child: Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.accent),
-                    ),
-                  ),
-                  if (_searchError != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6, left: 4),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.bgDark.withValues(alpha: 0.95),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.red.withValues(alpha: 0.4)),
-                        ),
-                        child: Text(_searchError!,
-                            style: TextStyle(color: AppColors.ink(AppColors.red), fontSize: 10.5)),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+        ]),
+      ),
 
-            // ── Nearest center info (name/distance + address) ───────────────
-            // Both banners live in one Column now instead of two separately
-            // Positioned widgets at fixed offsets — a long center name used
-            // to wrap to 2 lines and get clipped by the address banner below
-            // it, since that banner assumed the first one was always 60px
-            // tall. Stacking them in a Column sizes each to its real content
-            // height, so nothing overlaps regardless of name length.
-            if (_nearest != null && !_nearestBannerDismissed)
-              Positioned(
-                top: _bannerTop, left: 12, right: 60,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_nearestDist != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                        decoration: BoxDecoration(
-                          color: AppColors.greenBg.withValues(alpha: 0.95),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.6)),
-                          boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 12)],
-                        ),
-                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Icon(Icons.navigation_rounded, color: AppColors.greenText, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text('NEAREST EVACUATION CENTER',
-                                  style: TextStyle(color: AppColors.greenText, fontSize: 8,
-                                      fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                              const SizedBox(height: 2),
-                              Text(_nearest!.name,
-                                  style: TextStyle(color: AppColors.textPri, fontSize: 12, fontWeight: FontWeight.w700)),
-                              if (_routeTarget?.id == _nearest!.id && _routeDurationSeconds != null) ...[
-                                const SizedBox(height: 2),
-                                Text('🚶 ${_formatDuration(_routeDurationSeconds!)} by street',
-                                    style: TextStyle(color: AppColors.greenSoft, fontSize: 10, fontWeight: FontWeight.w600)),
-                              ] else if (_routeTarget?.id == _nearest!.id && _routing) ...[
-                                const SizedBox(height: 2),
-                                Text('Finding walking route…',
-                                    style: TextStyle(color: AppColors.greenSoft, fontSize: 10, fontWeight: FontWeight.w600)),
-                              ],
-                            ]),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF22C55E).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.4)),
-                            ),
-                            child: Text(
-                              _formatDistance(_nearestDist!),
-                              style: TextStyle(color: AppColors.greenText, fontSize: 11, fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          // Dismiss — previously there was no way to get this
-                          // banner off the map once it appeared.
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => setState(() => _nearestBannerDismissed = true),
-                            child: Padding(
-                              padding: EdgeInsets.only(left: 2, top: 1),
-                              child: Icon(Icons.close_rounded, color: AppColors.greenSoft, size: 16),
-                            ),
-                          ),
-                        ]),
-                      ),
-                    const SizedBox(height: 8),
-                    // Address of the nearest center — replaces the old "flood
-                    // zone" banner, since that polygon is just the barangay
-                    // boundary, not an actual flood zone, so labeling it that
-                    // way was misleading. This is more useful in that slot.
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface.withValues(alpha: 0.97),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.bgBorder),
-                        boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 12)],
-                      ),
-                      child: Row(children: [
-                        Icon(Icons.location_on_outlined, color: AppColors.textMuted, size: 14),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _nearest!.note,
-                            style: TextStyle(
-                              color: AppColors.textSec,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ]),
-                    ),
-                  ],
-                ),
-              ),
+      // ── Status strip (top) ───────────────────────────────────────────────
+      Positioned(top: 10, left: 10, right: 58, child: _statusStrip(alertKey)),
 
-            // ── Legend panel (toggled via the layers icon below) ────────────
-            if (_showLegend)
-              Positioned(
-                top: 56, right: 56,
-                child: Container(
-                  width: 170,
-                  padding: const EdgeInsets.all(11),
-                  decoration: BoxDecoration(
-                    color: AppColors.bgDark.withValues(alpha: 0.96),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.bgBorder),
-                    boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 10)],
-                  ),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('MAP LEGEND',
-                        style: TextStyle(color: AppColors.textMuted, fontSize: 9,
-                            fontWeight: FontWeight.w800, letterSpacing: 1)),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Container(width: 10, height: 10,
-                          decoration: const BoxDecoration(color: _colorPrimary, shape: BoxShape.circle)),
-                      const SizedBox(width: 7),
-                      Expanded(child: Text('Primary Center',
-                          style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
-                    ]),
-                    const SizedBox(height: 6),
-                    Row(children: [
-                      Container(width: 10, height: 10,
-                          decoration: const BoxDecoration(color: _colorSchool, shape: BoxShape.circle)),
-                      const SizedBox(width: 7),
-                      Expanded(child: Text('School Center',
-                          style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
-                    ]),
-                    const SizedBox(height: 6),
-                    Row(children: [
-                      Container(width: 10, height: 10,
-                          decoration: const BoxDecoration(color: Color(0xFF22C55E), shape: BoxShape.circle)),
-                      const SizedBox(width: 7),
-                      Expanded(child: Text('Nearest / You',
-                          style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
-                    ]),
-                    const SizedBox(height: 6),
-                    Row(children: [
-                      Container(
-                          width: 18, height: 2,
-                          decoration: BoxDecoration(
-                            color: AppColors.accent.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(1),
-                          )),
-                      const SizedBox(width: 7),
-                      Expanded(child: Text('Brgy. Boundary',
-                          style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
-                    ]),
-                    const SizedBox(height: 6),
-                    Row(children: [
-                      Container(
-                          width: 18, height: 2,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF22C55E),
-                            borderRadius: BorderRadius.circular(1),
-                          )),
-                      const SizedBox(width: 7),
-                      Expanded(child: Text('Route to Center',
-                          style: TextStyle(color: AppColors.textSec, fontSize: 10.5))),
-                    ]),
-                  ]),
-                ),
-              ),
-
-            // ── Vertical map tool stack (PANaHON-style) ──────────────────────
-            Positioned(
-              top: 56,
-              right: 10,
-              child: MapToolStack(children: [
-                MapToolButton(
-                  icon: _isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
-                  active: _isFullscreen,
-                  onTap: () => setState(() => _isFullscreen = !_isFullscreen),
-                ),
-                MapToolButton(
-                  icon: Icons.layers_rounded,
-                  active: _showLegend,
-                  onTap: () => setState(() => _showLegend = !_showLegend),
-                ),
-                MapToolButton(
-                  icon: _userLocation != null ? Icons.my_location_rounded : Icons.location_searching_rounded,
-                  active: _userLocation != null,
-                  activeColor: const Color(0xFF22C55E),
-                  onTap: _locating ? null : _locateUser,
-                  child: _locating
-                      ? SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2),
-                        )
-                      : null,
-                ),
-                MapToolButton(icon: Icons.add_rounded, onTap: () => _zoomBy(1)),
-                MapToolButton(icon: Icons.remove_rounded, onTap: () => _zoomBy(-1)),
-              ]),
-            ),
-
-            // ── Error overlay ──────────────────────────────────────────────
-            if (_locError != null)
-              Positioned(
-                bottom: 12, left: 12, right: 12,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.errorBg,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFef4444).withValues(alpha: 0.5)),
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.error_outline_rounded, color: AppColors.ink(AppColors.red), size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(_locError!,
-                        style: TextStyle(color: AppColors.redTextSoft, fontSize: 11))),
-                    GestureDetector(
-                      onTap: () => setState(() => _locError = null),
-                      child: Icon(Icons.close, color: AppColors.textMuted, size: 14),
-                    ),
-                  ]),
-                ),
-              ),
-
-            // ── Tap hint (no location yet) ─────────────────────────────────
-            if (_nearest == null && _locError == null)
-              Positioned(
-                bottom: 12, left: 12, right: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.bgBorder),
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 14),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Tap the locate button to find the nearest evacuation center.',
-                        style: TextStyle(color: AppColors.textSec, fontSize: 11),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: _locating ? null : _locateUser,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: AppColors.accent.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
-                        ),
-                        child: Text('Locate',
-                            style: TextStyle(color: AppColors.accent,
-                                fontSize: 10, fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-                  ]),
-                ),
-              ),
-          ]),
-        ),
-
-        // ── Detail cards ───────────────────────────────────────────────────────
-        if (!_isFullscreen)
-        Expanded(
-          flex: 13,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const _SectionLabel(icon: '🚨', text: 'Evacuation Route Map — Barangay Triangulo'),
-              const SizedBox(height: 4),
-              Text('Tap a marker on the map, or a card below, for details.',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
-              const SizedBox(height: 12),
-
-              // ── Selected center detail card (replaces map popup) ──────────
-              if (_selectedCenterId != null) ...[
-                _buildDetailCard(context),
-                const SizedBox(height: 12),
-              ],
-
-              ..._centers.map((c) {
-                final isNearest = _nearest?.id == c.id;
-                final isSelected = _selectedCenterId == c.id;
-                final dist = _userLocation != null
-                    ? _haversine(_userLocation!.latitude, _userLocation!.longitude, c.lat, c.lng)
-                    : null;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: GestureDetector(
-                    onTap: () => _selectCenter(isSelected ? null : c.id),
-                    child: _CenterCard(
-                      center: c,
-                      isNearest: isNearest,
-                      isSelected: isSelected,
-                      distanceMeters: dist,
-                    ),
-                  ),
-                );
-              }),
-
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFf97316).withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFf97316).withValues(alpha: 0.25)),
-                  ),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('⚠️  DURING A FLOOD EVENT',
-                        style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 9.5,
-                            fontWeight: FontWeight.w800, letterSpacing: 1.0)),
-                    SizedBox(height: 6),
-                    Text(
-                      'Proceed immediately to the nearest designated evacuation center. '
-                      'Bring essential documents, medicines, and supplies. '
-                      'Follow instructions from Barangay Officials.',
-                      style: TextStyle(color: AppColors.textSec, fontSize: 11.5, height: 1.5),
-                    ),
-                  ]),
-                ),
-              ),
-            ]),
+      // ── Tool stack: locate, show-all, key ───────────────────────────────
+      Positioned(
+        top: 10,
+        right: 10,
+        child: MapToolStack(children: [
+          MapToolButton(
+            icon: _userLocation != null ? Icons.my_location_rounded : Icons.location_searching_rounded,
+            active: _userLocation != null,
+            activeColor: _green,
+            onTap: _locating ? null : _locateUser,
+            child: _locating
+                ? SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(color: AppColors.accent, strokeWidth: 2),
+                  )
+                : null,
           ),
-        ),
-      ],
-    );
-  }
-
-  // ── Expanded detail card shown at top of list when a center is selected ─────
-  Widget _buildDetailCard(BuildContext context) {
-    final c = _centers.firstWhere((c) => c.id == _selectedCenterId);
-    final isNearest = _nearest?.id == c.id;
-    final dist = _userLocation != null
-        ? _haversine(_userLocation!.latitude, _userLocation!.longitude, c.lat, c.lng)
-        : null;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: (isNearest ? const Color(0xFF22C55E) : c.color)
-                  .withValues(alpha: 0.4)),
-          boxShadow: [
-            BoxShadow(color: AppColors.shadow(0.4), blurRadius: 16)
-          ],
-        ),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(
-              color: (isNearest ? const Color(0xFF22C55E) : c.color)
-                  .withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: (isNearest ? const Color(0xFF22C55E) : c.color)
-                      .withValues(alpha: 0.4)),
-            ),
-            child: Icon(
-              isNearest ? Icons.navigation_rounded : Icons.location_on_rounded,
-              color: isNearest ? AppColors.greenText : AppColors.ink(c.color),
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (isNearest)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                        color: const Color(0xFF22C55E).withValues(alpha: 0.4)),
-                  ),
-                  child: Text('⚡ NEAREST TO YOU',
-                      style: TextStyle(color: AppColors.greenText, fontSize: 8,
-                          fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                ),
-              Text(c.name,
-                  style: TextStyle(color: AppColors.textPri,
-                      fontWeight: FontWeight.w700, fontSize: 13)),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: c.color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: c.color.withValues(alpha: 0.35)),
-                ),
-                child: Text(c.type,
-                    style: TextStyle(
-                        color: AppColors.ink(c.color), fontSize: 9, fontWeight: FontWeight.w700)),
-              ),
-              const SizedBox(height: 8),
-              // Address, as a labeled row in its own info box
-              // (mirrors the web dashboard's detail-card layout).
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceDim,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.bgBorder),
-                ),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('ADDRESS',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 8.5,
-                          fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                  const SizedBox(height: 3),
-                  Text(c.note,
-                      style: TextStyle(
-                          color: AppColors.textSec, fontSize: 11.5, height: 1.5)),
-                ]),
-              ),
-              if (_routing && _selectedCenterId == c.id) ...[
-                const SizedBox(height: 6),
-                Row(children: [
-                  const SizedBox(
-                    width: 11, height: 11,
-                    child: CircularProgressIndicator(strokeWidth: 1.6, color: Color(0xFF22C55E)),
-                  ),
-                  const SizedBox(width: 6),
-                  Text('Finding walking route…',
-                      style: TextStyle(color: AppColors.textSec, fontSize: 11, fontWeight: FontWeight.w600)),
-                ]),
-              ] else if (_routeDistanceMeters != null && _selectedCenterId == c.id) ...[
-                const SizedBox(height: 6),
-                Row(children: [
-                  Icon(Icons.directions_walk_rounded, color: AppColors.greenText, size: 13),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      '${_formatDistance(_routeDistanceMeters!)} · ${_formatDuration(_routeDurationSeconds ?? 0)} by street'
-                      '${dist != null ? ' (${_formatDistance(dist)} straight-line)' : ''}',
-                      style: TextStyle(color: AppColors.greenText, fontSize: 11, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ]),
-              ] else if (dist != null) ...[
-                const SizedBox(height: 6),
-                Row(children: [
-                  Icon(Icons.directions_walk_rounded,
-                      color: AppColors.greenText, size: 13),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      '${_formatDistance(dist)} away (straight-line — street route unavailable)',
-                      style: TextStyle(
-                          color: AppColors.greenText,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ]),
-              ],
-            ]),
-          ),
-          // Dismiss button
-          GestureDetector(
-            onTap: () => _selectCenter(null),
-            child: Padding(
-              padding: EdgeInsets.all(4),
-              child:
-                  Icon(Icons.close, color: AppColors.textMuted, size: 16),
-            ),
+          MapToolButton(icon: Icons.zoom_out_map_rounded, onTap: _fitAll),
+          MapToolButton(
+            icon: Icons.info_outline_rounded,
+            active: _showLegend,
+            onTap: () => setState(() => _showLegend = !_showLegend),
           ),
         ]),
       ),
-    );
-  }
-}
 
-// ── Center Summary Card (in the list) ─────────────────────────────────────────
-class _CenterCard extends StatelessWidget {
-  final _EvacCenter center;
-  final bool isNearest;
-  final bool isSelected;
-  final double? distanceMeters;
-  const _CenterCard({
-    required this.center,
-    this.isNearest = false,
-    this.isSelected = false,
-    this.distanceMeters,
-  });
+      if (_showLegend) Positioned(top: 70, left: 10, right: 58, child: _infoPanel()),
 
-  @override
-  Widget build(BuildContext context) {
-    final accentColor = isNearest ? const Color(0xFF22C55E) : center.color;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.surface.withValues(alpha: 1.0)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: isSelected
-                  ? accentColor.withValues(alpha: 0.4)
-                  : AppColors.bgBorder),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: Text('🏫 ${center.name}',
-                  style: TextStyle(
-                      color: AppColors.textPri,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5)),
-            ),
-            if (isNearest)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(
-                      color: const Color(0xFF22C55E).withValues(alpha: 0.4)),
-                ),
+      // ── "Find nearest" call-to-action until we know where the user is ────
+      if (_userLocation == null && !_locating)
+        Positioned(
+          left: 14,
+          bottom: 200,
+          child: Material(
+            color: AppColors.accent,
+            borderRadius: BorderRadius.circular(22),
+            elevation: 4,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(22),
+              onTap: _locateUser,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.navigation_rounded,
-                      color: AppColors.greenText, size: 10),
-                  SizedBox(width: 3),
-                  Text('NEAREST',
-                      style: TextStyle(
-                          color: AppColors.greenText,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.5)),
+                  Icon(Icons.my_location_rounded, color: Colors.white, size: 16),
+                  SizedBox(width: 6),
+                  Text('Find nearest to me',
+                      style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w800)),
                 ]),
               ),
-          ]),
-          const SizedBox(height: 7),
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: center.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: center.color.withValues(alpha: 0.35)),
-              ),
-              child: Text(center.type,
-                  style: TextStyle(
-                      color: AppColors.ink(center.color),
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700)),
             ),
-          ]),
-          const SizedBox(height: 10),
-          // Address, as a labeled row in its own info box
-          // (mirrors the web dashboard's card layout).
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          ),
+        ),
+
+      // ── Location error ───────────────────────────────────────────────────
+      if (_locError != null)
+        Positioned(
+          left: 12,
+          right: 12,
+          bottom: 200,
+          child: Container(
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.surfaceDim,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: AppColors.bgBorder),
+              color: AppColors.errorBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.red.withValues(alpha: 0.5)),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('ADDRESS',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 8.5,
-                      fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-              const SizedBox(height: 3),
-              Text(center.note,
-                  style: TextStyle(
-                      color: AppColors.textSec, fontSize: 12, height: 1.5)),
+            child: Row(children: [
+              Icon(Icons.error_outline_rounded, color: AppColors.ink(AppColors.red), size: 16),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_locError!, style: TextStyle(color: AppColors.redTextSoft, fontSize: 11))),
+              GestureDetector(
+                onTap: () => setState(() => _locError = null),
+                child: Icon(Icons.close, color: AppColors.textMuted, size: 14),
+              ),
             ]),
           ),
-          if (distanceMeters != null) ...[
-            const SizedBox(height: 8),
-            Row(children: [
-              Icon(Icons.directions_walk_rounded,
-                  color: isNearest ? AppColors.greenText : AppColors.textSec,
-                  size: 13),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  '${_formatDistance(distanceMeters!)} away',
-                  style: TextStyle(
-                      color: isNearest
-                          ? AppColors.greenText
-                          : AppColors.textSec,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700),
-                ),
-              ),
-            ]),
-          ],
-        ]),
-      ),
-    );
-  }
-}
-
-// ── Section Label ──────────────────────────────────────────────────────────────
-class _SectionLabel extends StatelessWidget {
-  final String icon, text;
-  const _SectionLabel({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) => Row(children: [
-        Text(icon, style: const TextStyle(fontSize: 12)),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(text.toUpperCase(),
-              style: TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2)),
         ),
-        const SizedBox(width: 8),
-        Expanded(child: Container(height: 1, color: AppColors.bgBorder)),
-      ]);
+
+      // ── Swipeable center cards (bottom) ──────────────────────────────────
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 190,
+        child: PageView.builder(
+          controller: _pageController,
+          onPageChanged: _onPageChanged,
+          itemCount: centers.length,
+          itemBuilder: (context, i) => Padding(
+            padding: const EdgeInsets.fromLTRB(5, 0, 5, 10),
+            child: _centerCard(centers[i]),
+          ),
+        ),
+      ),
+    ]);
+  }
 }
 
 // ── Custom Pin Painter ─────────────────────────────────────────────────────────

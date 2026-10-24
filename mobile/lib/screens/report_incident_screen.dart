@@ -34,7 +34,13 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   final String _category = kIncidentCategories.first;
   File? _photo;
 
+  // Quick picks, stored as a leading "[Knee-deep · Not passable]" tag on the
+  // description (see ReportTags) — no database change needed.
+  String? _depth;
+  String? _road;
+
   bool _locating = false;
+  double? _accuracy; // metres, shown as a hint
   String? _locationLabel;
   double? _lat;
   double? _lng;
@@ -47,6 +53,20 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   void initState() {
     super.initState();
     _loadSavedName();
+    _autoAttachLocation();
+  }
+
+  // If location permission was already granted, pin the position right away
+  // (no prompt, no tap) — one less step for someone standing in floodwater.
+  // If it wasn't granted we do nothing; the button still asks on tap.
+  Future<void> _autoAttachLocation() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm != LocationPermission.whileInUse && perm != LocationPermission.always) return;
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      if (!mounted) return;
+      await _attachLocation();
+    } catch (_) {}
   }
 
   Future<void> _loadSavedName() async {
@@ -130,10 +150,12 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+      if (!mounted) return;
 
       setState(() {
         _lat = pos.latitude;
         _lng = pos.longitude;
+        _accuracy = pos.accuracy;
         _locationLabel = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
         _locating = false;
       });
@@ -146,8 +168,8 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   }
 
   Future<void> _submit() async {
-    if (_descriptionCtrl.text.trim().isEmpty) {
-      setState(() => _errorMsg = 'Please describe what you saw.');
+    if (_descriptionCtrl.text.trim().isEmpty && _depth == null) {
+      setState(() => _errorMsg = 'Pick how deep the water is, or describe what you saw.');
       return;
     }
 
@@ -163,7 +185,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
         : (profile?.name ?? 'Resident');
     if (typedName.isNotEmpty) _saveName(typedName); // remember for next time
     final role = profile?.roleDesc ?? 'Resident';
-    final description = _descriptionCtrl.text.trim();
+    final description = ReportTags.build(_depth, _road, _descriptionCtrl.text.trim());
     final outbox = context.read<PendingReportsService>();
 
     // One id for this report, used for BOTH the direct send and (if that
@@ -251,8 +273,77 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
     }
   }
 
+  // One tappable option tile (depth / passability).
+  Widget _choice({
+    required String label,
+    String? hint,
+    required bool selected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.16) : AppColors.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? color : AppColors.bgBorder, width: selected ? 1.8 : 1),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(
+                      color: selected ? AppColors.ink(color) : AppColors.textPri,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800)),
+            ),
+            if (selected) Icon(Icons.check_circle_rounded, size: 16, color: AppColors.ink(color)),
+          ]),
+          if (hint != null) ...[
+            const SizedBox(height: 2),
+            Text(hint, style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Color _depthColor(String d) {
+    switch (d) {
+      case 'Ankle-deep':
+        return AppColors.yellow;
+      case 'Knee-deep':
+        return AppColors.orange;
+      default:
+        return AppColors.red;
+    }
+  }
+
+  static const _depthHints = {
+    'Ankle-deep': 'Bukung-bukong',
+    'Knee-deep': 'Tuhod',
+    'Waist-deep': 'Baywang',
+    'Chest-deep or higher': 'Dibdib pataas',
+  };
+
+  Color _roadColor(String r) =>
+      r == 'Passable' ? AppColors.green : (r == 'High vehicles only' ? AppColors.orange : AppColors.red);
+
   @override
   Widget build(BuildContext context) {
+    final depthTiles = kDepthOptions
+        .map((d) => _choice(
+              label: d,
+              hint: _depthHints[d],
+              selected: _depth == d,
+              color: _depthColor(d),
+              onTap: () => setState(() => _depth = _depth == d ? null : d),
+            ))
+        .toList();
+
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
       appBar: AppBar(
@@ -261,9 +352,49 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
         iconTheme: IconThemeData(color: AppColors.textPri),
         elevation: 0,
       ),
+      // Submit stays pinned to the bottom — no scrolling to find it.
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          decoration: BoxDecoration(
+            color: AppColors.bgDark,
+            border: Border(top: BorderSide(color: AppColors.bgBorder)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (_errorMsg != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.red.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.red.withValues(alpha: 0.3)),
+                ),
+                child: Text(_errorMsg!, style: TextStyle(color: AppColors.ink(AppColors.red), fontSize: 12.5)),
+              ),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _submitting ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: _submitting
+                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                    : const Text('Send report', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+              ),
+            ),
+          ]),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -274,22 +405,140 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 18),
-                    SizedBox(width: 10),
+                child: Row(children: [
+                  Icon(Icons.info_outline_rounded, color: AppColors.accent, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Officials check every report before neighbors see it. '
+                      'No signal? It saves on your phone and sends itself later.',
+                      style: TextStyle(color: AppColors.textSec, fontSize: 12.5, height: 1.35),
+                    ),
+                  ),
+                ]),
+              ),
+
+              const SizedBox(height: 20),
+              _sectionLabel('How deep is the water?'),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: depthTiles[0]),
+                const SizedBox(width: 10),
+                Expanded(child: depthTiles[1]),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: depthTiles[2]),
+                const SizedBox(width: 10),
+                Expanded(child: depthTiles[3]),
+              ]),
+
+              const SizedBox(height: 20),
+              _sectionLabel('Can vehicles pass?'),
+              const SizedBox(height: 8),
+              Row(children: [
+                for (var i = 0; i < kRoadOptions.length; i++) ...[
+                  Expanded(
+                    child: _choice(
+                      label: kRoadOptions[i],
+                      selected: _road == kRoadOptions[i],
+                      color: _roadColor(kRoadOptions[i]),
+                      onTap: () => setState(() => _road = _road == kRoadOptions[i] ? null : kRoadOptions[i]),
+                    ),
+                  ),
+                  if (i != kRoadOptions.length - 1) const SizedBox(width: 8),
+                ],
+              ]),
+
+              const SizedBox(height: 20),
+              _sectionLabel('Anything else? (optional)'),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.bgCard,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.bgBorder),
+                ),
+                child: TextField(
+                  controller: _descriptionCtrl,
+                  maxLines: 3,
+                  style: TextStyle(color: AppColors.textPri, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. Baha na sa Zone 1, tumataas pa ang tubig…',
+                    hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                    contentPadding: const EdgeInsets.all(14),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+              _sectionLabel('Photo (helps officials verify faster)'),
+              const SizedBox(height: 8),
+              if (_photo != null)
+                Stack(children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(_photo!, height: 160, width: double.infinity, fit: BoxFit.cover),
+                  ),
+                  Positioned(
+                    top: 6, right: 6,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _photo = null),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                      ),
+                    ),
+                  ),
+                ])
+              else
+                Row(children: [
+                  Expanded(child: _actionButton(icon: Icons.camera_alt_rounded, label: 'Take photo', onTap: _pickPhoto)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _actionButton(icon: Icons.photo_library_rounded, label: 'From gallery', onTap: _pickFromGallery)),
+                ]),
+
+              const SizedBox(height: 20),
+              _sectionLabel('Location'),
+              const SizedBox(height: 8),
+              if (_locationLabel != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.green.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.green.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.check_circle_rounded, color: AppColors.ink(AppColors.green), size: 18),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Barangay officials review every flood report before it\'s shown to other residents.',
+                        _accuracy != null ? 'Your location is pinned (±${_accuracy!.round()} m)' : 'Your location is pinned',
                         style: TextStyle(color: AppColors.textSec, fontSize: 12.5),
                       ),
                     ),
-                  ],
+                    TextButton(
+                      onPressed: _locating ? null : _attachLocation,
+                      child: const Text('Update', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                )
+              else
+                _actionButton(
+                  icon: _locating ? null : Icons.my_location_rounded,
+                  label: _locating ? 'Getting your location…' : 'Attach my current location',
+                  onTap: _locating ? null : _attachLocation,
                 ),
-              ),
-              const SizedBox(height: 20),
+              if (_locError != null) ...[
+                const SizedBox(height: 8),
+                Text(_locError!, style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 12)),
+              ],
 
-              _sectionLabel('Your Name (optional)'),
+              const SizedBox(height: 20),
+              _sectionLabel('Your name (optional)'),
               const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(
@@ -304,7 +553,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   decoration: InputDecoration(
                     hintText: 'e.g. Juan Dela Cruz',
                     hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                     border: InputBorder.none,
                     prefixIcon: Icon(Icons.badge_outlined, color: AppColors.textMuted, size: 19),
                   ),
@@ -312,125 +561,10 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Leave blank to submit as "Anonymous Resident". Your name is shown '
-                'next to your report in the community feed.',
+                'Leave blank to post as "Resident". Shown next to your report in the community feed.',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.35),
               ),
-
-              const SizedBox(height: 20),
-              _sectionLabel('What did you see?'),
               const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.bgCard,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.bgBorder),
-                ),
-                child: TextField(
-                  controller: _descriptionCtrl,
-                  maxLines: 4,
-                  style: TextStyle(color: AppColors.textPri, fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: 'e.g. Baha na sa Zone 1, umaabot na sa tuhod...',
-                    hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
-                    contentPadding: EdgeInsets.all(14),
-                    border: InputBorder.none,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-              _sectionLabel('Photo (optional, but helps)'),
-              const SizedBox(height: 8),
-              if (_photo != null)
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.file(_photo!, height: 160, width: double.infinity, fit: BoxFit.cover),
-                    ),
-                    Positioned(
-                      top: 6, right: 6,
-                      child: GestureDetector(
-                        onTap: () => setState(() => _photo = null),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                          child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(child: _actionButton(icon: Icons.camera_alt_rounded, label: 'Take Photo', onTap: _pickPhoto)),
-                    const SizedBox(width: 10),
-                    Expanded(child: _actionButton(icon: Icons.photo_library_rounded, label: 'From Gallery', onTap: _pickFromGallery)),
-                  ],
-                ),
-
-              const SizedBox(height: 20),
-              _sectionLabel('Location (optional, but helps)'),
-              const SizedBox(height: 8),
-              if (_locationLabel != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.green.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.green.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle_rounded, color: AppColors.ink(AppColors.green), size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text('Pinned: $_locationLabel', style: TextStyle(color: AppColors.textSec, fontSize: 12.5))),
-                    ],
-                  ),
-                )
-              else
-                _actionButton(
-                  icon: _locating ? null : Icons.my_location_rounded,
-                  label: _locating ? 'Getting your location…' : 'Attach my current location',
-                  onTap: _locating ? null : _attachLocation,
-                ),
-              if (_locError != null) ...[
-                const SizedBox(height: 8),
-                Text(_locError!, style: TextStyle(color: AppColors.ink(AppColors.orange), fontSize: 12)),
-              ],
-
-              if (_errorMsg != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.red.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.red.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(_errorMsg!, style: TextStyle(color: AppColors.ink(AppColors.red), fontSize: 12.5)),
-                ),
-              ],
-
-              const SizedBox(height: 28),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _submitting ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: _submitting
-                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
-                      : const Text('Submit Report', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
-                ),
-              ),
-              const SizedBox(height: 12),
             ],
           ),
         ),
