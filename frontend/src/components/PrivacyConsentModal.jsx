@@ -19,7 +19,7 @@ const COPY = {
       { icon: LuUserCheck,     label: 'Their rights',    text: 'They can see, correct, or remove their number at the barangay office at any time.' },
     ],
     check: 'The resident is present, was identified, heard this notice, and signed the consent form for AGOS SMS alerts.',
-    confirm: 'Agree and save',
+    confirm: 'Agree and continue',
   },
   staff: {
     title: 'Data privacy and security',
@@ -101,7 +101,7 @@ export default function PrivacyConsentModal({ open, variant = 'resident', busy =
       <div className="registry-dialog-actions">
         <button type="button" className="btn btn-ghost" onClick={cancel} disabled={busy}>Cancel</button>
         <button type="button" className="btn btn-primary" onClick={onConfirm} disabled={!agreed || busy}>
-          {busy ? 'Saving…' : copy.confirm}
+          {busy ? 'Working…' : copy.confirm}
         </button>
       </div>
     </dialog>

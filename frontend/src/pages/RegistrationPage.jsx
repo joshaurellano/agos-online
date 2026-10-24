@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabaseClient';
@@ -7,7 +7,12 @@ import { detectPhoneNetwork, NETWORK_INFO } from '../lib/phoneNetwork';
 import { RESIDENT_ROLE_ID } from '../lib/roles';
 import { checkPassword, isValidUsername, isValidPhone, generatePassword } from '../lib/credentials';
 import PrivacyConsentModal from '../components/PrivacyConsentModal';
+import OtpVerifyModal from '../components/OtpVerifyModal';
 
+// Residents verify the mobile number with a texted code before saving:
+//   form -> privacy notice -> code (OtpVerifyModal) -> save
+// Staff accounts have no code (Smart/TNT numbers may not receive SMS); both
+// modes refuse a number that is already registered.
 // One page, two modes (same layout, same controls):
 //   /register      admin creates a staff login
 //   /add-resident  staff registers a resident for SMS alerts (no login)
@@ -50,6 +55,7 @@ function StaffForm() {
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState(null);
   const [askConsent, setAskConsent] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
 
   useEffect(() => {
     clearError();
@@ -63,7 +69,7 @@ function StaffForm() {
   const set = (name) => (e) => {
     clearError();
     let value = e.target.value;
-    if (name === 'phone') value = value.replace(/\D/g, '').slice(0, 11);
+    if (name === 'phone') { value = value.replace(/\D/g, '').slice(0, 11); setPhoneError(''); }
     if (name === 'username') value = value.toLowerCase().replace(/\s/g, '');
     setForm((f) => ({ ...f, [name]: value }));
   };
@@ -81,12 +87,26 @@ function StaffForm() {
   const valid = Object.values(errors).every((m) => !m);
   const show = (name) => (touched[name] ? errors[name] : '');
 
-  // Submit only validates; the privacy modal then asks for confirmation and
-  // calls create() when the person agrees.
-  const submit = (e) => {
+  // Submit validates and checks the number is not already on an account,
+  // then the privacy modal asks for confirmation and calls create().
+  const submit = async (e) => {
     e.preventDefault();
     setTouched({ name: true, phone: true, username: true, password: true, confirm: true, role_id: true });
     if (!valid || busy) return;
+    clearError();
+    setBusy(true);
+    const { data: existing, error: lookupError } = await supabase
+      .from('profiles').select('id').eq('phone', form.phone).maybeSingle();
+    setBusy(false);
+    if (lookupError) {
+      logger.error('Phone lookup failed:', lookupError.message);
+      setPhoneError('Could not check the number. Try again.');
+      return;
+    }
+    if (existing) {
+      setPhoneError('This number is already registered.');
+      return;
+    }
     setAskConsent(true);
   };
 
@@ -128,7 +148,7 @@ function StaffForm() {
           aria-invalid={!!show('name')} aria-describedby="staff-name-msg" placeholder="Maria Santos" />
       </Field>
 
-      <Field id="staff-phone" label="Mobile number" hint="09XXXXXXXXX" error={show('phone')}>
+      <Field id="staff-phone" label="Mobile number" hint="09XXXXXXXXX" error={show('phone') || phoneError}>
         <input id="staff-phone" className="settings-input registry-field" type="tel" inputMode="numeric"
           value={form.phone} onChange={set('phone')} onBlur={blur('phone')} autoComplete="off"
           aria-invalid={!!show('phone')} aria-describedby="staff-phone-msg" placeholder="09123456789" />
@@ -202,25 +222,46 @@ function ResidentForm() {
   const [form, setForm] = useState({ name: '', phone: '' });
   const [smsAck, setSmsAck] = useState(false);
   const [askConsent, setAskConsent] = useState(false);
+  const [askOtp, setAskOtp] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const saving = useRef(false);
 
   const phoneOk = isValidPhone(form.phone);
   const network = phoneOk ? detectPhoneNetwork(form.phone) : null;
   const needsAck = !!network && !network.deliverable;
   const canSubmit = !busy && form.name.trim() && phoneOk && (!needsAck || smsAck);
 
-  // Submit opens the privacy and consent modal; save() runs once the
-  // resident's consent is confirmed there.
-  const submit = (e) => {
+  // Submit opens the privacy and consent modal, then the code step (the
+  // code goes to the resident's phone); save() runs once the code is right.
+  const submit = async (e) => {
     e.preventDefault();
     if (!canSubmit) return;
     setError('');
+
+    // Check the list first, so a number that is already registered is
+    // caught here and not after the privacy notice and the code step.
+    setBusy(true);
+    const { data: existing, error: lookupError } = await supabase
+      .from('residents').select('id').eq('phone', form.phone).maybeSingle();
+    setBusy(false);
+    if (lookupError) {
+      logger.error('Resident lookup failed:', lookupError.message);
+      setError('Could not check the number. Try again.');
+      return;
+    }
+    if (existing) {
+      setError('This number is already registered.');
+      return;
+    }
     setAskConsent(true);
   };
 
   const save = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    setAskOtp(false);
     setBusy(true);
     setError('');
     const { error: insertError } = await supabase.from('residents').insert({
@@ -233,10 +274,13 @@ function ResidentForm() {
     });
     setBusy(false);
     setAskConsent(false);
+    saving.current = false;
     if (insertError) {
       logger.error('Resident insert failed:', insertError.message);
       // phone has a unique constraint -- the usual cause of a failed insert
-      setError(insertError.code === '23505' ? 'This number is already registered.' : 'Could not save. Try again.');
+      if (insertError.code === '23505') setError('This number is already registered.');
+      else if (/verify the mobile number/i.test(insertError.message)) setError('Verification expired. Verify the number again.');
+      else setError('Could not save. Try again.');
       return;
     }
     setDone(true);
@@ -257,6 +301,7 @@ function ResidentForm() {
   const info = network ? NETWORK_INFO[network.network] : null;
 
   return (
+    <>
     <form onSubmit={submit} noValidate>
       <Field id="res-name" label="Full name">
         <input id="res-name" className="settings-input registry-field" value={form.name}
@@ -285,18 +330,25 @@ function ResidentForm() {
       <div className="registry-dialog-actions" style={{ marginTop: 8 }}>
         <Link to="/residents" className="btn btn-ghost" style={{ textDecoration: 'none' }}>Cancel</Link>
         <button type="submit" className="btn btn-primary" disabled={!canSubmit}>
-          {busy ? 'Saving…' : 'Add resident'}
+          {busy ? 'Please wait…' : 'Add resident'}
         </button>
       </div>
-
-      <PrivacyConsentModal
-        open={askConsent}
-        variant="resident"
-        busy={busy}
-        onConfirm={save}
-        onCancel={() => setAskConsent(false)}
-      />
     </form>
+
+    <PrivacyConsentModal
+      open={askConsent}
+      variant="resident"
+      busy={busy}
+      onConfirm={() => { setAskConsent(false); setAskOtp(true); }}
+      onCancel={() => setAskConsent(false)}
+    />
+    <OtpVerifyModal
+      open={askOtp}
+      phone={form.phone}
+      onVerified={save}
+      onCancel={() => setAskOtp(false)}
+    />
+    </>
   );
 }
 
