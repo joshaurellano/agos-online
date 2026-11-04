@@ -28,6 +28,7 @@ const CommunityReportsPage = lazy(() => import('./pages/CommunityReportsPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const AlertsLogPage = lazy(() => import('./pages/AlertsLogPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
 const ResidentRegistryPage = lazy(() => import('./pages/ResidentRegistryPage'));
 const NeedsAssessmentPage = lazy(() => import('./pages/NeedsAssessmentPage'));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
@@ -67,6 +68,7 @@ function App() {
                 } />
                 <Route path="/alerts-log"    element={<AlertsLogPage />} />
                 <Route path="/settings"      element={<SettingsPage />} />
+                <Route path="/help"          element={<HelpPage />} />
                 <Route path="/privacy"       element={<PrivacyPage />} />
 
                 <Route path="/reports" element={

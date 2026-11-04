@@ -2052,3 +2052,13 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
 }
 .rain-summary strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .rain-zoom-note { margin: 8px 0 0; font-size: 0.75rem; color: var(--text-muted); }
+
+/* Help button in the top bar */
+.topbar-help {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+  padding: 0; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+  background: transparent; color: var(--text-secondary); border: 1px solid var(--blue-border);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.topbar-help:hover { color: var(--accent); border-color: var(--accent); background: var(--blue-mid); }
+.topbar-help:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

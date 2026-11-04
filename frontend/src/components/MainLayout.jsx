@@ -23,6 +23,7 @@ const PAGE_TITLES = {
   '/analytics':       'ML Analytics',
   '/alerts-log':      'Alert Log',
   '/settings':        'Settings',
+  '/help':            'Help',
   '/staff':           'Staff Accounts',
   '/register':        'New Staff Account',
   '/add-resident':    'Add Resident',

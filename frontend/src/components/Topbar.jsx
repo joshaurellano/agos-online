@@ -7,7 +7,7 @@ import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
 import { useModelSelection } from '../hooks/useModelSelection';
 import { isAdmin } from '../lib/roles';
-import { LuMenu, LuSun, LuMoon, LuLogIn, LuCpu } from 'react-icons/lu';
+import { LuMenu, LuSun, LuMoon, LuLogIn, LuCpu, LuCircleHelp } from 'react-icons/lu';
 
 export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
   const { user } = useAuth();
@@ -147,6 +147,17 @@ export default function Topbar({ title, onMenuClick, menuOpen, alertLevel }) {
             <span style={{ fontSize: '0.85rem', opacity: 0.7 }}>⇄</span>
           </button>
         )}
+
+        {/* Help center */}
+        <button
+          type="button"
+          className="topbar-help"
+          onClick={() => navigate('/help')}
+          title="Help"
+          aria-label="Open help"
+        >
+          <LuCircleHelp size={18} aria-hidden="true" />
+        </button>
 
         {/* Dark / Light toggle */}
         <button
