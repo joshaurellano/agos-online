@@ -1156,19 +1156,6 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 }
 
 /* ── Rainfall page ─────────────────────────────────────────────────── */
-.rain-banner {
-  display: flex; align-items: flex-start; gap: 14px; padding: 14px 18px; margin-bottom: 18px;
-  border-radius: var(--radius-sm);
-}
-.rain-banner.calm {
-  background: color-mix(in srgb, var(--green) 9%, transparent);
-  border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
-  align-items: center;
-}
-.rain-banner.calm .rain-banner-icon { color: var(--green); background: color-mix(in srgb, var(--green) 16%, transparent); }
-.rain-banner-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0; }
-.rain-banner-title { font-family: var(--font-display); font-weight: 800; font-size: 1rem; color: var(--text-primary); }
-.rain-banner-text { font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px; }
 
 .kpi-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .kpi-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--accent); background: rgba(56,189,248,0.12); flex-shrink: 0; }
@@ -1776,13 +1763,17 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
 .alert-row-msg { font-size: 0.78rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .alert-row-time { font-size: 0.74rem; color: var(--text-muted); white-space: nowrap; }
 
-.hours-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.hours-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .hour-cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.hour-time { font-size: 0.72rem; color: var(--text-secondary); font-weight: 600; }
-.hour-bar { width: 100%; max-width: 28px; height: 70px; background: var(--blue-mid); border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
-.hour-bar span { display: block; width: 100%; border-radius: 6px 6px 0 0; }
-.hour-pop { font-size: 0.8rem; font-weight: 800; font-variant-numeric: tabular-nums; }
-.hour-temp { font-size: 0.74rem; color: var(--text-muted); }
+.hour-pop { font-size: 0.8rem; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+/* A faint track the height of 100% gives low values a scale to be read against. */
+.hour-bar {
+  width: 100%; max-width: 38px; height: 72px; margin: 0 auto; display: flex; align-items: flex-end;
+  background: color-mix(in srgb, var(--accent2) 8%, transparent); border-radius: 3px 3px 0 0;
+}
+.hour-bar span { display: block; width: 100%; background: var(--accent2); border-radius: 3px 3px 0 0; }
+.hour-time { font-size: 0.72rem; color: var(--text-secondary); font-weight: 500; }
+.hour-temp { font-size: 0.74rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
 
 /* ── Header ── */
@@ -1958,3 +1949,98 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
 .stale-banner-copy { flex: 1 1 240px; display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; line-height: 1.45; }
 .stale-banner-copy span { color: var(--text-secondary); }
 .stale-banner-retry { flex-shrink: 0; }
+
+
+/* ── Chart refinements (ProbabilityStat, TrendChart empty state) ───────── */
+.recharts-text { font-variant-numeric: tabular-nums; }
+.prob-stat {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding-bottom: 14px; margin-bottom: 8px; border-bottom: 1px solid var(--blue-border);
+}
+.prob-stat-value {
+  font-family: var(--font-display); font-size: 2rem; font-weight: 700; line-height: 1;
+  letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+.prob-stat-value span { font-size: 1.1rem; font-weight: 600; color: var(--text-muted); margin-left: 2px; }
+.prob-stat-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.prob-stat-label { font-size: 0.8rem; font-weight: 600; color: var(--text-primary); }
+.prob-stat-level { display: inline-flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--text-secondary); }
+.prob-stat-level i { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.trend-wrap { position: relative; }
+.chart-empty {
+  position: absolute; left: 46px; right: 66px; top: 0; bottom: 34px;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 0.85rem; color: var(--text-secondary); pointer-events: none;
+}
+.chart-empty span { background: var(--blue-card); padding: 5px 12px; border-radius: 6px; }
+
+
+/* ── Page loader: ripple + dual-ring spinner around the AGOS logo ───────── */
+.page-loader {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; min-height: 60vh; padding: 32px 16px; text-align: center;
+}
+.page-loader-full {
+  position: fixed; inset: 0; z-index: 2000; min-height: 0;
+  background: var(--blue-deep);
+}
+.agos-loader { position: relative; width: 112px; height: 112px; display: grid; place-items: center; }
+
+.agos-loader-ripple {
+  position: absolute; inset: 22px; border-radius: 50%;
+  border: 2px solid var(--accent); opacity: 0;
+  animation: agos-ripple 2.6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+.agos-loader-ripple-2 { animation-delay: 0.87s; }
+.agos-loader-ripple-3 { animation-delay: 1.74s; }
+
+.agos-loader-ring { position: absolute; inset: 0; width: 100%; height: 100%; animation: agos-spin 1.3s linear infinite; }
+.agos-loader-ring-inner { animation: agos-spin-rev 1.9s linear infinite; }
+.agos-loader-track { fill: none; stroke: var(--blue-border); stroke-width: 3; opacity: 0.55; }
+.agos-loader-arc {
+  fill: none; stroke: url(#agos-loader-grad); stroke-width: 4; stroke-linecap: round;
+  stroke-dasharray: 150 277; /* about a half-circle sweep on r=44 */
+}
+.agos-loader-arc-inner { stroke: var(--accent2); stroke-width: 2.5; stroke-dasharray: 55 165; opacity: 0.8; }
+
+.agos-loader-logo {
+  position: relative; width: 46px; height: 46px; border-radius: 12px; object-fit: contain;
+  animation: agos-bob 2.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.45));
+}
+
+.agos-loader-text {
+  margin: 0; min-height: 1.4em; font-family: var(--font-display); font-size: 0.95rem;
+  font-weight: 600; letter-spacing: 0.01em; color: var(--text-secondary);
+  animation: agos-text-in 0.45s ease both;
+}
+.agos-loader-dots::after { content: ''; animation: agos-dots 1.4s steps(4, end) infinite; }
+.agos-loader-hint { margin: -8px 0 0; font-size: 0.8rem; color: var(--text-muted); animation: agos-text-in 0.5s ease both; }
+
+@keyframes agos-spin     { to { transform: rotate(360deg); } }
+@keyframes agos-spin-rev { to { transform: rotate(-360deg); } }
+@keyframes agos-ripple {
+  0%   { transform: scale(0.6); opacity: 0.55; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+@keyframes agos-bob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-3px) scale(1.05); }
+}
+@keyframes agos-text-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes agos-dots {
+  0%   { content: ''; }
+  25%  { content: '.'; }
+  50%  { content: '..'; }
+  75%, 100% { content: '...'; }
+}
+
+/* Reduced motion: keep a calm static ring so the loader still reads as one. */
+@media (prefers-reduced-motion: reduce) {
+  .agos-loader-ring, .agos-loader-ring-inner, .agos-loader-logo { animation: none; }
+  .agos-loader-ripple { display: none; }
+}
+:root.a11y-reduce-motion .agos-loader-ring,
+:root.a11y-reduce-motion .agos-loader-ring-inner,
+:root.a11y-reduce-motion .agos-loader-logo { animation: none !important; }
+:root.a11y-reduce-motion .agos-loader-ripple { display: none; }

@@ -45,6 +45,10 @@ import WeatherForecast from '../components/WeatherForecast';
 import AlertDeliveryStatus from '../components/AlertDeliveryStatus';
 import PagasaBulletinBanner from '../components/PagasaBulletinBanner';
 import StaleDataBanner from '../components/StaleDataBanner';
+import NextHoursStrip from '../components/NextHoursStrip';
+import ProbabilityStat from '../components/ProbabilityStat';
+import PageLoader from '../components/PageLoader';
+import { rainfallAxis } from '../lib/rainAxis';
 
 // Shape + icon for each level, so the alert never relies on color alone.
 const LEVEL_ICONS = { NORMAL: LuShieldCheck, ADVISORY: LuEye, WARNING: LuTriangleAlert, CRITICAL: LuSiren };
@@ -1224,33 +1228,7 @@ function FloodForecastChart() {
         </div>
       ) : (
         <>
-          {latestRisk !== null && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 14px', marginBottom: 14,
-              background: `${getRiskColor(latestRisk)}10`,
-              border: `1px solid ${getRiskColor(latestRisk)}30`,
-              borderRadius: 'var(--radius-sm)',
-            }}>
-              <div style={{
-                fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 900,
-                color: getRiskColor(latestRisk), lineHeight: 1,
-              }}>
-                <AnimatedNumber value={latestRisk} decimals={0} />%
-              </div>
-              <div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Current Flood Probability
-                </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                  {latestRisk >= 75 ? 'Immediate action may be required'
-                    : latestRisk >= 50 ? 'High risk — monitor closely'
-                    : latestRisk >= 25 ? 'Elevated — stay alert'
-                    : 'Low risk — conditions normal'}
-                </div>
-              </div>
-            </div>
-          )}
+          {latestRisk !== null && <ProbabilityStat value={latestRisk} />}
 
           <ProbabilityLineChart
             data={chartData}
@@ -1275,14 +1253,14 @@ function FloodForecastChart() {
                     border: `1px solid ${d.isToday ? 'rgba(56,189,248,0.3)' : 'var(--blue-border)'}`,
                     borderRadius: 6,
                   }}>
-                    <div style={{ fontSize: '0.6rem', color: d.isToday ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 700, marginBottom: 3 }}>
+                    <div style={{ fontSize: '0.68rem', color: d.isToday ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 700, marginBottom: 3 }}>
                       {d.isToday ? 'TODAY' : d.shortLabel}
                     </div>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', fontWeight: 800, color }}>
                       {d.floodRisk}%
                     </div>
                     {d.readings > 0 && (
-                      <div style={{ fontSize: '0.52rem', color: '#38bdf8', marginTop: 2 }}>{d.readings} rdgs</div>
+                      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>{d.readings} readings</div>
                     )}
                   </div>
                 );
@@ -1611,11 +1589,14 @@ function RainfallTrendCard() {
 
   useEffect(() => { load(); const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
 
-  const color = (row) => (row.value >= 7.5 ? '#ef4444' : row.value >= 2.5 ? '#f97316' : row.value >= 0.5 ? '#0ea5e9' : '#7dd3fc');
+  // Mid-tone colors that hold up on both light and dark cards. Blue until rain
+  // gets heavy, then amber and red, so color only shouts when it should.
+  const axis = rainfallAxis(rows.reduce((m, r) => Math.max(m, r.rainfall), 0));
+  const color = (row) => (row.value >= 7.5 ? '#dc2626' : row.value >= 2.5 ? '#d97706' : row.value >= 0.5 ? '#0284c7' : '#7da7c9');
 
   return (
     <div className="card panel-card">
-      <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr, with trend line" />
+      <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr" />
       <div className="panel-body">
         {loading ? <div className="skeleton" style={{ height: 300 }} />
           : !rows.length ? <div className="panel-empty">{failed ? 'Could not load rainfall data.' : 'No rainfall readings yet.'}</div>
@@ -1623,10 +1604,17 @@ function RainfallTrendCard() {
             <TrendChart
               data={rows}
               valueKey="rainfall"
-              unit="mm"
+              unit=" mm/hr"
               valueLabel="Rainfall"
               colorFor={color}
-              domain={[0, (m) => Math.max(1, Math.ceil(m))]}
+              domain={[0, axis.top]}
+              ticks={axis.ticks}
+              thresholds={[
+                { y: 2.5, label: 'Moderate', color: '#d97706' },
+                { y: 7.5, label: 'Heavy', color: '#dc2626' },
+              ]}
+              emptyMessage="No rain recorded in the last 24 hours"
+              showTrend={false}
               height={300}
             />
           )}
@@ -1690,22 +1678,9 @@ function NextHoursCard({ hourly, failed }) {
     <div className="card panel-card">
       <PanelHeader title="Next 6 hours" sub="Chance of rain and temperature" />
       <div className="panel-body">
-        {!hours.length ? <div className="panel-empty">{failed ? 'Forecast is unavailable right now.' : 'Forecast is loading.'}</div> : (
-          <div className="hours-grid">
-            {hours.map(h => {
-              const pop = Math.round(h.rain_probability_pct ?? 0);
-              const c = pop >= 70 ? '#ef4444' : pop >= 40 ? '#f97316' : pop >= 20 ? '#eab308' : '#22c55e';
-              return (
-                <div key={h.time} className="hour-cell">
-                  <div className="hour-time">{new Date(h.time).toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true, timeZone: 'Asia/Manila' })}</div>
-                  <div className="hour-bar"><span style={{ height: `${Math.max(pop, 4)}%`, background: c }} /></div>
-                  <div className="hour-pop" style={{ color: c }}>{pop}%</div>
-                  <div className="hour-temp">{h.temperature_c != null ? `${Math.round(h.temperature_c)}°` : '—'}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {!hours.length
+          ? <div className="panel-empty">{failed ? 'Forecast is unavailable right now.' : 'Forecast is loading.'}</div>
+          : <NextHoursStrip hours={hours} />}
       </div>
     </div>
   );
@@ -1975,6 +1950,10 @@ export default function Dashboard() {
       });
     });
   };
+
+  // First load only: show the spinner until the first prediction arrives (or fails),
+  // instead of an empty page that pops in. Later polls keep the cached data on screen.
+  if (modelLoading && !prediction && !modelError) return <PageLoader />;
 
   return (
     <YourPlaceProvider>

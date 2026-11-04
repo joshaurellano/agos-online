@@ -5,11 +5,12 @@ import {
   ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
 import TrendChart from '../components/TrendChart';
+import { rainfallAxis } from '../lib/rainAxis';
 import { supabase } from '../lib/supabaseClient';
 import { ErrorBanner } from '../components/ui';
 import { logger } from '../lib/logger';
 import { SectionLabel } from '../components/ui';
-import { LuChartColumn, LuTable, LuTimer, LuGauge, LuCloudRain, LuCloudOff, LuDroplets, LuSun, LuTrendingUp } from 'react-icons/lu';
+import { LuChartColumn, LuTable, LuTimer, LuGauge, LuCloudOff, LuDroplets, LuTrendingUp } from 'react-icons/lu';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -114,76 +115,6 @@ function getRainfallEmoji(mm, period = 'hourly') {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StatusBanner({ total, peak, acc3hr, acc6hr, period, hasData }) {
-  const ref  = acc3hr ?? total;
-  const cat  = getRainfallCategory(ref, 'hourly');
-  const emoji = getRainfallEmoji(ref, 'hourly');
-
-  // Never claim "dry" when there are simply no readings yet.
-  if (!hasData) return null;
-
-  if (ref === 0) {
-    return (
-      <div className="rain-banner calm" role="status">
-        <span className="rain-banner-icon"><LuSun size={22} aria-hidden="true" /></span>
-        <div>
-          <div className="rain-banner-title">No rainfall detected</div>
-          <div className="rain-banner-text">No significant flood impact expected. Normal activities may continue.</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: 14,
-      padding: '14px 18px', marginBottom: 18,
-      background: `${cat.color}08`,
-      border: `1px solid ${cat.color}35`,
-      borderRadius: 'var(--radius-sm)',
-    }}>
-      <span className="rain-banner-icon" style={{ color: cat.color, background: `${cat.color}1f` }}><LuCloudRain size={22} aria-hidden="true" /></span>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-          <span style={{
-            fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 900,
-            color: cat.color, letterSpacing: '0.04em',
-          }}>
-            {cat.label.toUpperCase()} RAINFALL
-          </span>
-          <span style={{
-            fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em',
-            background: `${cat.color}18`, color: cat.color,
-            border: `1px solid ${cat.color}40`,
-            borderRadius: 4, padding: '2px 8px',
-          }}>
-            {ref.toFixed(1)} mm/hr
-          </span>
-          <span style={{
-            fontSize: '0.6rem', color: 'var(--text-muted)',
-            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-            borderRadius: 4, padding: '2px 8px',
-          }}>
-            {cat.pagasa}
-          </span>
-        </div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
-          {cat.desc}
-        </div>
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-          {acc3hr != null && (
-            <span>3-hr accumulation: <strong style={{ color: 'var(--text-secondary)' }}>{acc3hr.toFixed(1)} mm</strong></span>
-          )}
-          {acc6hr != null && (
-            <span>6-hr accumulation: <strong style={{ color: 'var(--text-secondary)' }}>{acc6hr.toFixed(1)} mm</strong></span>
-          )}
-          <span>Peak intensity: <strong style={{ color: 'var(--text-secondary)' }}>{peak.toFixed(1)} mm/hr</strong></span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function CustomTooltip({ active, payload, label, period }) {
   if (!active || !payload?.length) return null;
@@ -315,6 +246,9 @@ export default function RainfallPage() {
 
   // Active thresholds based on current view
   const activeThresholds = getThresholds(period);
+  // First threshold above "Light" is the smallest the axis may end at, so trace
+  // rain is drawn as trace rain.
+  const axis = rainfallAxis(data.reduce((m, r) => Math.max(m, Number(r.rainfall) || 0), 0), activeThresholds[1].min);
 
   // KPI card category uses hourly thresholds always (live reading is mm/hr)
   const acc3hrCat = acc3hr != null ? getRainfallCategory(acc3hr, 'hourly') : null;
@@ -341,14 +275,6 @@ export default function RainfallPage() {
           <strong>Data may be stale</strong> — last update was over 5 minutes ago. Check backend connectivity.
         </div>
       )}
-
-      {/* ── Operational Status Banner ─────────────────────────────── */}
-      <StatusBanner
-        total={total} peak={peak}
-        acc3hr={acc3hr} acc6hr={acc6hr}
-        period={period}
-        hasData={hourlyLogs.length > 0}
-      />
 
       {/* ── KPI Cards ─────────────────────────────────────────────── */}
       <div className="grid-4 rain-kpis" style={{ marginBottom: 18 }}>
@@ -451,18 +377,6 @@ export default function RainfallPage() {
           )}
         </div>
 
-        {/* Period context note */}
-        <div style={{
-          fontSize: '0.68rem', color: 'var(--text-muted)',
-          marginBottom: 12, padding: '6px 10px',
-          background: 'var(--blue-mid)', borderRadius: 6,
-          border: '1px solid var(--blue-border)',
-        }}>
-          {period === 'hourly'
-            ? 'Thresholds based on PAGASA hourly rainfall intensity classification (mm/hr) · Philippine Atmospheric, Geophysical and Astronomical Services Administration'
-            : 'Thresholds based on PAGASA 24-hour accumulated rainfall classification (mm/24hr) · Philippine Atmospheric, Geophysical and Astronomical Services Administration'}
-        </div>
-
         {data.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon" aria-hidden="true"><LuCloudOff size={26} /></div>
@@ -474,8 +388,11 @@ export default function RainfallPage() {
             data={data}
             xKey={dataKey}
             valueKey="rainfall"
-            unit="mm"
+            unit={period === 'hourly' ? ' mm/hr' : ' mm'}
             valueLabel={period === 'hourly' ? 'Rainfall per hour' : 'Rainfall per day'}
+            domain={[0, axis.top]}
+            ticks={axis.ticks}
+            showTrend={false}
             height={320}
             colorFor={(row) => getRainfallCategory(row.value, period).color}
             thresholds={activeThresholds.slice(1).map(t => ({ y: t.min, label: t.label, color: t.color }))}
