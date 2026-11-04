@@ -13,6 +13,8 @@
     "@tanstack/react-query": "^5.102.8",
     "@vercel/analytics": "^2.0.1",
     "bootstrap": "^5.3.8",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^6.6.0",
     "react": "^19.0.0-rc.1",

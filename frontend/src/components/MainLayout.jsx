@@ -19,6 +19,7 @@ const PAGE_TITLES = {
   '/know-your-hazards': 'Know Your Risk',
   '/reports':         'Daily Flood Log',
   '/community-reports': 'Resident Reports',
+  '/needs-assessment': 'Needs Assessment',
   '/analytics':       'ML Analytics',
   '/alerts-log':      'Alert Log',
   '/settings':        'Settings',

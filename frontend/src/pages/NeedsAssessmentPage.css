@@ -1,0 +1,58 @@
+/* Needs Assessment page. Colors come from the app's theme variables so the
+   page follows light, dark and high-contrast modes. */
+.na-wrap { max-width: 920px; margin: 0 auto; }
+.na-section { margin-bottom: 16px; }
+.na-section-title {
+  margin: 0 0 14px; font-size: 0.95rem; font-weight: 700;
+  color: var(--text-primary); letter-spacing: 0.01em;
+}
+.na-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.na-grid .na-wide { grid-column: 1 / -1; }
+@media (max-width: 640px) { .na-grid { grid-template-columns: 1fr; } }
+
+.na-label {
+  display: block; margin-bottom: 5px; font-size: 0.84rem; font-weight: 600;
+  color: var(--text-primary); line-height: 1.35;
+}
+.na-input { width: 100%; min-width: 0; }
+textarea.na-input { min-height: 74px; resize: vertical; }
+.na-input[aria-invalid='true'] { border-color: var(--red); }
+.na-error { margin-top: 5px; font-size: 0.8rem; font-weight: 600; color: var(--red); }
+:root:not([data-theme='dark']) .na-error { color: #b91c1c; }
+
+.na-yesno { display: flex; gap: 8px; flex-wrap: wrap; }
+.na-choice {
+  min-width: 76px; padding: 8px 16px; font: inherit; font-size: 0.86rem; font-weight: 600;
+  color: var(--text-primary); background: var(--blue-mid);
+  border: 1px solid var(--blue-border); border-radius: var(--radius-sm); cursor: pointer;
+}
+.na-choice:hover { border-color: var(--accent); }
+.na-choice[aria-pressed='true'] { background: var(--accent2, #0284c7); border-color: var(--accent2, #0284c7); color: #fff; }
+.na-note { margin-top: 8px; }
+
+.na-team { display: grid; gap: 8px; }
+.na-team-row { display: flex; gap: 8px; align-items: center; }
+
+.na-bar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px;
+  align-items: center; justify-content: space-between; padding: 12px 0;
+  margin-top: 8px; background: var(--blue-deep); border-top: 1px solid var(--blue-border);
+}
+.na-bar-group { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.na-saved { font-size: 0.85rem; font-weight: 600; color: var(--green); }
+:root:not([data-theme='dark']) .na-saved { color: #15803d; }
+
+.na-status { display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; font-weight: 600; }
+.na-status::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--yellow); }
+.na-status.is-final::before { background: var(--green); }
+
+.na-row-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.na-link {
+  padding: 5px 10px; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  color: var(--text-primary); background: transparent;
+  border: 1px solid var(--blue-border); border-radius: var(--radius-sm);
+}
+.na-link:hover { border-color: var(--accent); }
+.na-link.is-danger { color: var(--red); }
+:root:not([data-theme='dark']) .na-link.is-danger { color: #b91c1c; }
+.na-link:disabled { opacity: 0.6; cursor: default; }
