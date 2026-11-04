@@ -359,8 +359,11 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await login(username, password);
-    setLoading(false);
+    try {
+      await login(username, password);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { clearError(); }, []);

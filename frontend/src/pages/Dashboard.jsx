@@ -35,6 +35,7 @@ import { useModelSelection } from '../hooks/useModelSelection';
 import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
 import { logger } from '../lib/logger';
+import { friendlyError } from '../lib/errors';
 
 // Lazy: pulls in MapLibre and the building footprints only when the 3D map is shown.
 const FloodMap3D = lazy(() => import('../components/FloodMap3D'));
@@ -1061,6 +1062,7 @@ function FloodForecastChart() {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [lastFetched, setLastFetched] = useState(null);
+  const [failed, setFailed]   = useState(false);
 
   const fetchData = useCallback(async () => {
     if (view === 'hourly') {
@@ -1072,7 +1074,7 @@ function FloodForecastChart() {
         .order('created_at', { ascending: true })
         .limit(10000);
 
-      if (error) { logger.warn('Fetch failed:', error.message); setLoading(false); return; }
+      if (error) { logger.warn('Fetch failed:', error.message); setFailed(true); setLoading(false); return; }
 
       const buckets = new Map();
       (data ?? []).forEach(row => {
@@ -1091,7 +1093,7 @@ function FloodForecastChart() {
       })));
     } else {
       const { data, error } = await supabase.rpc('get_daily_flood_avg', { days_back: 7 });
-      if (error) { logger.warn('Fetch failed:', error.message); setLoading(false); return; }
+      if (error) { logger.warn('Fetch failed:', error.message); setFailed(true); setLoading(false); return; }
 
       const days = (data ?? []).map(row => {
         const date = new Date(row.day);
@@ -1107,6 +1109,7 @@ function FloodForecastChart() {
       setChartData(days.slice(-7));
     }
 
+    setFailed(false);
     setLastFetched(new Date());
     setLoading(false);
   }, [view]);
@@ -1210,7 +1213,7 @@ function FloodForecastChart() {
         }}>
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: 8, opacity: 0.4 }}></div>
-            No snapshots yet — model must run at least once
+            {failed ? 'Could not load chart data. Retrying.' : 'No snapshots yet — model must run at least once'}
           </div>
         </div>
       ) : (
@@ -1574,6 +1577,7 @@ function PanelHeader({ title, sub, right }) {
 function RainfallTrendCard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -1583,7 +1587,8 @@ function RainfallTrendCard() {
       .gte('created_at', since)
       .order('created_at', { ascending: true })
       .limit(10000);
-    if (error) { logger.warn('Rainfall fetch failed:', error.message); setLoading(false); return; }
+    if (error) { logger.warn('Rainfall fetch failed:', error.message); setFailed(true); setLoading(false); return; }
+    setFailed(false);
     const buckets = new Map();
     (data ?? []).forEach(r => {
       const t = new Date(r.created_at); t.setMinutes(0, 0, 0);
@@ -1607,7 +1612,7 @@ function RainfallTrendCard() {
       <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr, with trend line" />
       <div className="panel-body">
         {loading ? <div className="skeleton" style={{ height: 300 }} />
-          : !rows.length ? <div className="panel-empty">No rainfall readings yet.</div>
+          : !rows.length ? <div className="panel-empty">{failed ? 'Could not load rainfall data.' : 'No rainfall readings yet.'}</div>
           : (
             <TrendChart
               data={rows}
@@ -1672,14 +1677,14 @@ function RecentAlertsCard() {
   );
 }
 
-function NextHoursCard({ hourly }) {
+function NextHoursCard({ hourly, failed }) {
   const now = Date.now();
   const hours = (hourly ?? []).filter(h => new Date(h.time).getTime() >= now - 30 * 60 * 1000).slice(0, 6);
   return (
     <div className="card panel-card">
       <PanelHeader title="Next 6 hours" sub="Chance of rain and temperature" />
       <div className="panel-body">
-        {!hours.length ? <div className="panel-empty">Forecast is loading.</div> : (
+        {!hours.length ? <div className="panel-empty">{failed ? 'Forecast is unavailable right now.' : 'Forecast is loading.'}</div> : (
           <div className="hours-grid">
             {hours.map(h => {
               const pop = Math.round(h.rain_probability_pct ?? 0);
@@ -1712,6 +1717,7 @@ export default function Dashboard() {
   const [forecastCache, setForecastCache]     = useState(null);
   const [pagasaCalibration, setPagasaCalibration] = useState(null);
   const [forecastLoading, setForecastLoading] = useState(true);
+  const [forecastFailed, setForecastFailed]   = useState(false);
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
   const [probHistory, setProbHistory]         = useState([]);
@@ -1725,8 +1731,12 @@ export default function Dashboard() {
   
   useEffect(() => {
     setForecastLoading(true);
+    setForecastFailed(false);
     fetch(`${apiBaseUrl}/api/forecast`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Forecast request returned ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (data.hourly) setForecast(data.hourly);
         if (data.daily) setDailyForecast(data.daily);
@@ -1736,7 +1746,7 @@ export default function Dashboard() {
         if (data.weather_cache) setForecastCache(data.weather_cache);
         if (data.pagasa_calibration) setPagasaCalibration(data.pagasa_calibration);
       })
-      .catch(err => logger.warn('Forecast fetch failed:', err))
+      .catch(err => { logger.warn('Forecast fetch failed:', err); setForecastFailed(true); })
       .finally(() => setForecastLoading(false));
   }, [apiBaseUrl]);
 
@@ -1935,7 +1945,8 @@ export default function Dashboard() {
 
       const { error } = await supabase.from('alerts').insert({ type: alertType, message, sent_by: sentBy });
       if (error) {
-        Swal.fire({ title: 'Failed to Save', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
+        logger.error('alerts insert error:', error.message);
+        Swal.fire({ title: 'Alert not saved', text: friendlyError(error, 'The alert was not sent. Try again.'), icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
 
@@ -2166,7 +2177,7 @@ export default function Dashboard() {
       </div>
       <div className="dash-side">
         <RecentAlertsCard />
-        <NextHoursCard hourly={forecast} />
+        <NextHoursCard hourly={forecast} failed={forecastFailed} />
       </div>
       </div>
 
@@ -2201,6 +2212,7 @@ export default function Dashboard() {
       {renderPanel('weather', (
         <>
           {/* ── 9. Weather Forecast ───────────── */}
+          {forecastFailed && !forecast.length && <ErrorBanner>Forecast is unavailable right now.</ErrorBanner>}
           <div style={{ marginBottom: 18 }}>
             <CollapsibleSection title="Weather Forecast" defaultOpen={true}>
               <WeatherForecast

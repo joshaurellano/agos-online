@@ -56,11 +56,12 @@ function StaffForm() {
   const [created, setCreated] = useState(null);
   const [askConsent, setAskConsent] = useState(false);
   const [phoneError, setPhoneError] = useState('');
+  const [rolesError, setRolesError] = useState('');
 
   useEffect(() => {
     clearError();
     supabase.from('roles').select('role_id, role_desc').order('role_id').then(({ data, error: err }) => {
-      if (err) logger.error('Roles load failed:', err.message);
+      if (err) { logger.error('Roles load failed:', err.message); setRolesError('Could not load roles. Reload the page.'); }
       else setRoles((data ?? []).filter((r) => r.role_id !== RESIDENT_ROLE_ID));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,7 +155,7 @@ function StaffForm() {
           aria-invalid={!!show('phone')} aria-describedby="staff-phone-msg" placeholder="09123456789" />
       </Field>
 
-      <Field id="staff-role" label="Role" error={show('role_id')}>
+      <Field id="staff-role" label="Role" error={show('role_id') || rolesError}>
         <select id="staff-role" className="settings-input registry-field" value={form.role_id}
           onChange={set('role_id')} onBlur={blur('role_id')}
           aria-invalid={!!show('role_id')} aria-describedby="staff-role-msg">

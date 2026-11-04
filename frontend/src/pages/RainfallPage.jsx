@@ -6,6 +6,8 @@ import {
 } from 'recharts';
 import TrendChart from '../components/TrendChart';
 import { supabase } from '../lib/supabaseClient';
+import { ErrorBanner } from '../components/ui';
+import { logger } from '../lib/logger';
 import { SectionLabel } from '../components/ui';
 import { LuChartColumn, LuTable, LuTimer, LuGauge, LuCloudRain, LuCloudOff, LuDroplets, LuSun, LuTrendingUp } from 'react-icons/lu';
 
@@ -218,6 +220,7 @@ export default function RainfallPage() {
   const [period, setPeriod]           = useState('hourly');
   const [dailyData, setDailyData]     = useState([]);
   const [hourlyLogs, setHourlyLogs]   = useState([]);
+  const [fetchFailed, setFetchFailed]   = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
 
   const { prediction } = useOutletContext();
@@ -234,6 +237,13 @@ export default function RainfallPage() {
         .order('created_at', { ascending: true }),
       supabase.rpc('get_daily_rainfall', { days_back: 7 }),
     ]);
+
+    if (hourlyRes.error || dailyRpc.error) {
+      logger.warn('Rainfall fetch failed:', hourlyRes.error?.message ?? dailyRpc.error?.message);
+      setFetchFailed(true);
+    } else {
+      setFetchFailed(false);
+    }
 
     if (hourlyRes.data) {
       const buckets = {};
@@ -312,6 +322,12 @@ export default function RainfallPage() {
 
   return (
     <div className="fade-in">
+
+      {fetchFailed && (
+        <ErrorBanner>
+          {hourlyLogs.length || dailyData.length ? 'Could not refresh rainfall data. Showing earlier data.' : 'Could not load rainfall data.'}
+        </ErrorBanner>
+      )}
 
       {/* ── Staleness Warning ─────────────────────────────────────── */}
       {isStale && (

@@ -8,6 +8,7 @@ import { RESIDENT_ROLE_ID } from '../lib/roles';
 import { useAuth } from '../hooks/useAuth';
 import { ErrorBanner } from '../components/ui';
 import { logger } from '../lib/logger';
+import { friendlyError } from '../lib/errors';
 
 // Staff logins (admins only). Reading uses the normal database rules; every
 // change goes through the manage-user function, which re-checks that the
@@ -123,11 +124,15 @@ export default function StaffPage() {
       ({ data, error: loadError } = await supabase
         .from('profiles').select(columns).neq('role_id', RESIDENT_ROLE_ID).order('name'));
     }
-    const { data: roleRows } = await supabase.from('roles').select('role_id, role_desc').order('role_id');
+    const { data: roleRows, error: roleError } = await supabase.from('roles').select('role_id, role_desc').order('role_id');
 
     if (loadError) {
       logger.error('Staff load failed:', loadError.message);
-      setError('Could not load staff accounts.');
+      setError(friendlyError(loadError, 'Could not load staff accounts.'));
+    } else if (roleError) {
+      logger.error('Roles load failed:', roleError.message);
+      setError('Could not load roles. Try again.');
+      setPeople(data ?? []);
     } else {
       setError('');
       setPeople(data ?? []);

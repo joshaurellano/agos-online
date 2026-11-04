@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import { detectPhoneNetwork, normalizePhPhone, NETWORK_INFO } from '../lib/phoneNetwork';
 import { ErrorBanner } from '../components/ui';
 import { logger } from '../lib/logger';
+import { friendlyError } from '../lib/errors';
 
 // Residents who receive SMS alerts. Access is enforced by RLS in the
 // database (see the resident_registry migration), not by this page, and
@@ -166,7 +167,7 @@ export default function ResidentRegistryPage() {
       setError('');
     } catch (err) {
       logger.error('Could not load residents:', err.message);
-      setError(err.message);
+      setError(friendlyError(err, 'Could not load residents. Try again.'));
     }
     setLoading(false);
   }, []);
@@ -215,7 +216,7 @@ export default function ResidentRegistryPage() {
 
   return (
     <div className="fade-in">
-      {error && <ErrorBanner>Could not load residents: {error}</ErrorBanner>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       <div className="registry-toolbar">
         <div className="registry-search">

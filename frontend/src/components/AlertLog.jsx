@@ -14,6 +14,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../lib/supabaseClient';
+import { friendlyError } from '../lib/errors';
 
 const PAGE_SIZE = 25;
 
@@ -77,14 +78,18 @@ export default function AlertLog() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]       = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const loadDeliveriesFor = useCallback(async (alertRows) => {
     const ids = alertRows.map(a => a.id);
     if (ids.length === 0) return {};
-    const { data: deliveryRows } = await supabase
+    const { data: deliveryRows, error: deliveryError } = await supabase
       .from('alert_deliveries')
       .select('alert_id, channel, status, detail')
       .in('alert_id', ids);
+    // null = could not load; callers keep the statuses already on screen
+    // instead of showing every alert as having no delivery record.
+    if (deliveryError) return null;
     const byAlert = {};
     (deliveryRows ?? []).forEach(d => {
       byAlert[d.alert_id] = { ...(byAlert[d.alert_id] ?? {}), [d.channel]: d };
@@ -103,12 +108,15 @@ export default function AlertLog() {
       .range(0, PAGE_SIZE - 1);
 
     if (error || !alertRows) {
+      setLoadFailed(true);
       setLoading(false);
       return;
     }
+    setLoadFailed(false);
     setAlerts(alertRows);
     setHasMore(alertRows.length === PAGE_SIZE);
-    setDeliveries(await loadDeliveriesFor(alertRows));
+    const nextDeliveries = await loadDeliveriesFor(alertRows);
+    if (nextDeliveries) setDeliveries(nextDeliveries);
     setLoading(false);
   }, [loadDeliveriesFor]);
 
@@ -124,7 +132,12 @@ export default function AlertLog() {
       const nextDeliveries = await loadDeliveriesFor(nextRows);
       setAlerts(prev => [...prev, ...nextRows]);
       setHasMore(nextRows.length === PAGE_SIZE);
-      setDeliveries(prev => ({ ...prev, ...nextDeliveries }));
+      if (nextDeliveries) setDeliveries(prev => ({ ...prev, ...nextDeliveries }));
+    } else {
+      Swal.fire({
+        toast: true, position: 'bottom', icon: 'error', title: 'Could not load more. Try again.',
+        showConfirmButton: false, timer: 3500, background: '#0d1f3c', color: '#e2eaf5',
+      });
     }
     setLoadingMore(false);
   };
@@ -160,7 +173,7 @@ export default function AlertLog() {
     setDeletingId(null);
 
     if (error) {
-      Swal.fire({ title: 'Could not remove', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
+      Swal.fire({ title: 'Could not remove', text: friendlyError(error, 'Try again.'), icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
       return;
     }
     setAlerts(prev => prev.filter(a => a.id !== alert.id));
@@ -194,7 +207,7 @@ export default function AlertLog() {
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '8px 0' }}>Loading alert history…</div>
       ) : alerts.length === 0 ? (
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '8px 0' }}>
-          No alerts have been dispatched yet.
+          {loadFailed ? 'Could not load alert history. Retrying.' : 'No alerts have been dispatched yet.'}
         </div>
       ) : (
         <>
