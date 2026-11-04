@@ -112,6 +112,22 @@ export const STRINGS = {
       },
     },
     disclaimer: 'For official advisories, check with the Barangay or CDRRMO. In an emergency, follow their instructions.',
+    stale: {
+      noData: 'Live prediction is unavailable right now.',
+      noDataBody: 'Follow barangay announcements and check again in a few minutes.',
+      minutes: 'Showing a reading from {n} min ago.',
+      hours: 'Showing a reading from {h} h ago.',
+      body: 'Live updates are paused. If conditions change, follow barangay announcements.',
+      retry: 'Try again',
+    },
+    dash: {
+      mapTitle: 'Flood Status Map — Barangay Triangulo',
+      mapHint: 'Tap a pin to see a report.',
+      pendingReport: 'Pending report',
+      verifiedReport: 'Verified report',
+      legend: 'Legend',
+      trend: { rising: 'Rising trend', falling: 'Falling trend', stable: 'Stable' },
+    },
   },
   fil: {
     whatToDoNow: 'Ano ang gagawin ngayon',
@@ -211,6 +227,22 @@ export const STRINGS = {
       },
     },
     disclaimer: 'Para sa opisyal na abiso, makipag-ugnayan sa Barangay o CDRRMO. Sa oras ng emergency, sundin ang kanilang mga tagubilin.',
+    stale: {
+      noData: 'Hindi available ang live na prediksyon ngayon.',
+      noDataBody: 'Sundin ang mga anunsyo ng barangay at subukan muli sa loob ng ilang minuto.',
+      minutes: 'Ipinapakita ang datos mula {n} minuto na ang nakalipas.',
+      hours: 'Ipinapakita ang datos mula {h} oras na ang nakalipas.',
+      body: 'Naka-pause ang mga live update. Kung magbago ang kalagayan, sundin ang mga anunsyo ng barangay.',
+      retry: 'Subukan muli',
+    },
+    dash: {
+      mapTitle: 'Mapa ng Baha — Barangay Triangulo',
+      mapHint: 'I-tap ang pin para makita ang ulat.',
+      pendingReport: 'Hinihintay na ulat',
+      verifiedReport: 'Napatunayang ulat',
+      legend: 'Gabay',
+      trend: { rising: 'Tumataas', falling: 'Bumababa', stable: 'Hindi nagbabago' },
+    },
   },
   bcl: {
     whatToDoNow: 'Ano an gigibuhon ngonyan',
@@ -279,6 +311,23 @@ export const STRINGS = {
       shareText: 'AGOS flood check: {alert} na alert sa Barangay Triangulo. Flood zone sa lugar ko: {zone}. Pinakaharani na evacuation center: {center}.',
     },
     disclaimer: 'Para sa opisyal na anunsyo, magkonsulta sa Barangay o CDRRMO. Durante nin emergency, sunuron an mga instruksyon ninda.',
+    // Bikol wording for stale/dash below: please have a native speaker check it.
+    stale: {
+      noData: 'Dai pa magamit an live na prediksyon ngunyan.',
+      noDataBody: 'Sunda an mga anunsyo kan barangay asin probaran giraray pagkatapos nin ilang minuto.',
+      minutes: 'Ipinapahiling an datos halaw sa {n} minuto na an nakaagi.',
+      hours: 'Ipinapahiling an datos halaw sa {h} oras na an nakaagi.',
+      body: 'Nakahinto an mga live update. Kun mag-ibang an kamugtakan, sunda an mga anunsyo kan barangay.',
+      retry: 'Probaran giraray',
+    },
+    dash: {
+      mapTitle: 'Mapa kan Baha — Barangay Triangulo',
+      mapHint: 'Pindota an pin tanganing makita an ulat.',
+      pendingReport: 'Hinahalat na ulat',
+      verifiedReport: 'Napatunayan na ulat',
+      legend: 'Giya',
+      trend: { rising: 'Tumataas', falling: 'Nagbababa', stable: 'Pirmi' },
+    },
   },
 };
 

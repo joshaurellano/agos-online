@@ -237,6 +237,9 @@ export function useModelPrediction(modelKey = 'gru') {
     prediction: query.data ?? null,
     loading: query.isLoading,
     error: query.error?.message ?? null,
+    // When the last successful reading arrived (ms since epoch). Unlike a
+    // clock that ticks on its own, this only moves when the model answers.
+    updatedAt: query.dataUpdatedAt || null,
     refetch: query.refetch,
   };
 }

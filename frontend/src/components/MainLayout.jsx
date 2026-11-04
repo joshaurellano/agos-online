@@ -83,7 +83,7 @@ export default function MainLayout() {
   // switching algorithms here re-fetches day-1 predictions, alerts, and
   // Supabase snapshot logging for the newly selected model everywhere
   // downstream (Topbar alert pill, Dashboard, AnalyticsPage).
-  const { prediction, loading: modelLoading, error: modelError } = useModelPrediction(modelKey);
+  const { prediction, loading: modelLoading, error: modelError, updatedAt: modelUpdatedAt, refetch: modelRefetch } = useModelPrediction(modelKey);
   const alertLevel = prediction?.alert_level ?? 'NORMAL';
   const location = useLocation();
   const { t } = useLanguage();
@@ -119,7 +119,7 @@ export default function MainLayout() {
         <main id="main-content" tabIndex={-1} className="page-body">
           <ErrorBoundary key={location.pathname}>
             <Suspense fallback={<PageLoader />}>
-              <Outlet context={{ prediction, modelLoading, modelError }} />
+              <Outlet context={{ prediction, modelLoading, modelError, modelUpdatedAt, modelRefetch }} />
             </Suspense>
           </ErrorBoundary>
         </main>

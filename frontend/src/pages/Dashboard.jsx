@@ -25,7 +25,7 @@ import ProbabilityLineChart from '../components/ProbabilityLineChart';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
-import { LuRoute, LuHistory, LuClock, LuTrendingUp, LuTrendingDown, LuMinus, LuSiren } from 'react-icons/lu';
+import { LuRoute, LuHistory, LuClock, LuTrendingUp, LuTrendingDown, LuMinus, LuSiren, LuShieldCheck, LuEye, LuTriangleAlert } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
@@ -44,6 +44,10 @@ import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionAr
 import WeatherForecast from '../components/WeatherForecast';
 import AlertDeliveryStatus from '../components/AlertDeliveryStatus';
 import PagasaBulletinBanner from '../components/PagasaBulletinBanner';
+import StaleDataBanner from '../components/StaleDataBanner';
+
+// Shape + icon for each level, so the alert never relies on color alone.
+const LEVEL_ICONS = { NORMAL: LuShieldCheck, ADVISORY: LuEye, WARNING: LuTriangleAlert, CRITICAL: LuSiren };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -379,12 +383,13 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
   const residentSteps = (RESIDENT_ACTIONS[lang] ?? RESIDENT_ACTIONS.en)[currentAlert] ?? [];
   const navigate = useNavigate();
   const TREND_COPY = {
-    rising:  { Icon: LuTrendingUp,   label: 'Rising trend',  color: '#f97316' },
-    falling: { Icon: LuTrendingDown, label: 'Falling trend', color: '#22c55e' },
-    stable:  { Icon: LuMinus,        label: 'Stable',        color: 'var(--text-secondary)' },
+    rising:  { Icon: LuTrendingUp,   label: t('dash.trend.rising'),  color: '#f97316' },
+    falling: { Icon: LuTrendingDown, label: t('dash.trend.falling'), color: '#22c55e' },
+    stable:  { Icon: LuMinus,        label: t('dash.trend.stable'),  color: 'var(--text-secondary)' },
   };
   const trend = recentTrend ? TREND_COPY[recentTrend] : null;
   const isSevere = currentAlert === 'WARNING' || currentAlert === 'CRITICAL';
+  const LevelIcon = LEVEL_ICONS[currentAlert];
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
@@ -426,6 +431,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
                 padding: '7px 18px', borderRadius: 10, letterSpacing: '0.06em',
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
               }}>
+                {LevelIcon && <LevelIcon size={22} strokeWidth={2.5} aria-hidden="true" />}
                 {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
               </span>
               <span className="stance" style={{ '--c': alertColor }}>{t(`alertLevel.${currentAlert}.stance`)}</span>
@@ -1760,7 +1766,8 @@ export default function Dashboard() {
   // Single shared polling instance lives in MainLayout (it also owns the
   // SMS/push dispatch side effect) — Dashboard just reads from it, so we
   // don't end up with two independent pollers racing to dispatch alerts.
-  const { prediction, modelLoading, modelError } = useOutletContext();
+  const { prediction, modelLoading, modelError, modelUpdatedAt, modelRefetch } = useOutletContext();
+  const { t } = useLanguage();
 
   // Everything under the status header used to be one long column. It now
   // lives in tabs so each view is about one screen. The active tab is kept
@@ -1981,21 +1988,21 @@ export default function Dashboard() {
           lastUpdated={lastUpdated}
         />
 
-        {/* ── 1. Offline Banner ──────────────────────────────────── */}
-        {modelError && (
+        {/* ── 1. Stale / offline banner ───────────────────────────
+            Everyone: how old the reading is and what to do instead (hidden
+            while data is fresh). Staff and dev builds also get the technical
+            cause below. */}
+        <StaleDataBanner
+          updatedAt={modelUpdatedAt}
+          hasData={!!prediction}
+          hasError={!!modelError}
+          onRetry={modelRefetch}
+        />
+        {modelError && (import.meta.env.DEV || (user && !userIsResident)) && (
           <ErrorBanner>
-            {(import.meta.env.DEV || (user && !userIsResident)) ? (
-              <>
-                <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
-                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
-                to enable live predictions.
-              </>
-            ) : (
-              <>
-                <strong>Live prediction is temporarily unavailable.</strong> Showing the latest saved data. Follow
-                barangay announcements if conditions worsen.
-              </>
-            )}
+            <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
+            <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
+            to enable live predictions.
           </ErrorBanner>
         )}
 
@@ -2012,7 +2019,7 @@ export default function Dashboard() {
           probabilityPct={prediction ? prediction.probability * 100 : null}
           onSendAlert={handleEvacuationAlert}
           canSendAlert={!!user && !userIsResident}
-          lastUpdated={prediction ? lastUpdated : null}
+          lastUpdated={prediction && modelUpdatedAt ? new Date(modelUpdatedAt) : null}
         />
       </div>
 
@@ -2084,22 +2091,22 @@ export default function Dashboard() {
           <div>
             <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                Flood Status Map — Barangay Triangulo
+                {t('dash.mapTitle')}
               </span>
             </div>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
-              Tap a pin to see a report.
+              {t('dash.mapHint')}
             </div>
           </div>
           {mapView === '2d' && (
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Pending report</span>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>{t('dash.pendingReport')}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Verified report</span>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>{t('dash.verifiedReport')}</span>
               </div>
             </div>
           )}
@@ -2153,7 +2160,7 @@ export default function Dashboard() {
           padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
         }}>
           <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-            Legend
+            {t('dash.legend')}
           </span>
           {[
             ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
@@ -2165,7 +2172,7 @@ export default function Dashboard() {
                 flexShrink: 0,
               }} />
               <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
-                {key}
+                {t(`alertLevel.${key}.name`)}
               </span>
               <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
             </span>

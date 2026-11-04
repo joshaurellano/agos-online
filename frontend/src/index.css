@@ -1940,3 +1940,21 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
   .fl-day-zones { font-size: 0.58rem; }
   .fl-month-name { min-width: 130px; font-size: 1.05rem; }
 }
+
+/* ── Stale-data banner (StaleDataBanner.jsx) ─────────────────────────────
+   Amber, not red: the system still works, the reading is just old. Text uses
+   the normal text color so contrast holds in every theme; the icon and left
+   edge carry the warning color. */
+.stale-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 12px 16px;
+  background: color-mix(in srgb, var(--orange) 10%, var(--blue-mid));
+  border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent);
+  border-left: 4px solid var(--orange);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+.stale-banner-icon { flex-shrink: 0; color: var(--orange); }
+.stale-banner-copy { flex: 1 1 240px; display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; line-height: 1.45; }
+.stale-banner-copy span { color: var(--text-secondary); }
+.stale-banner-retry { flex-shrink: 0; }
