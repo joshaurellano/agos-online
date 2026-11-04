@@ -1,17 +1,22 @@
 // safety_tools.dart
 //
-// Two things people reach for in a flood that the app didn't offer:
+// Two things people reach for in a flood:
 //
-//  1. "I'm safe" — one tap sends an SMS to the family contacts the resident
-//     saved, with the current flood level for their barangay. (Modeled on the
-//     Red Cross Emergency app's "Family Safe" / one-touch "I'm safe"
-//     message.) It uses the phone's own SMS app via the sms: link, so it
-//     needs no server, no account and works on a weak signal.
+//  1. "I'm safe" — one tap opens the phone's share sheet with a ready message
+//     (current flood level for the barangay). The sheet lists the messaging
+//     app, Viber, WhatsApp, email, ... and the resident chooses the app and who
+//     to send it to, straight from their own contacts. (A direct sms: link was
+//     tried first, but many Android messaging apps ignore it when no phone
+//     number is given — the share sheet is what works everywhere.)
+//     Nothing is stored by AGOS:
+//     no contact list to lose on uninstall, no account, no server, no
+//     contacts permission, and no third parties' phone numbers held by the app.
+//     (An earlier version kept a saved contact list on the device; it vanished
+//     with the app's data, which is worse than not having one.)
 //  2. Emergency hotlines — tap to call.
-//
-// Contacts are stored only on the device (shared_preferences).
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, HapticFeedback;
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
@@ -31,18 +36,6 @@ const kEmergencyHotlines = <Hotline>[
   Hotline('Philippine Red Cross', '143', 'Rescue and relief'),
 ];
 
-class _Contact {
-  final String name;
-  final String number;
-  const _Contact(this.name, this.number);
-  String encode() => '${name.replaceAll('|', ' ')}|$number';
-  static _Contact? decode(String s) {
-    final i = s.indexOf('|');
-    if (i <= 0) return null;
-    return _Contact(s.substring(0, i), s.substring(i + 1));
-  }
-}
-
 class SafetyToolsCard extends StatefulWidget {
   final String alertLabel; // "Advisory"
   final int? percent; // 32
@@ -59,30 +52,19 @@ class SafetyToolsCard extends StatefulWidget {
 }
 
 class _SafetyToolsCardState extends State<SafetyToolsCard> {
-  static const _prefsKey = 'agos_family_contacts_v1';
-  final List<_Contact> _contacts = [];
-
   @override
   void initState() {
     super.initState();
-    _load();
+    _forgetOldContacts();
   }
 
-  Future<void> _load() async {
+  // Earlier versions saved family numbers in plain text on the device. That
+  // feature is gone, so remove what it left behind rather than keep other
+  // people's phone numbers around with no way to see or delete them.
+  Future<void> _forgetOldContacts() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getStringList(_prefsKey) ?? const [];
-      _contacts
-        ..clear()
-        ..addAll(raw.map(_Contact.decode).whereType<_Contact>());
-    } catch (_) {}
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _save() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList(_prefsKey, _contacts.map((c) => c.encode()).toList());
+      await prefs.remove('agos_family_contacts_v1');
     } catch (_) {}
   }
 
@@ -93,20 +75,6 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
       ..showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<void> _addContact() async {
-    // The dialog owns its text controllers and disposes them itself once it is
-    // truly gone. (Disposing them here, right after showDialog returns, broke
-    // the app: the dialog is still animating out at that moment and its
-    // TextFields rebuilt with already-disposed controllers.)
-    final result = await showDialog<_Contact>(
-      context: context,
-      builder: (_) => const _AddContactDialog(),
-    );
-    if (result == null || !mounted) return;
-    setState(() => _contacts.add(result));
-    await _save();
-  }
-
   String get _message {
     final pct = widget.percent;
     final status = pct == null
@@ -115,22 +83,26 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
     return "I'm safe.$status — sent from AGOS";
   }
 
-  Future<void> _sendSafe() async {
+  // Share sheet: lets the resident use whatever app their family actually
+  // answers on (Viber, WhatsApp, Telegram, email, ...) — useful when mobile
+  // load is out but there is Wi-Fi or data. Note: sharing text into Facebook
+  // Messenger is restricted by Meta and may not appear or may not work; SMS
+  // and the other apps are the dependable routes.
+  Future<void> _send() async {
     HapticFeedback.mediumImpact();
-    if (_contacts.isEmpty) {
-      await _addContact();
-      if (_contacts.isEmpty) return;
-    }
-    final numbers = _contacts.map((c) => c.number).join(',');
-    // Build the query by hand: Uri(queryParameters:) encodes spaces as '+',
-    // which several SMS apps then show literally.
-    final uri = Uri.parse('sms:$numbers?body=${Uri.encodeComponent(_message)}');
     try {
-      final ok = await launchUrl(uri);
-      if (!ok) _toast("Couldn't open your messaging app.");
+      await SharePlus.instance.share(
+        ShareParams(text: _message, subject: "I'm safe"),
+      );
     } catch (_) {
-      _toast("Couldn't open your messaging app.");
+      _toast("Couldn't open the share menu.");
     }
+  }
+
+  Future<void> _copy() async {
+    HapticFeedback.selectionClick();
+    await Clipboard.setData(ClipboardData(text: _message));
+    _toast('Message copied. Paste it in any app.');
   }
 
   Future<void> _call(Hotline h) async {
@@ -164,33 +136,36 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
                       color: AppColors.textPri, fontSize: 14, fontWeight: FontWeight.w800)),
             ),
           ]),
-          const SizedBox(height: 4),
-          Text('One tap texts your saved contacts with the current flood level.',
-              style: TextStyle(color: AppColors.textSec, fontSize: 11.5, height: 1.35)),
           const SizedBox(height: 10),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            for (var i = 0; i < _contacts.length; i++)
-              InputChip(
-                label: Text(_contacts[i].name, style: const TextStyle(fontSize: 12)),
-                onDeleted: () async {
-                  setState(() => _contacts.removeAt(i));
-                  await _save();
-                },
-                visualDensity: VisualDensity.compact,
-              ),
-            ActionChip(
-              avatar: Icon(Icons.add_rounded, size: 16, color: AppColors.accent),
-              label: const Text('Add contact', style: TextStyle(fontSize: 12)),
-              onPressed: _addContact,
-              visualDensity: VisualDensity.compact,
+          // Preview: shows exactly what will be sent.
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+            decoration: BoxDecoration(
+              color: AppColors.bgMid,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.bgBorder),
             ),
-          ]),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Text(_message,
+                    style: TextStyle(
+                        color: AppColors.textPri, fontSize: 12, height: 1.4, fontStyle: FontStyle.italic)),
+              ),
+              IconButton(
+                tooltip: 'Copy message',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.copy_rounded, size: 17, color: AppColors.textMuted),
+                onPressed: _copy,
+              ),
+            ]),
+          ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: _sendSafe,
-              icon: const Icon(Icons.sms_rounded, size: 18),
+              onPressed: _send,
+              icon: const Icon(Icons.send_rounded, size: 18),
               label: const Text("I'm safe — send update",
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
               style: FilledButton.styleFrom(
@@ -200,6 +175,11 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
+          ),
+          const SizedBox(height: 6),
+          Center(
+            child: Text('Choose Messages, Viber, or any app — and who gets it.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
           ),
         ]),
       ),
@@ -250,68 +230,4 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
           ]),
         ),
       );
-}
-
-
-// ── Add-contact dialog ────────────────────────────────────────────────────────
-class _AddContactDialog extends StatefulWidget {
-  const _AddContactDialog();
-
-  @override
-  State<_AddContactDialog> createState() => _AddContactDialogState();
-}
-
-class _AddContactDialogState extends State<_AddContactDialog> {
-  final _nameCtl = TextEditingController();
-  final _numCtl = TextEditingController();
-  String? _error;
-
-  @override
-  void dispose() {
-    _nameCtl.dispose();
-    _numCtl.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final digits = _numCtl.text.replaceAll(RegExp(r'[^0-9+]'), '');
-    final name = _nameCtl.text.trim();
-    if (digits.length < 7) {
-      setState(() => _error = 'Enter a valid mobile number.');
-      return;
-    }
-    Navigator.pop(context, _Contact(name.isEmpty ? digits : name, digits));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.bgMid,
-      title: Text('Add family contact',
-          style: TextStyle(color: AppColors.textPri, fontWeight: FontWeight.w800, fontSize: 16)),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(
-          controller: _nameCtl,
-          textCapitalization: TextCapitalization.words,
-          style: TextStyle(color: AppColors.textPri),
-          decoration: const InputDecoration(labelText: 'Name'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _numCtl,
-          keyboardType: TextInputType.phone,
-          style: TextStyle(color: AppColors.textPri),
-          decoration: InputDecoration(
-            labelText: 'Mobile number',
-            hintText: '09XX XXX XXXX',
-            errorText: _error,
-          ),
-        ),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: _save, child: const Text('Save')),
-      ],
-    );
-  }
 }
