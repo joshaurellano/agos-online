@@ -2044,3 +2044,11 @@ body { background: radial-gradient(1200px 600px at 70% -10%, color-mix(in srgb, 
 :root.a11y-reduce-motion .agos-loader-ring-inner,
 :root.a11y-reduce-motion .agos-loader-logo { animation: none !important; }
 :root.a11y-reduce-motion .agos-loader-ripple { display: none; }
+
+/* Rainfall card: summary line above the chart and a note when the scale is zoomed. */
+.rain-summary {
+  display: flex; flex-wrap: wrap; gap: 4px 20px; margin-bottom: 10px;
+  font-size: 0.8rem; color: var(--text-secondary);
+}
+.rain-summary strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.rain-zoom-note { margin: 8px 0 0; font-size: 0.75rem; color: var(--text-muted); }

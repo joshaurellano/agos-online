@@ -48,7 +48,7 @@ import StaleDataBanner from '../components/StaleDataBanner';
 import NextHoursStrip from '../components/NextHoursStrip';
 import ProbabilityStat from '../components/ProbabilityStat';
 import PageLoader from '../components/PageLoader';
-import { rainfallAxis } from '../lib/rainAxis';
+import { rainfallAxis, fitRainfallAxis } from '../lib/rainAxis';
 
 // Shape + icon for each level, so the alert never relies on color alone.
 const LEVEL_ICONS = { NORMAL: LuShieldCheck, ADVISORY: LuEye, WARNING: LuTriangleAlert, CRITICAL: LuSiren };
@@ -1580,27 +1580,54 @@ function RainfallTrendCard() {
       b.sum += r.rainfall_mm ?? 0; b.n += 1;
       buckets.set(t.getTime(), b);
     });
-    setRows([...buckets.values()].sort((a, b) => a.time - b.time).map(b => ({
-      label: b.time.toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true, timeZone: 'Asia/Manila' }),
-      rainfall: Math.round((b.sum / b.n) * 10) / 10,
-    })));
+    // One slot per hour for the whole 24 hours, so the time axis is continuous.
+    // Hours with no snapshot stay null ("no reading"), which is not the same
+    // as 0 mm/hr of rain.
+    const thisHour = new Date(); thisHour.setMinutes(0, 0, 0);
+    const slots = Array.from({ length: 24 }, (_, i) => {
+      const t = new Date(thisHour.getTime() - (23 - i) * 3600_000);
+      const b = buckets.get(t.getTime());
+      return {
+        label: t.toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true, timeZone: 'Asia/Manila' }),
+        // Two decimals: light rain (0.04 mm/hr) used to round to 0.0 and vanish.
+        rainfall: b ? Math.round((b.sum / b.n) * 100) / 100 : null,
+      };
+    });
+    setRows(slots);
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
 
+  const readings = rows.filter((r) => r.rainfall != null);
+  const peakRow = readings.reduce((best, r) => (!best || r.rainfall > best.rainfall ? r : best), null);
+  const peak = peakRow?.rainfall ?? 0;
+  const totalMm = Math.round(readings.reduce((sum, r) => sum + r.rainfall, 0) * 10) / 10;
+  // Zoom the axis to the data so light rain is visible. Threshold lines only
+  // appear when they fit, and a note says when the scale is zoomed, so a quiet
+  // day never looks like a heavy one.
+  const axis = fitRainfallAxis(peak);
+  const thresholds = [
+    { y: 2.5, label: 'Moderate', color: '#d97706' },
+    { y: 7.5, label: 'Heavy', color: '#dc2626' },
+  ].filter((t) => t.y <= axis.top);
+  const zoomed = axis.top < 2.5;
   // Mid-tone colors that hold up on both light and dark cards. Blue until rain
   // gets heavy, then amber and red, so color only shouts when it should.
-  const axis = rainfallAxis(rows.reduce((m, r) => Math.max(m, r.rainfall), 0));
-  const color = (row) => (row.value >= 7.5 ? '#dc2626' : row.value >= 2.5 ? '#d97706' : row.value >= 0.5 ? '#0284c7' : '#7da7c9');
+  const color = (row) => (row.value >= 7.5 ? '#dc2626' : row.value >= 2.5 ? '#d97706' : row.value >= 0.5 ? '#0284c7' : '#4aa3dd');
 
   return (
     <div className="card panel-card">
       <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr" />
       <div className="panel-body">
         {loading ? <div className="skeleton" style={{ height: 300 }} />
-          : !rows.length ? <div className="panel-empty">{failed ? 'Could not load rainfall data.' : 'No rainfall readings yet.'}</div>
+          : !readings.length ? <div className="panel-empty">{failed ? 'Could not load rainfall data.' : 'No rainfall readings yet.'}</div>
           : (
+            <>
+            <div className="rain-summary">
+              <span>Peak <strong>{peak} mm/hr</strong>{peak > 0 && peakRow ? ` at ${peakRow.label}` : ''}</span>
+              <span>24 h total <strong>{totalMm} mm</strong></span>
+            </div>
             <TrendChart
               data={rows}
               valueKey="rainfall"
@@ -1609,14 +1636,15 @@ function RainfallTrendCard() {
               colorFor={color}
               domain={[0, axis.top]}
               ticks={axis.ticks}
-              thresholds={[
-                { y: 2.5, label: 'Moderate', color: '#d97706' },
-                { y: 7.5, label: 'Heavy', color: '#dc2626' },
-              ]}
+              thresholds={thresholds}
               emptyMessage="No rain recorded in the last 24 hours"
               showTrend={false}
               height={300}
             />
+            {zoomed && peak > 0 && (
+              <p className="rain-zoom-note">Light rain only. The scale is zoomed in, and Moderate starts at 2.5 mm/hr.</p>
+            )}
+            </>
           )}
       </div>
     </div>

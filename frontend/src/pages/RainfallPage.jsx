@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
 import TrendChart from '../components/TrendChart';
-import { rainfallAxis } from '../lib/rainAxis';
+import { fitRainfallAxis } from '../lib/rainAxis';
 import { supabase } from '../lib/supabaseClient';
 import { ErrorBanner } from '../components/ui';
 import { logger } from '../lib/logger';
@@ -246,9 +246,15 @@ export default function RainfallPage() {
 
   // Active thresholds based on current view
   const activeThresholds = getThresholds(period);
-  // First threshold above "Light" is the smallest the axis may end at, so trace
-  // rain is drawn as trace rain.
-  const axis = rainfallAxis(data.reduce((m, r) => Math.max(m, Number(r.rainfall) || 0), 0), activeThresholds[1].min);
+  // Zoom the axis to the data so light rain is visible (0.1 mm/hr used to be a
+  // sliver on a 0-2.5 axis). Threshold lines only show when they fit, and a
+  // note below the chart says when the scale is zoomed, so trace rain is never
+  // mistaken for heavy rain.
+  const axis = fitRainfallAxis(data.reduce((m, r) => Math.max(m, Number(r.rainfall) || 0), 0));
+  const chartThresholds = activeThresholds.slice(1).filter(t => t.min <= axis.top);
+  const moderateAt = activeThresholds[1].min;
+  const axisZoomed = peak > 0 && axis.top < moderateAt;
+  const rainUnit = period === 'hourly' ? 'mm/hr' : 'mm/day';
 
   // KPI card category uses hourly thresholds always (live reading is mm/hr)
   const acc3hrCat = acc3hr != null ? getRainfallCategory(acc3hr, 'hourly') : null;
@@ -384,6 +390,7 @@ export default function RainfallPage() {
             <p className="empty-state-text">Readings appear here once AGOS starts recording. Check back in a few minutes.</p>
           </div>
         ) : view === 'chart' ? (
+          <>
           <TrendChart
             data={data}
             xKey={dataKey}
@@ -395,8 +402,14 @@ export default function RainfallPage() {
             showTrend={false}
             height={320}
             colorFor={(row) => getRainfallCategory(row.value, period).color}
-            thresholds={activeThresholds.slice(1).map(t => ({ y: t.min, label: t.label, color: t.color }))}
+            thresholds={chartThresholds.map(t => ({ y: t.min, label: t.label, color: t.color }))}
           />
+          {axisZoomed && (
+            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Light rain only. The scale is zoomed in, and Moderate starts at {moderateAt} {rainUnit}.
+            </p>
+          )}
+          </>
         ) : (
           <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: 300 }}>
             <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse', fontSize: '0.8rem' }}>

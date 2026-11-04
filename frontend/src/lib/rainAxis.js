@@ -15,3 +15,18 @@ export function rainfallAxis(maxValue, minTop = 10) {
   for (let v = 0; v <= top + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100);
   return { top, ticks };
 }
+
+// Zoomed axis for the dashboard card. Unlike rainfallAxis, the top follows the
+// data (with a little headroom) so a quiet day with 0.1 mm/hr still reads as a
+// visible bar. Always five even steps, so tick labels stay clean (0.1, 0.2 ...).
+// The caller drops threshold lines that fall above `top` and says the scale is
+// zoomed, so light rain is never mistaken for heavy rain.
+const FIT_TOPS = [0.5, 1, 2.5, 5, 10, 25, 50, 100, 250];
+
+export function fitRainfallAxis(maxValue) {
+  const target = (maxValue || 0) * 1.15;
+  const top = FIT_TOPS.find((t) => t >= target) ?? FIT_TOPS[FIT_TOPS.length - 1];
+  const step = top / 5;
+  const ticks = Array.from({ length: 6 }, (_, i) => Math.round(step * i * 100) / 100);
+  return { top, ticks };
+}
