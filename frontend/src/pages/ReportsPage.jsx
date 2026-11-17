@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { LuCheck, LuWaves, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../hooks/useAuth';
+import { isAdmin } from '../lib/roles';
 import { logger } from '../lib/logger';
 
 // Daily flood log. One entry per day: did it flood or not.
@@ -74,6 +75,115 @@ function exportCSV(entries) {
   a.download = `agos_flood_log_${todayKey()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ─── Model forecast (from forecast_log) ───────────────────────────────────────
+// A flood counts as "predicted" when the model is at or above this level.
+const FORECAST_CUTOFF = 0.5;
+const LEAD_LABELS = [[0, 'Same day'], [1, '1 day before'], [2, '2 days before'], [3, '3 days before']];
+const RESULT_COLOR = { Hit: 'var(--green)', Missed: 'var(--red)', 'False alarm': '#f59e0b', Correct: 'var(--text-secondary)' };
+const fcResult = (p, flooded) => {
+  const predicted = p >= FORECAST_CUTOFF;
+  if (predicted) return flooded ? 'Hit' : 'False alarm';
+  return flooded ? 'Missed' : 'Correct';
+};
+
+function ForecastBox({ forecast, entry, admin }) {
+  const rows = LEAD_LABELS.filter(([lead]) => forecast?.[lead] != null);
+  const official = entry?.source === 'official';
+  const td = { padding: '6px 0', borderBottom: '1px solid var(--border, rgba(128,128,128,0.25))' };
+  return (
+    <div className="card" style={{ marginTop: 14, padding: 16 }}>
+      <div className="fl-label">Model forecast</div>
+      {rows.length === 0 ? (
+        <div className="fl-hint">No forecast saved for this day.</div>
+      ) : (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+            <tbody>
+              {rows.map(([lead, label]) => (
+                <tr key={lead}>
+                  <td style={td}>{label}</td>
+                  <td style={{ ...td, fontWeight: 600 }}>{Math.round(forecast[lead] * 100)}%</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: official ? RESULT_COLOR[fcResult(forecast[lead], entry.flooded)] : undefined }}>
+                    {official ? fcResult(forecast[lead], entry.flooded) : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="fl-hint">
+            {official ? `Flood predicted at ${FORECAST_CUTOFF * 100}% or higher.` : 'Confirm the day to see the result.'}
+          </div>
+        </>
+      )}
+      {admin && <Link to="/forecast-accuracy" className="fl-link" style={{ display: 'inline-block', marginTop: 8 }}>Full results</Link>}
+    </div>
+  );
+}
+
+// Month report as PDF. The PDF libraries load on click, so they stay out of the main bundle.
+async function exportPDF(entries, month) {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+  const monthKey = `${month.getFullYear()}-${pad(month.getMonth() + 1)}`;
+  const rows = entries.filter(e => e.log_date.slice(0, 7) === monthKey).sort((a, b) => a.log_date.localeCompare(b.log_date));
+  const count = (st) => rows.filter(r => dayState(r) === st).length;
+
+  const INK = [20, 40, 63];
+  const HEAD_BG = [226, 236, 248];
+  const LINE = [160, 180, 205];
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const margin = 48;
+  const monthName = month.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+
+  doc.setFont('helvetica', 'bold').setFontSize(15).setTextColor(...INK);
+  doc.text('AGOS Daily Flood Log', margin, 54);
+  doc.setFont('helvetica', 'normal').setFontSize(10);
+  doc.text(`Barangay Triangulo, Naga City  |  ${monthName}`, margin, 70);
+  doc.setFontSize(9).setTextColor(90, 110, 135);
+  doc.text(`Generated: ${new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}`, margin, 83);
+
+  const common = {
+    margin: { left: margin, right: margin, bottom: 54 },
+    styles: { font: 'helvetica', fontSize: 9, textColor: INK, lineColor: LINE, lineWidth: 0.5, cellPadding: 5, valign: 'top' },
+    headStyles: { fillColor: HEAD_BG, textColor: INK, fontStyle: 'bold' },
+    theme: 'grid',
+  };
+
+  autoTable(doc, {
+    ...common,
+    startY: 98,
+    head: [['Flood days', 'No flood (confirmed)', 'Auto (not confirmed)']],
+    body: [[count('flood'), count('clear'), count('auto')]],
+  });
+
+  autoTable(doc, {
+    ...common,
+    startY: doc.lastAutoTable.finalY + 14,
+    head: [['Date', 'Status', 'Height', 'Zones', 'Note', 'Logged by']],
+    body: rows.map(r => [
+      fromKey(r.log_date).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' }),
+      STATE_LABEL[dayState(r)],
+      [heightLabel(r.height_level), r.height_cm != null ? `${r.height_cm} cm` : ''].filter(Boolean).join(', '),
+      zonesText(r.zones),
+      r.note ?? '',
+      r.source === 'auto' ? 'Auto' : (r.logged_by ?? ''),
+    ]),
+    columnStyles: { 4: { cellWidth: 120 } },
+  });
+
+  const pages = doc.internal.getNumberOfPages();
+  const w = doc.internal.pageSize.getWidth();
+  const h = doc.internal.pageSize.getHeight();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(90, 110, 135);
+    doc.text(`Page ${i} of ${pages}`, w - margin, h - 28, { align: 'right' });
+  }
+  doc.save(`agos_flood_log_${monthKey}.pdf`);
 }
 
 // ─── Day panel ────────────────────────────────────────────────────────────────
@@ -272,12 +382,14 @@ function DayPanel({ dateKey, entry, user, onSaved }) {
 
 // ─── Month calendar ───────────────────────────────────────────────────────────
 
-function MonthCalendar({ month, entries, selected, onSelect, onMonthChange, onToday, onExport }) {
+function MonthCalendar({ month, entries, forecasts, selected, onSelect, onMonthChange, onToday, onExport, onExportPdf }) {
   const byDate = useMemo(() => new Map(entries.map(e => [e.log_date, e])), [entries]);
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const lead = first.getDay();
   const today = todayKey();
+  const monthPrefix = `${month.getFullYear()}-${pad(month.getMonth() + 1)}`;
+  const hasMonthEntries = entries.some(e => e.log_date.slice(0, 7) === monthPrefix);
 
   const cells = [];
   for (let i = 0; i < lead; i++) cells.push(null);
@@ -331,6 +443,7 @@ function MonthCalendar({ month, entries, selected, onSelect, onMonthChange, onTo
         <div className="fl-tools">
           <button type="button" className="btn btn-ghost fl-tool" onClick={onToday}>Today</button>
           <button type="button" className="btn btn-ghost fl-tool" onClick={onExport} disabled={entries.length === 0}>Export CSV</button>
+          <button type="button" className="btn btn-ghost fl-tool" onClick={onExportPdf} disabled={!hasMonthEntries}>Export PDF</button>
         </div>
       </div>
 
@@ -380,6 +493,7 @@ function MonthCalendar({ month, entries, selected, onSelect, onMonthChange, onTo
               <span className="fl-day-info">
                 <span className="fl-day-tag">{tag}</span>
                 {zoneLine && <span className="fl-day-zones">{zoneLine}</span>}
+                {forecasts?.[k]?.[1] != null && <span className="fl-day-zones">Model {Math.round(forecasts[k][1] * 100)}%</span>}
               </span>
             </button>
           );
@@ -400,6 +514,7 @@ export default function FloodLogPage() {
   const [entries,  setEntries]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [loadErr,  setLoadErr]  = useState('');
+  const [forecasts, setForecasts] = useState({});
   const [selected, setSelected] = useState(todayKey());
   const [month,    setMonth]    = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
 
@@ -432,6 +547,32 @@ export default function FloodLogPage() {
   }, []);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  // Model forecasts for the month on screen: { 'YYYY-MM-DD': { leadDays: probability } }
+  useEffect(() => {
+    const from = toKey(new Date(month.getFullYear(), month.getMonth(), 1));
+    const to = toKey(new Date(month.getFullYear(), month.getMonth() + 1, 0));
+    let cancelled = false;
+    supabase
+      .from('forecast_log')
+      .select('target_date, lead_days, probability')
+      .eq('model_key', 'gru')
+      .lte('lead_days', 3)
+      .gte('target_date', from)
+      .lte('target_date', to)
+      .limit(500)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { logger.warn('forecast_log fetch error:', error.message); return; }
+        const map = {};
+        for (const r of data ?? []) {
+          if (!map[r.target_date]) map[r.target_date] = {};
+          map[r.target_date][r.lead_days] = Number(r.probability);
+        }
+        setForecasts(map);
+      });
+    return () => { cancelled = true; };
+  }, [month]);
 
   const selectedEntry = entries.find(e => e.log_date === selected) ?? null;
 
@@ -466,16 +607,19 @@ export default function FloodLogPage() {
             <MonthCalendar
               month={month}
               entries={entries}
+              forecasts={forecasts}
               selected={selected}
               onSelect={handlePick}
               onMonthChange={setMonth}
               onToday={() => handleSelect(todayKey())}
               onExport={() => exportCSV(entries)}
+              onExportPdf={() => exportPDF(entries, month)}
             />
           )}
         </div>
         <div ref={panelRef} className="fl-panel">
           <DayPanel dateKey={selected} entry={selectedEntry} user={user} onSaved={handleSaved} />
+          <ForecastBox forecast={forecasts[selected]} entry={selectedEntry} admin={isAdmin(user)} />
         </div>
       </div>
     </div>

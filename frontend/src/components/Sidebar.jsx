@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { path: '/needs-assessment',  label: 'Needs Assessment', icon: LuClipboardCheck,  staffOnly: true, group: 'staff' },
   { path: '/team-chat',         label: 'Team Coordination', icon: LuRadio,          staffOnly: true, group: 'staff' },
   { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        adminOnly: true, group: 'staff' },
+  { path: '/forecast-accuracy', label: 'Forecast vs Actual', icon: LuActivity,      adminOnly: true, group: 'staff' },
   { path: '/staff',             label: 'Staff',            icon: LuUserCog,         adminOnly: true, group: 'staff' },
   { path: '/residents',         label: 'Residents',        icon: LuUsers,           staffOnly: true, group: 'staff' },
   { path: '/add-resident',      label: 'Add Resident',     icon: LuUserPlus,        staffOnly: true, group: 'staff' },
