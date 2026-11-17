@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { supabase } from '../lib/supabaseClient';
 import { invokeFunction } from '../lib/functions';
 import { logger } from '../lib/logger';
+import { friendlyError, isNetworkError } from '../lib/errors';
 
 const AuthContext = createContext(null);
 
@@ -57,14 +58,23 @@ export function AuthProvider({ children }) {
   const login = async (username, password) => {
     setError('');
     const email = `${username.trim().toLowerCase()}@agos.local`;
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signInError) {
-      if (/banned/i.test(signInError.message)) setError('This account is disabled. Contact an admin.');
-      else if (signInError.status === 429) setError('Too many attempts. Wait a minute and try again.');
-      else setError('Invalid username or password.');
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        logger.warn('Sign-in failed:', signInError.message);
+        if (isNetworkError(signInError) || signInError.status === 0) setError('Could not reach the server. Check your connection.');
+        else if (/banned/i.test(signInError.message)) setError('This account is disabled. Contact an admin.');
+        else if (signInError.status === 429) setError('Too many attempts. Wait a minute and try again.');
+        else if (signInError.status >= 500) setError('The server is having a problem. Try again soon.');
+        else setError('Invalid username or password.');
+        return false;
+      }
+      return true;
+    } catch (err) {
+      logger.error('Sign-in threw:', err?.message);
+      setError(friendlyError(err, 'Could not sign in. Try again.'));
       return false;
     }
-    return true;
   };
 
   const createUser = async (payload) => {
@@ -78,7 +88,12 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      // Still sign out on this device if the server can't be reached.
+      logger.warn('Sign-out failed:', err?.message);
+    }
     setUser(null);
   };
 

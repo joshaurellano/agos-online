@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { SectionLabel, ErrorBanner, ExpandableMapFrame, MapRecenterButton, TabBar } from '../components/ui';
 import Swal from 'sweetalert2';
-import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon as LeafletPolygon, Polyline as LeafletPolyline, Tooltip as LeafletTooltip, Marker as LeafletMarker, Popup as LeafletPopup } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -19,11 +19,13 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
+import TrendChart from '../components/TrendChart';
+import { RESIDENT_ACTIONS, STAFF_ACTIONS } from '../data/levelActions';
+import ProbabilityLineChart from '../components/ProbabilityLineChart';
 import trianguloRoads from '../data/trianguloRoads.json';
 import { ALERT_LEVELS } from '../data/mockData';
-import { CRITICAL_FACILITIES, FACILITY_STYLE, FACILITY_TYPE_ORDER, PIN_ASPECT, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
-import { LuRoute, LuHistory, LuClock, LuTrendingUp, LuTrendingDown, LuMinus, LuSiren } from 'react-icons/lu';
+import { LuRoute, LuHistory, LuClock, LuTrendingUp, LuTrendingDown, LuMinus, LuSiren, LuShieldCheck, LuEye, LuTriangleAlert } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDataSource } from '../hooks/useDataSource';
@@ -33,6 +35,7 @@ import { useModelSelection } from '../hooks/useModelSelection';
 import { supabase } from '../lib/supabaseClient';
 import { isAdmin, isResident } from '../lib/roles';
 import { logger } from '../lib/logger';
+import { friendlyError } from '../lib/errors';
 
 // Lazy: pulls in MapLibre and the building footprints only when the 3D map is shown.
 const FloodMap3D = lazy(() => import('../components/FloodMap3D'));
@@ -41,6 +44,14 @@ import WindDirectionArrow, { degToCardinal } from '../components/WindDirectionAr
 import WeatherForecast from '../components/WeatherForecast';
 import AlertDeliveryStatus from '../components/AlertDeliveryStatus';
 import PagasaBulletinBanner from '../components/PagasaBulletinBanner';
+import StaleDataBanner from '../components/StaleDataBanner';
+import NextHoursStrip from '../components/NextHoursStrip';
+import ProbabilityStat from '../components/ProbabilityStat';
+import PageLoader from '../components/PageLoader';
+import { rainfallAxis, fitRainfallAxis } from '../lib/rainAxis';
+
+// Shape + icon for each level, so the alert never relies on color alone.
+const LEVEL_ICONS = { NORMAL: LuShieldCheck, ADVISORY: LuEye, WARNING: LuTriangleAlert, CRITICAL: LuSiren };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -129,22 +140,6 @@ function createReportClusterIcon(cluster) {
   return L.divIcon({ html, className: '', iconSize: [34, 34] });
 }
 
-// Critical-facility pin (hospital/school/etc.): a teardrop map pin with a white
-// glyph -- see facilityIconSvgMarkup(). The anchor is the pin's tip.
-const FACILITY_PIN_SIZE = 30;
-function createFacilityIcon(facility) {
-  const style = FACILITY_STYLE[facility.facilityType];
-  const html = facilityIconSvgMarkup(facility.facilityType, { size: FACILITY_PIN_SIZE, color: style.color });
-  const h = Math.round(FACILITY_PIN_SIZE * PIN_ASPECT);
-  return L.divIcon({
-    html,
-    className: '',
-    iconSize: [FACILITY_PIN_SIZE, h],
-    iconAnchor: [FACILITY_PIN_SIZE / 2, Math.round(h * 0.94)],
-    popupAnchor: [0, -Math.round(h * 0.85)],
-  });
-}
-
 const TRIANGULO_AREA = {
   name: 'Barangay Triangulo',
   city: 'Naga City',
@@ -153,9 +148,8 @@ const TRIANGULO_AREA = {
 };
 
 import { TRIANGULO_BOUNDARY, TRIANGULO_CENTER } from '../data/triangulo';
-import { hazardAtPoint, HAZARD_LABELS } from '../lib/hazard';
 import { YourPlaceProvider } from '../hooks/useYourPlace';
-import YourPlaceMapLayer from '../components/YourPlaceMapLayer';
+import ZoneBoundaryLayer from '../components/ZoneBoundaryLayer';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -283,37 +277,53 @@ function hexToRgba(hex, alpha) {
 // pill. Draws from empty on mount/color-change, then eases in.
 function RadialGauge({ value, color, size = 104, strokeWidth = 9 }) {
   const clamped = Math.max(0, Math.min(100, value ?? 0));
-  const radius = (size - strokeWidth) / 2;
+  const radius = (size - strokeWidth) / 2 - 2;
+  const c = size / 2;
   const circumference = 2 * Math.PI * radius;
-  const [offset, setOffset] = useState(circumference);
+  const SWEEP = 270;                       // open at the bottom, like an instrument dial
+  const arcLen = (SWEEP / 360) * circumference;
+  const [filled, setFilled] = useState(0);
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      setOffset(circumference - (clamped / 100) * circumference);
-    });
+    const id = requestAnimationFrame(() => setFilled((clamped / 100) * arcLen));
     return () => cancelAnimationFrame(id);
-  }, [clamped, circumference]);
+  }, [clamped, arcLen]);
+
+  // Small gaps at the 25 / 50 / 75 thresholds, matching the alert levels.
+  const ticks = [25, 50, 75].map((p) => {
+    const rad = ((135 + (SWEEP * p) / 100) * Math.PI) / 180;
+    const r1 = radius - strokeWidth / 2 - 1;
+    const r2 = radius + strokeWidth / 2 + 1;
+    return { x1: c + r1 * Math.cos(rad), y1: c + r1 * Math.sin(rad), x2: c + r2 * Math.cos(rad), y2: c + r2 * Math.sin(rad) };
+  });
 
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--blue-mid)" strokeWidth={strokeWidth} />
+      <svg width={size} height={size} role="img" aria-label={`Flood risk ${Math.round(clamped)} percent`}>
         <circle
-          cx={size / 2} cy={size / 2} r={radius} fill="none"
-          stroke={color} strokeWidth={strokeWidth} strokeLinecap="round"
-          strokeDasharray={circumference} strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.22,1,0.36,1), stroke 0.5s ease' }}
+          cx={c} cy={c} r={radius} fill="none"
+          stroke="var(--blue-border)" strokeOpacity={0.7} strokeWidth={strokeWidth}
+          strokeDasharray={`${arcLen} ${circumference}`} transform={`rotate(135 ${c} ${c})`}
         />
+        <circle
+          cx={c} cy={c} r={radius} fill="none"
+          stroke={color} strokeWidth={strokeWidth}
+          strokeDasharray={`${filled} ${circumference}`} transform={`rotate(135 ${c} ${c})`}
+          style={{ transition: 'stroke-dasharray 1s cubic-bezier(0.22,1,0.36,1), stroke 0.5s ease' }}
+        />
+        {ticks.map((t, i) => (
+          <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke="var(--blue-card)" strokeWidth={2.5} />
+        ))}
       </svg>
       <div style={{
         position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
+        alignItems: 'center', justifyContent: 'center', paddingBottom: 6,
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.5rem', color, lineHeight: 1 }}>
-          <AnimatedNumber value={clamped} decimals={0} />%
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: size >= 120 ? '2.1rem' : '1.5rem', color: 'var(--text-primary)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          <AnimatedNumber value={clamped} decimals={0} /><span style={{ fontSize: '0.5em', fontWeight: 700, color: 'var(--text-muted)', marginLeft: 1 }}>%</span>
         </span>
-        <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-secondary)', textTransform: 'uppercase', marginTop: 3 }}>
-          Risk
+        <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: 5 }}>
+          Flood risk
         </span>
       </div>
     </div>
@@ -373,15 +383,17 @@ function LevelScale({ current }) {
 }
 
 function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, probabilityPct, onSendAlert, canSendAlert, lastUpdated }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const residentSteps = (RESIDENT_ACTIONS[lang] ?? RESIDENT_ACTIONS.en)[currentAlert] ?? [];
   const navigate = useNavigate();
   const TREND_COPY = {
-    rising:  { Icon: LuTrendingUp,   label: 'Rising trend',  color: '#f97316' },
-    falling: { Icon: LuTrendingDown, label: 'Falling trend', color: '#22c55e' },
-    stable:  { Icon: LuMinus,        label: 'Stable',        color: 'var(--text-secondary)' },
+    rising:  { Icon: LuTrendingUp,   label: t('dash.trend.rising'),  color: '#f97316' },
+    falling: { Icon: LuTrendingDown, label: t('dash.trend.falling'), color: '#22c55e' },
+    stable:  { Icon: LuMinus,        label: t('dash.trend.stable'),  color: 'var(--text-secondary)' },
   };
   const trend = recentTrend ? TREND_COPY[recentTrend] : null;
   const isSevere = currentAlert === 'WARNING' || currentAlert === 'CRITICAL';
+  const LevelIcon = LEVEL_ICONS[currentAlert];
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
@@ -410,12 +422,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center', padding: '18px 22px' }}>
           {typeof probabilityPct === 'number' && (
             <div style={{ position: 'relative', flexShrink: 0 }}>
-              <div aria-hidden="true" style={{
-                position: 'absolute', inset: -18, borderRadius: '50%',
-                background: `radial-gradient(circle, ${hexToRgba(alertColor, 0.16)} 0%, transparent 70%)`,
-                pointerEvents: 'none',
-              }} />
-              <RadialGauge value={probabilityPct} color={alertColor} size={140} strokeWidth={12} />
+              <RadialGauge value={probabilityPct} color={alertColor} size={160} strokeWidth={10} />
             </div>
           )}
 
@@ -428,6 +435,7 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
                 padding: '7px 18px', borderRadius: 10, letterSpacing: '0.06em',
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
               }}>
+                {LevelIcon && <LevelIcon size={22} strokeWidth={2.5} aria-hidden="true" />}
                 {t(`alertLevel.${currentAlert}.name`).toUpperCase()}
               </span>
               <span className="stance" style={{ '--c': alertColor }}>{t(`alertLevel.${currentAlert}.stance`)}</span>
@@ -465,13 +473,20 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', flex: 1 }}>
           <div className="action-callout" style={{ '--lvl': alertColor }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 6 }}>
-              Recommended Action
-            </div>
-            <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.55, fontWeight: 500 }}>
-              {currentAlert === 'CRITICAL' ? <><strong>{t('evacuateNow')}.</strong> Proceed to the designated evacuation centers.</> : alertInfo.action}
-            </div>
+            <div className="todo-label">{canSendAlert ? 'For residents' : t('whatToDoNow')}</div>
+            <ul className="todo-list">
+              {residentSteps.map((step) => <li key={step}>{step}</li>)}
+            </ul>
           </div>
+
+          {canSendAlert && (
+            <div className="action-callout" style={{ '--lvl': alertColor }}>
+              <div className="todo-label">For the barangay</div>
+              <ul className="todo-list">
+                {(STAFF_ACTIONS[currentAlert] ?? []).map((step) => <li key={step}>{step}</li>)}
+              </ul>
+            </div>
+          )}
 
           {canSendAlert && (
             <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -611,41 +626,26 @@ function CommunityTrustStrip() {
 // panel than a consumer app widget.
 function ConditionsStrip({ items }) {
   return (
-    <div className="card" style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${items.length}, 1fr)`,
-      }}>
-        {items.map((it, i) => (
-          <div
-            key={it.label}
-            className="stat-cell"
-            style={{
-              padding: '16px 18px',
-              borderLeft: i === 0 ? 'none' : '1px solid var(--blue-border)',
-              
-            }}
-          >
-            <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
-              {it.label}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.55rem', fontWeight: 800, color: it.color || 'var(--text-primary)', lineHeight: 1 }}>
+    <div className="kpi-grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+      {items.map((it) => (
+        <div key={it.label} className="kpi-card">
+          <div className="kpi-card-label">{it.label}</div>
+          <div className="kpi-card-main">
+            <div>
+              <span className="kpi-card-value" style={{ color: it.color || 'var(--text-primary)' }}>
                 {typeof it.numeric === 'number' ? <AnimatedNumber value={it.numeric} decimals={it.decimals ?? 0} /> : it.value}
               </span>
-              {it.unit && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>{it.unit}</span>}
-            </div>
-            <div style={{ fontSize: '0.68rem', color: it.badgeColor || 'var(--text-secondary)', marginTop: 5, fontWeight: it.badge ? 700 : 400 }}>
-              {it.badge || it.sub || (it.noData ? 'Waiting for the model server…' : null)}
+              {it.unit && <span className="kpi-card-unit">{it.unit}</span>}
             </div>
             {it.sparkline && it.sparkline.length >= 2 && (
-              <div style={{ marginTop: 7 }}>
-                <Sparkline data={it.sparkline} color={it.color || 'var(--accent)'} />
-              </div>
+              <Sparkline data={it.sparkline} color={it.color || 'var(--accent)'} width={96} height={34} />
             )}
           </div>
-        ))}
-      </div>
+          <div className="kpi-card-sub" style={{ color: it.badgeColor || undefined }}>
+            {it.badge || it.sub || (it.noData ? 'Waiting for the model server…' : null)}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -756,36 +756,13 @@ function LayerToggle({ layers, onToggle }) {
   );
 }
 
-// Runs inside the MapContainer (needs the Leaflet map via useMap()) so a
-// Critical Facilities card click can fly the 2D map to that facility and
-// pop its marker open -- regardless of react-leaflet's ref-forwarding
-// story for MapContainer itself, useMap() is stable across versions.
-function FloodMapFocusController({ focusRequest, markerRefs, ensureVisible }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!focusRequest) return;
-    const facility = CRITICAL_FACILITIES.find(f => f.id === focusRequest.id);
-    if (!facility) return;
-    ensureVisible();
-    map.flyTo([facility.position.lat, facility.position.lng], 17, { duration: 1.1 });
-    // Marker may only just be mounting (if it was previously hidden) --
-    // give it a tick before asking it to open its popup.
-    requestAnimationFrame(() => {
-      markerRefs.current[facility.id]?.openPopup();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusRequest]);
-  return null;
-}
-
-function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg, focusRequest, showFacilities, setShowFacilities }) {
+function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirectionDeg }) {
   const color = ALERT_COLORS[currentAlert] || ALERT_COLORS.NORMAL;
   const [basemap, setBasemap] = useState('street');
   const [reports, setReports] = useState([]);
   const [showBoundary, setShowBoundary] = useState(true);
+  const [showZones, setShowZones] = useState(true);
   const [showReports, setShowReports] = useState(true);
-  const [showEvac, setShowEvac] = useState(true);
-  const facilityMarkerRefs = useRef({});
   const mapRef = useRef(null);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -860,6 +837,7 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
             </LeafletTooltip>
           </LeafletPolygon>
         )}
+        {showZones && <ZoneBoundaryLayer />}
 
         <MarkerClusterGroup chunkedLoading maxClusterRadius={55} iconCreateFunction={createReportClusterIcon}>
           {showReports && reports.map(report => {
@@ -938,46 +916,6 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
           })}
         </MarkerClusterGroup>
 
-        {/* Critical facilities (hospitals, schools) -- a fixed, small set,
-            so plain markers rather than a cluster group; unlike incident
-            reports these don't change at runtime. */}
-        {showFacilities && CRITICAL_FACILITIES.map(facility => {
-          const style = FACILITY_STYLE[facility.facilityType];
-          return (
-            <LeafletMarker
-              key={facility.id}
-              ref={(el) => { if (el) facilityMarkerRefs.current[facility.id] = el; }}
-              position={[facility.position.lat, facility.position.lng]}
-              icon={createFacilityIcon(facility)}
-            >
-              <LeafletPopup>
-                <div style={{ minWidth: 180, padding: '4px 2px' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 4 }}>
-                    {facility.name}
-                  </div>
-                  <div style={{
-                    display: 'inline-block', fontSize: '0.62rem', fontWeight: 700,
-                    color: style.color, background: `${style.color}18`,
-                    border: `1px solid ${style.color}40`, borderRadius: 4,
-                    padding: '2px 6px', textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}>
-                    {style.label}
-                  </div>
-                </div>
-              </LeafletPopup>
-            </LeafletMarker>
-          );
-        })}
-
-        {/* Your Place now lives on the Know Your Zone page; this layer only draws evacuation centers here. */}
-        <YourPlaceMapLayer currentAlert={currentAlert} showEvac={showEvac} showPlace={false} />
-
-        <FloodMapFocusController
-          focusRequest={focusRequest}
-          markerRefs={facilityMarkerRefs}
-          ensureVisible={() => setShowFacilities(true)}
-        />
       </MapContainer>
 
       <MapRecenterButton
@@ -1007,15 +945,13 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
       <LayerToggle
         layers={[
           { key: 'boundary', label: 'Boundary', visible: showBoundary },
+          { key: 'zones', label: 'Purok Zones', visible: showZones },
           { key: 'reports', label: 'Reports', visible: showReports },
-          { key: 'facilities', label: 'Critical Facilities', visible: showFacilities },
-          { key: 'evac', label: 'Evacuation Centers', visible: showEvac },
         ]}
         onToggle={(key) => {
           if (key === 'boundary') setShowBoundary(v => !v);
+          else if (key === 'zones') setShowZones(v => !v);
           else if (key === 'reports') setShowReports(v => !v);
-          else if (key === 'evac') setShowEvac(v => !v);
-          else setShowFacilities(v => !v);
         }}
       />
     </div>
@@ -1025,16 +961,16 @@ function FloodMap({ currentAlert, rainfallMm, condition, windSignal, windDirecti
 
 function AlertLevelTable({ currentAlert }) {
   const levels = [
-    { key: 'NORMAL',   range: '< 25%',     action: 'Continue normal activities. Monitor updates.' },
-    { key: 'ADVISORY', range: '25 – 49%', action: 'Stay alert. Prepare emergency go-bags.' },
-    { key: 'WARNING',  range: '50 – 74%', action: 'Move valuables to higher ground. Be ready to evacuate.' },
-    { key: 'CRITICAL', range: '≥ 75%',     action: 'Evacuate immediately to designated evacuation centers.' },
+    { key: 'NORMAL',   range: '< 25%',     action: 'Keep drains clear. Carry on as usual.' },
+    { key: 'ADVISORY', range: '25 – 49%', action: 'Keep drains clear. Charge your phone. Check updates.' },
+    { key: 'WARNING',  range: '50 – 74%', action: 'Move valuables and vehicles higher. Avoid low roads.' },
+    { key: 'CRITICAL', range: '≥ 75%',     action: 'Pack your go-bag. Avoid floodwater. Follow barangay announcements.' },
   ];
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--blue-border)' }}>
-          {['Class', 'Probability', 'Recommended Action'].map((h, i) => (
+          {['Level', 'Chance', 'What to do'].map((h, i) => (
             <th key={h} style={{
               textAlign: 'left', padding: '0 8px 8px', fontSize: '0.6rem',
               fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
@@ -1080,162 +1016,6 @@ function AlertLevelTable({ currentAlert }) {
         })}
       </tbody>
     </table>
-  );
-}
-
-// ─── Critical Facilities panel ─────────────────────────────────────────────
-// Project-NOAH-style exposure list: every hospital/clinic, school, and
-// emergency responder in the barangay, filterable by category and
-// (optionally, on request) sorted by distance from the visitor. The map
-// (FloodMap / FloodMap3D) answers "where is it"; this panel answers "which
-// ones, and how far" -- same shared dataset and color/icon styling as the
-// map markers, so nothing drifts between the two views.
-const FACILITY_FILTERS = [
-  { key: 'all', label: 'All' },
-  ...FACILITY_TYPE_ORDER.map(key => ({ key, label: FACILITY_STYLE[key].label })),
-];
-
-// Small pin for the facilities list -- the same markup the maps use.
-function FacilityIcon({ facilityType, size = 26, color }) {
-  const html = facilityIconSvgMarkup(facilityType, { size, color });
-  if (!html) return null;
-  return <span style={{ display: 'inline-flex', flexShrink: 0 }} aria-hidden="true" dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-const HAZARD_CHIP = { 1: '#3b82f6', 2: '#f59e0b', 3: '#ef4444' };
-// A visitor further than this from the barangay centre is treated as "not here".
-const NEARBY_KM = 3;
-
-function FacilityCard({ facility, onSelect }) {
-  const style = FACILITY_STYLE[facility.facilityType];
-  const hz = facility.hazard ?? 0;
-  const chip = HAZARD_CHIP[hz];
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(facility)}
-      className="card toggle-pill"
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit',
-        appearance: 'none', WebkitAppearance: 'none',
-      }}
-    >
-      <FacilityIcon facilityType={facility.facilityType} size={28} color={style.color} />
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
-          {facility.name}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 3, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          {facility.distanceKm != null && <span>{formatDistanceKm(facility.distanceKm)} away</span>}
-          <span style={{
-            padding: '1px 8px', borderRadius: 999, fontWeight: 700, fontSize: '0.64rem',
-            color: chip ?? 'var(--green)',
-            background: `color-mix(in srgb, ${chip ?? 'var(--green)'} 16%, transparent)`,
-          }}>
-            {hz ? `In ${HAZARD_LABELS[hz].toLowerCase()} flood zone` : 'Outside flood zone'}
-          </span>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function CriticalFacilitiesPanel({ onSelectFacility }) {
-  const [filter, setFilter] = useState('all');
-  const [userLocation, setUserLocation] = useState(null);
-  // idle | loading | granted | denied | unsupported
-  const [geoStatus, setGeoStatus] = useState('idle');
-
-  const requestLocation = useCallback(() => {
-    if (!navigator.geolocation) {
-      setGeoStatus('unsupported');
-      return;
-    }
-    setGeoStatus('loading');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setGeoStatus('granted');
-      },
-      () => setGeoStatus('denied'),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  }, []);
-
-  // Locate automatically as soon as the panel mounts, so distances are
-  // filled in without the visitor needing to press anything first.
-  useEffect(() => { requestLocation(); }, [requestLocation]);
-
-  // Flood-zone class per facility. Static data, so compute once.
-  const hazardById = useMemo(
-    () => Object.fromEntries(CRITICAL_FACILITIES.map(f => [f.id, hazardAtPoint(f.position)])),
-    []
-  );
-  const exposedCount = CRITICAL_FACILITIES.filter(f => hazardById[f.id] > 0).length;
-
-  // Measure from where it is meaningful. A GPS fix hundreds of km away (a
-  // visitor reading the dashboard from elsewhere) used to make every facility
-  // read the same distance, so only trust GPS when the visitor is nearby.
-  const origin = useMemo(() => {
-    const here = userLocation && haversineDistanceKm(userLocation, TRIANGULO_CENTER) <= NEARBY_KM;
-    if (here) return { point: userLocation, label: 'you' };
-    return { point: TRIANGULO_CENTER, label: 'the barangay center' };
-  }, [userLocation]);
-  const outsideBarangay = geoStatus === 'granted' && userLocation
-    && haversineDistanceKm(userLocation, TRIANGULO_CENTER) > NEARBY_KM;
-
-  const facilities = useMemo(() => {
-    const filtered = filter === 'all'
-      ? CRITICAL_FACILITIES
-      : CRITICAL_FACILITIES.filter(f => f.facilityType === filter);
-    return filtered
-      .map(f => ({ ...f, hazard: hazardById[f.id], distanceKm: haversineDistanceKm(origin.point, f.position) }))
-      .sort((a, b) => a.distanceKm - b.distanceKm);
-  }, [filter, origin, hazardById]);
-
-  return (
-    <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {FACILITY_FILTERS.map(f => (
-            <button
-              key={f.key}
-              className="toggle-pill"
-              onClick={() => setFilter(f.key)}
-              style={{
-                padding: '5px 12px', fontSize: '0.68rem', fontWeight: 700,
-                letterSpacing: '0.03em', cursor: 'pointer', borderRadius: 999,
-                border: `1px solid ${filter === f.key ? 'var(--accent)' : 'var(--blue-border)'}`,
-                background: filter === f.key ? 'var(--accent)' : 'transparent',
-                color: filter === f.key ? '#fff' : 'var(--text-muted)',
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {geoStatus === 'loading' && (
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Locating you…</span>
-        )}
-      </div>
-
-      <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
-        <strong style={{ color: exposedCount ? 'var(--orange)' : 'var(--green)' }}>
-          {exposedCount} of {CRITICAL_FACILITIES.length}
-        </strong>{' '}facilities sit inside a mapped flood zone. Distances are measured from {origin.label}
-        {outsideBarangay && ' (you appear to be outside Barangay Triangulo)'}
-        {geoStatus === 'denied' && ' (location access was declined)'}
-        {geoStatus === 'unsupported' && " (location isn't available in this browser)"}.
-      </div>
-
-      <div className="grid-3">
-        {facilities.map(facility => (
-          <FacilityCard key={facility.id} facility={facility} onSelect={onSelectFacility} />
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -1292,6 +1072,7 @@ function FloodForecastChart() {
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [lastFetched, setLastFetched] = useState(null);
+  const [failed, setFailed]   = useState(false);
 
   const fetchData = useCallback(async () => {
     if (view === 'hourly') {
@@ -1303,18 +1084,26 @@ function FloodForecastChart() {
         .order('created_at', { ascending: true })
         .limit(10000);
 
-      if (error) { logger.warn('Fetch failed:', error.message); setLoading(false); return; }
+      if (error) { logger.warn('Fetch failed:', error.message); setFailed(true); setLoading(false); return; }
 
-      setChartData((data ?? []).map(row => ({
-        label: new Date(row.created_at).toLocaleTimeString('en-PH', {
-          hour: 'numeric', minute: '2-digit', hour12: true,
-        }),
-        time: new Date(row.created_at),
-        floodRisk: Math.min(Math.round((row.probability ?? 0) * 100), 100),
+      const buckets = new Map();
+      (data ?? []).forEach(row => {
+        const t = new Date(row.created_at);
+        t.setMinutes(0, 0, 0);
+        const key = t.getTime();
+        const b = buckets.get(key) ?? { time: t, sum: 0, n: 0 };
+        b.sum += Math.min((row.probability ?? 0) * 100, 100);
+        b.n += 1;
+        buckets.set(key, b);
+      });
+      setChartData([...buckets.values()].sort((a, b) => a.time - b.time).map(b => ({
+        label: b.time.toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true }),
+        time: b.time,
+        floodRisk: Math.round(b.sum / b.n),
       })));
     } else {
       const { data, error } = await supabase.rpc('get_daily_flood_avg', { days_back: 7 });
-      if (error) { logger.warn('Fetch failed:', error.message); setLoading(false); return; }
+      if (error) { logger.warn('Fetch failed:', error.message); setFailed(true); setLoading(false); return; }
 
       const days = (data ?? []).map(row => {
         const date = new Date(row.day);
@@ -1330,6 +1119,7 @@ function FloodForecastChart() {
       setChartData(days.slice(-7));
     }
 
+    setFailed(false);
     setLastFetched(new Date());
     setLoading(false);
   }, [view]);
@@ -1433,91 +1223,24 @@ function FloodForecastChart() {
         }}>
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: 8, opacity: 0.4 }}></div>
-            No snapshots yet — model must run at least once
+            {failed ? 'Could not load chart data. Retrying.' : 'No snapshots yet — model must run at least once'}
           </div>
         </div>
       ) : (
         <>
-          {latestRisk !== null && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 14px', marginBottom: 14,
-              background: `${getRiskColor(latestRisk)}10`,
-              border: `1px solid ${getRiskColor(latestRisk)}30`,
-              borderRadius: 'var(--radius-sm)',
-            }}>
-              <div style={{
-                fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 900,
-                color: getRiskColor(latestRisk), lineHeight: 1,
-              }}>
-                <AnimatedNumber value={latestRisk} decimals={0} />%
-              </div>
-              <div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Current Flood Probability
-                </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                  {latestRisk >= 75 ? 'Immediate action may be required'
-                    : latestRisk >= 50 ? 'High risk — monitor closely'
-                    : latestRisk >= 25 ? 'Elevated — stay alert'
-                    : 'Low risk — conditions normal'}
-                </div>
-              </div>
-            </div>
-          )}
+          {latestRisk !== null && <ProbabilityStat value={latestRisk} />}
 
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={chartData} margin={{ top: 10, right: 16, left: -10, bottom: 0 }}>
-              <defs>
-                <linearGradient id="riskGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#a855f7" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#a855f7" stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: '#4a6080', fontSize: 10, fontWeight: 600 }}
-                tickLine={false}
-                axisLine={{ stroke: '#1e3a5f' }}
-                interval={view === 'hourly' ? Math.floor(chartData.length / 6) : 0}
-              />
-              <YAxis
-                domain={[0, 100]}
-                tick={{ fill: '#4a6080', fontSize: 10 }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={v => `${v}%`}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <ReferenceLine y={25} stroke="#eab308" strokeDasharray="4 3" strokeOpacity={0.4}
-                label={{ value: 'Elevated', position: 'insideTopLeft', fill: '#eab308', fontSize: 9 }} />
-              <ReferenceLine y={50} stroke="#f97316" strokeDasharray="4 3" strokeOpacity={0.4}
-                label={{ value: 'High', position: 'insideTopLeft', fill: '#f97316', fontSize: 9 }} />
-              <ReferenceLine y={75} stroke="#ef4444" strokeDasharray="4 3" strokeOpacity={0.4}
-                label={{ value: 'Critical', position: 'insideTopLeft', fill: '#ef4444', fontSize: 9 }} />
-              <Area
-                type="monotone"
-                dataKey="floodRisk"
-                name="Flood Probability"
-                stroke="#a855f7"
-                strokeWidth={2.5}
-                fill="url(#riskGradient)"
-                dot={(props) => {
-                  const { cx, cy, payload } = props;
-                  if (view === 'hourly' && chartData.length > 48) return null;
-                  const color = getRiskColor(payload.floodRisk);
-                  return (
-                    <circle key={`dot-${payload.label}`}
-                      cx={cx} cy={cy} r={4}
-                      fill={color} stroke={color} strokeWidth={1.5}
-                    />
-                  );
-                }}
-                activeDot={{ r: 6, strokeWidth: 2, stroke: '#a855f7' }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <ProbabilityLineChart
+            data={chartData}
+            valueKey="floodRisk"
+            height={280}
+            colorFor={(v) => getRiskColor(v)}
+            thresholds={[
+              { y: 25, label: 'Advisory', color: '#eab308' },
+              { y: 50, label: 'Warning', color: '#f97316' },
+              { y: 75, label: 'Critical', color: '#ef4444' },
+            ]}
+          />
 
           {view === 'daily' && (
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${chartData.length}, 1fr)`, gap: 4, marginTop: 12 }}>
@@ -1530,14 +1253,14 @@ function FloodForecastChart() {
                     border: `1px solid ${d.isToday ? 'rgba(56,189,248,0.3)' : 'var(--blue-border)'}`,
                     borderRadius: 6,
                   }}>
-                    <div style={{ fontSize: '0.6rem', color: d.isToday ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 700, marginBottom: 3 }}>
+                    <div style={{ fontSize: '0.68rem', color: d.isToday ? 'var(--accent)' : 'var(--text-muted)', fontWeight: 700, marginBottom: 3 }}>
                       {d.isToday ? 'TODAY' : d.shortLabel}
                     </div>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: '0.9rem', fontWeight: 800, color }}>
                       {d.floodRisk}%
                     </div>
                     {d.readings > 0 && (
-                      <div style={{ fontSize: '0.52rem', color: '#38bdf8', marginTop: 2 }}>{d.readings} rdgs</div>
+                      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>{d.readings} readings</div>
                     )}
                   </div>
                 );
@@ -1548,7 +1271,7 @@ function FloodForecastChart() {
       )}
 
       <div style={{ marginTop: 10, fontSize: '0.62rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-        <span>No physical sensor · For situational awareness only</span>
+        <span>Model estimate, not an official warning. There is no physical water sensor. Follow barangay announcements.</span>
       </div>
     </div>
   );
@@ -1822,6 +1545,175 @@ function defaultMapView() {
   } catch { return '2d'; }
 }
 
+// ── Dashboard side panels ────────────────────────────────────────────────
+function PanelHeader({ title, sub, right }) {
+  return (
+    <div className="panel-head title-band-bar">
+      <div>
+        <div className="card-title" style={{ marginBottom: 0 }}>{title}</div>
+        {sub && <div className="panel-head-sub">{sub}</div>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function RainfallTrendCard() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(async () => {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('flood_snapshots')
+      .select('created_at, rainfall_mm')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true })
+      .limit(10000);
+    if (error) { logger.warn('Rainfall fetch failed:', error.message); setFailed(true); setLoading(false); return; }
+    setFailed(false);
+    const buckets = new Map();
+    (data ?? []).forEach(r => {
+      const t = new Date(r.created_at); t.setMinutes(0, 0, 0);
+      const b = buckets.get(t.getTime()) ?? { time: t, sum: 0, n: 0 };
+      b.sum += r.rainfall_mm ?? 0; b.n += 1;
+      buckets.set(t.getTime(), b);
+    });
+    // One slot per hour for the whole 24 hours, so the time axis is continuous.
+    // Hours with no snapshot stay null ("no reading"), which is not the same
+    // as 0 mm/hr of rain.
+    const thisHour = new Date(); thisHour.setMinutes(0, 0, 0);
+    const slots = Array.from({ length: 24 }, (_, i) => {
+      const t = new Date(thisHour.getTime() - (23 - i) * 3600_000);
+      const b = buckets.get(t.getTime());
+      return {
+        label: t.toLocaleTimeString('en-PH', { hour: 'numeric', hour12: true, timeZone: 'Asia/Manila' }),
+        // Two decimals: light rain (0.04 mm/hr) used to round to 0.0 and vanish.
+        rainfall: b ? Math.round((b.sum / b.n) * 100) / 100 : null,
+      };
+    });
+    setRows(slots);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
+
+  const readings = rows.filter((r) => r.rainfall != null);
+  const peakRow = readings.reduce((best, r) => (!best || r.rainfall > best.rainfall ? r : best), null);
+  const peak = peakRow?.rainfall ?? 0;
+  const totalMm = Math.round(readings.reduce((sum, r) => sum + r.rainfall, 0) * 10) / 10;
+  // Zoom the axis to the data so light rain is visible. Threshold lines only
+  // appear when they fit, and a note says when the scale is zoomed, so a quiet
+  // day never looks like a heavy one.
+  const axis = fitRainfallAxis(peak);
+  const thresholds = [
+    { y: 2.5, label: 'Moderate', color: '#d97706' },
+    { y: 7.5, label: 'Heavy', color: '#dc2626' },
+  ].filter((t) => t.y <= axis.top);
+  const zoomed = axis.top < 2.5;
+  // Mid-tone colors that hold up on both light and dark cards. Blue until rain
+  // gets heavy, then amber and red, so color only shouts when it should.
+  const color = (row) => (row.value >= 7.5 ? '#dc2626' : row.value >= 2.5 ? '#d97706' : row.value >= 0.5 ? '#0284c7' : '#4aa3dd');
+
+  return (
+    <div className="card panel-card">
+      <PanelHeader title="Rainfall, last 24 hours" sub="Hourly average in mm/hr" />
+      <div className="panel-body">
+        {loading ? <div className="skeleton" style={{ height: 300 }} />
+          : !readings.length ? <div className="panel-empty">{failed ? 'Could not load rainfall data.' : 'No rainfall readings yet.'}</div>
+          : (
+            <>
+            <div className="rain-summary">
+              <span>Peak <strong>{peak} mm/hr</strong>{peak > 0 && peakRow ? ` at ${peakRow.label}` : ''}</span>
+              <span>24 h total <strong>{totalMm} mm</strong></span>
+            </div>
+            <TrendChart
+              data={rows}
+              valueKey="rainfall"
+              unit=" mm/hr"
+              valueLabel="Rainfall"
+              colorFor={color}
+              domain={[0, axis.top]}
+              ticks={axis.ticks}
+              thresholds={thresholds}
+              emptyMessage="No rain recorded in the last 24 hours"
+              showTrend={false}
+              height={300}
+            />
+            {zoomed && peak > 0 && (
+              <p className="rain-zoom-note">Light rain only. The scale is zoomed in, and Moderate starts at 2.5 mm/hr.</p>
+            )}
+            </>
+          )}
+      </div>
+    </div>
+  );
+}
+
+function RecentAlertsCard() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    // Clear on every sign-in/sign-out so rows loaded under one session never
+    // linger on screen after the permissions change.
+    setAlerts([]); setFailed(false); setLoading(true);
+    const load = () => supabase.from('alerts').select('id, type, message, created_at')
+      .order('created_at', { ascending: false }).limit(4)
+      .then(({ data, error }) => {
+        if (!live) return;
+        if (error) { logger.warn('Alerts fetch failed:', error.message); setFailed(true); setAlerts([]); }
+        else { setFailed(false); setAlerts(data ?? []); }
+        setLoading(false);
+      });
+    load();
+    const ch = supabase.channel('dash_recent_alerts')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'alerts' }, load).subscribe();
+    return () => { live = false; supabase.removeChannel(ch); };
+  }, [user?.id]);
+
+  return (
+    <div className="card panel-card">
+      <PanelHeader title="Recent alerts" right={<button type="button" className="panel-link" onClick={() => navigate('/alerts-log')}>View all</button>} />
+      <div className="panel-body" style={{ padding: 0 }}>
+        {loading ? <div className="skeleton" style={{ height: 120, margin: 16 }} />
+          : failed ? <div className="panel-empty">Alerts could not be loaded.</div>
+          : !alerts.length ? <div className="panel-empty">No alerts sent yet.</div>
+          : alerts.map(a => (
+            <div key={a.id} className="alert-row">
+              <span className="alert-row-bar" style={{ background: ALERT_COLORS[a.type] ?? '#38bdf8' }} />
+              <div className="alert-row-text">
+                <div className="alert-row-title">{ALERT_LEVELS[a.type]?.label ?? a.type}</div>
+                <div className="alert-row-msg">{a.message}</div>
+              </div>
+              <div className="alert-row-time">{reportTimeAgo(a.created_at)}</div>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+function NextHoursCard({ hourly, failed }) {
+  const now = Date.now();
+  const hours = (hourly ?? []).filter(h => new Date(h.time).getTime() >= now - 30 * 60 * 1000).slice(0, 6);
+  return (
+    <div className="card panel-card">
+      <PanelHeader title="Next 6 hours" sub="Chance of rain and temperature" />
+      <div className="panel-body">
+        {!hours.length
+          ? <div className="panel-empty">{failed ? 'Forecast is unavailable right now.' : 'Forecast is loading.'}</div>
+          : <NextHoursStrip hours={hours} />}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { user }    = useAuth();
   const { apiBaseUrl } = useDataSource();
@@ -1834,6 +1726,7 @@ export default function Dashboard() {
   const [forecastCache, setForecastCache]     = useState(null);
   const [pagasaCalibration, setPagasaCalibration] = useState(null);
   const [forecastLoading, setForecastLoading] = useState(true);
+  const [forecastFailed, setForecastFailed]   = useState(false);
   const [lastUpdated, setLastUpdated]         = useState(new Date());
   const [recentTrend, setRecentTrend]         = useState(null);
   const [probHistory, setProbHistory]         = useState([]);
@@ -1842,22 +1735,17 @@ export default function Dashboard() {
     setMapView(v);
     try { localStorage.setItem(MAP_VIEW_KEY, v); } catch { /* ignore */ }
   };
-  // { id, ts } | null -- set when a Critical Facilities card is clicked;
-  // ts makes each click a distinct object so re-clicking the same facility
-  // still re-triggers the fly-to effect below.
-  const [focusRequest, setFocusRequest] = useState(null);
-  const [showFacilities, setShowFacilities] = useState(true);
   const mapCardRef = useRef(null);
 
-  const handleSelectFacility = (facility) => {
-    setFocusRequest({ id: facility.id, ts: Date.now() });
-    mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
   
   useEffect(() => {
     setForecastLoading(true);
+    setForecastFailed(false);
     fetch(`${apiBaseUrl}/api/forecast`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`Forecast request returned ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (data.hourly) setForecast(data.hourly);
         if (data.daily) setDailyForecast(data.daily);
@@ -1867,7 +1755,7 @@ export default function Dashboard() {
         if (data.weather_cache) setForecastCache(data.weather_cache);
         if (data.pagasa_calibration) setPagasaCalibration(data.pagasa_calibration);
       })
-      .catch(err => logger.warn('Forecast fetch failed:', err))
+      .catch(err => { logger.warn('Forecast fetch failed:', err); setForecastFailed(true); })
       .finally(() => setForecastLoading(false));
   }, [apiBaseUrl]);
 
@@ -1881,7 +1769,8 @@ export default function Dashboard() {
   // Single shared polling instance lives in MainLayout (it also owns the
   // SMS/push dispatch side effect) — Dashboard just reads from it, so we
   // don't end up with two independent pollers racing to dispatch alerts.
-  const { prediction, modelLoading, modelError } = useOutletContext();
+  const { prediction, modelLoading, modelError, modelUpdatedAt, modelRefetch } = useOutletContext();
+  const { t } = useLanguage();
 
   // Everything under the status header used to be one long column. It now
   // lives in tabs so each view is about one screen. The active tab is kept
@@ -1891,7 +1780,6 @@ export default function Dashboard() {
   const tabs = [
     { key: 'forecast', label: 'Forecast' },
     { key: 'weather',  label: 'Weather' },
-    { key: 'map',      label: 'Facilities & Levels' },
     ...(showStaffTab ? [{ key: 'staff', label: 'Staff' }] : []),
   ];
   const requestedTab = searchParams.get('tab');
@@ -2000,9 +1888,9 @@ export default function Dashboard() {
   const weatherCondition = forecast?.[0]?.condition ?? null;
 
   const EVACUATION_PRESETS = [
-    { label: 'Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flood risk is elevated. Stay alert and prepare your emergency go-bags.' },
-    { label: 'Warning',  type: 'WARNING',  msg: 'WARNING: Rising water levels detected. Move valuables to higher ground and be ready to evacuate immediately.' },
-    { label: 'Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is imminent. EVACUATE NOW to designated evacuation centers.' },
+    { label: 'Advisory', type: 'ADVISORY', msg: 'ADVISORY: Flooding is possible. Keep drains clear, charge your phone and check updates.' },
+    { label: 'Warning',  type: 'WARNING',  msg: 'WARNING: Flooding is likely. Move valuables and vehicles higher, avoid low roads and know your evacuation route.' },
+    { label: 'Critical', type: 'CRITICAL', msg: 'CRITICAL: Flooding is very likely. Pack your go-bag, avoid floodwater and follow barangay announcements.' },
     { label: 'Custom',   type: null,       msg: '' },
   ];
 
@@ -2067,7 +1955,8 @@ export default function Dashboard() {
 
       const { error } = await supabase.from('alerts').insert({ type: alertType, message, sent_by: sentBy });
       if (error) {
-        Swal.fire({ title: 'Failed to Save', text: error.message, icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
+        logger.error('alerts insert error:', error.message);
+        Swal.fire({ title: 'Alert not saved', text: friendlyError(error, 'The alert was not sent. Try again.'), icon: 'error', background: '#0d1f3c', color: '#e2eaf5', confirmButtonColor: '#0ea5e9' });
         return;
       }
 
@@ -2090,6 +1979,10 @@ export default function Dashboard() {
     });
   };
 
+  // First load only: show the spinner until the first prediction arrives (or fails),
+  // instead of an empty page that pops in. Later polls keep the cached data on screen.
+  if (modelLoading && !prediction && !modelError) return <PageLoader />;
+
   return (
     <YourPlaceProvider>
     <div className="fade-in stagger">
@@ -2102,21 +1995,21 @@ export default function Dashboard() {
           lastUpdated={lastUpdated}
         />
 
-        {/* ── 1. Offline Banner ──────────────────────────────────── */}
-        {modelError && (
+        {/* ── 1. Stale / offline banner ───────────────────────────
+            Everyone: how old the reading is and what to do instead (hidden
+            while data is fresh). Staff and dev builds also get the technical
+            cause below. */}
+        <StaleDataBanner
+          updatedAt={modelUpdatedAt}
+          hasData={!!prediction}
+          hasError={!!modelError}
+          onRetry={modelRefetch}
+        />
+        {modelError && (import.meta.env.DEV || (user && !userIsResident)) && (
           <ErrorBanner>
-            {(import.meta.env.DEV || (user && !userIsResident)) ? (
-              <>
-                <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
-                <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
-                to enable live predictions.
-              </>
-            ) : (
-              <>
-                <strong>Live prediction is temporarily unavailable.</strong> Showing the latest saved data. Follow
-                barangay announcements if conditions worsen.
-              </>
-            )}
+            <strong>Model backend offline</strong> — displaying fallback data. Start{' '}
+            <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>app.py</code>{' '}
+            to enable live predictions.
           </ErrorBanner>
         )}
 
@@ -2133,7 +2026,7 @@ export default function Dashboard() {
           probabilityPct={prediction ? prediction.probability * 100 : null}
           onSendAlert={handleEvacuationAlert}
           canSendAlert={!!user && !userIsResident}
-          lastUpdated={prediction ? lastUpdated : null}
+          lastUpdated={prediction && modelUpdatedAt ? new Date(modelUpdatedAt) : null}
         />
       </div>
 
@@ -2141,113 +2034,6 @@ export default function Dashboard() {
       <PagasaBulletinBanner />
 
       {/* ── 4. Flood Status Map ──────────────────────────────────── */}
-      <div ref={mapCardRef} id="flood-status-map" className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
-        <div className="title-band-bar" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
-          padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
-        }}>
-          <div>
-            <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                Flood Status Map — Barangay Triangulo
-              </span>
-            </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
-              Tap a pin to see a report.
-            </div>
-          </div>
-          {mapView === '2d' && (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Pending report</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Verified report</span>
-              </div>
-            </div>
-          )}
-          <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
-            {['2d', '3d'].map(v => (
-              <button key={v} className="toggle-pill" onClick={() => chooseMapView(v)} style={{
-                padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
-                letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
-                background: mapView === v ? 'var(--accent)' : 'transparent',
-                color: mapView === v ? '#fff' : 'var(--text-muted)',
-                transition: 'all 0.2s',
-              }}>
-                {v === '2d' ? '2D View' : '3D View'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <ExpandableMapFrame height={typeof window !== 'undefined' && window.innerWidth < 700 ? 'clamp(460px, 72vh, 620px)' : 'clamp(560px, 84vh, 940px)'}>
-        {mapView === '2d' ? (
-          <FloodMap
-            currentAlert={currentAlert}
-            rainfallMm={rainfallMm}
-            windSignal={prediction?.live_metrics?.wind_signal}
-            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
-            condition={weatherCondition}
-            focusRequest={focusRequest}
-            showFacilities={showFacilities}
-            setShowFacilities={setShowFacilities}
-          />
-        ) : (
-          <Suspense fallback={<div className="skeleton" style={{ width: '100%', height: '100%', minHeight: 360 }} role="status" aria-label="Loading 3D map" />}>
-          <FloodMap3D
-            probabilityPct={prediction ? Math.round(prediction.probability * 100) : null}
-            currentAlert={currentAlert}
-            boundary={TRIANGULO_BOUNDARY}
-            alertColors={ALERT_COLORS}
-            rainfallMm={rainfallMm}
-            windSignal={prediction?.live_metrics?.wind_signal}
-            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
-            condition={weatherCondition}
-            minutely={minutelyForecast}
-            hourly={forecast}
-            focusRequest={focusRequest}
-            showFacilities={showFacilities}
-            setShowFacilities={setShowFacilities}
-          />
-          </Suspense>
-        )}
-        </ExpandableMapFrame>
-
-        {/* Cartographic legend — swatch, classification, threshold — rather
-            than a row of dots, so the map reads like a hazard map rather
-            than a status badge. */}
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px',
-          padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
-        }}>
-          <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-            Legend
-          </span>
-          {[
-            ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
-          ].map(([key, range]) => (
-            <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem' }}>
-              <span style={{
-                width: 10, height: 10, borderRadius: 2,
-                background: ALERT_COLORS[key], opacity: currentAlert === key ? 1 : 0.35,
-                flexShrink: 0,
-              }} />
-              <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
-                {key}
-              </span>
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
-            </span>
-          ))}
-          <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--text-muted)' }}>
-            Approximate barangay boundary · &copy; OpenStreetMap contributors
-          </span>
-        </div>
-      </div>
-
-
       {/* ── 3. Current Conditions Strip ─────────────────────────── */}
       {/* Same two cards for every role -- residents used to see Alert
           Level + Rainfall (Alert Level is already shown above in the
@@ -2286,29 +2072,147 @@ export default function Dashboard() {
             noData: !prediction,
             sparkline: probHistory,
           },
+          {
+            label: 'Temperature',
+            value: forecast?.[0]?.temperature_c != null ? Math.round(forecast[0].temperature_c) : '—',
+            unit: forecast?.[0]?.temperature_c != null ? '°C' : undefined,
+            sub: weatherCondition,
+            color: 'var(--text-primary)',
+          },
+          {
+            label: 'Wind',
+            value: forecast?.[0]?.wind_speed_kph != null ? Math.round(forecast[0].wind_speed_kph) : '—',
+            unit: forecast?.[0]?.wind_speed_kph != null ? 'km/h' : undefined,
+            sub: prediction ? `Signal #${prediction.live_metrics.wind_signal}` : null,
+            color: 'var(--text-primary)',
+          },
         ]}
       />
+
+      <div className="dash-split">
+      <div ref={mapCardRef} id="flood-status-map" className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 0 }}>
+        <div className="title-band-bar" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+          padding: '14px 18px', borderBottom: '1px solid var(--blue-border)', background: 'var(--title-band)',
+        }}>
+          <div>
+            <div className="card-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9, textTransform: 'none', letterSpacing: 0 }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                {t('dash.mapTitle')}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)'}}>
+              {t('dash.mapHint')}
+            </div>
+          </div>
+          {mapView === '2d' && (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.pending }} />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>{t('dash.pendingReport')}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: REPORT_STATUS_COLORS.verified }} />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>{t('dash.verifiedReport')}</span>
+              </div>
+            </div>
+          )}
+          <div className="view-toggle-group" style={{ display: 'flex', gap: 0, background: 'var(--blue-mid)', border: '1px solid var(--blue-border)', borderRadius: 6, overflow: 'hidden' }}>
+            {['2d', '3d'].map(v => (
+              <button key={v} className="toggle-pill" onClick={() => chooseMapView(v)} style={{
+                padding: '5px 14px', fontSize: '0.7rem', fontWeight: 700,
+                letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', border: 'none',
+                background: mapView === v ? 'var(--accent)' : 'transparent',
+                color: mapView === v ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.2s',
+              }}>
+                {v === '2d' ? '2D View' : '3D View'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <ExpandableMapFrame height={typeof window !== 'undefined' && window.innerWidth < 700 ? 'clamp(460px, 72vh, 620px)' : 'clamp(520px, 72vh, 780px)'}>
+        {mapView === '2d' ? (
+          <FloodMap
+            currentAlert={currentAlert}
+            rainfallMm={rainfallMm}
+            windSignal={prediction?.live_metrics?.wind_signal}
+            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
+            condition={weatherCondition}
+          />
+        ) : (
+          <Suspense fallback={<div className="skeleton" style={{ width: '100%', height: '100%', minHeight: 360 }} role="status" aria-label="Loading 3D map" />}>
+          <FloodMap3D
+            probabilityPct={prediction ? Math.round(prediction.probability * 100) : null}
+            currentAlert={currentAlert}
+            boundary={TRIANGULO_BOUNDARY}
+            alertColors={ALERT_COLORS}
+            rainfallMm={rainfallMm}
+            windSignal={prediction?.live_metrics?.wind_signal}
+            windDirectionDeg={prediction?.live_metrics?.wind_direction_deg}
+            condition={weatherCondition}
+            minutely={minutelyForecast}
+            hourly={forecast}
+          />
+          </Suspense>
+        )}
+        </ExpandableMapFrame>
+
+        {/* Cartographic legend — swatch, classification, threshold — rather
+            than a row of dots, so the map reads like a hazard map rather
+            than a status badge. */}
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 18px',
+          padding: '10px 18px', borderTop: '1px solid var(--blue-border)', background: 'var(--blue-mid)',
+        }}>
+          <span style={{ fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+            {t('dash.legend')}
+          </span>
+          {[
+            ['NORMAL', '< 25%'], ['ADVISORY', '25–49%'], ['WARNING', '50–74%'], ['CRITICAL', '≥ 75%'],
+          ].map(([key, range]) => (
+            <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.66rem' }}>
+              <span style={{
+                width: 10, height: 10, borderRadius: 2,
+                background: ALERT_COLORS[key], opacity: currentAlert === key ? 1 : 0.35,
+                flexShrink: 0,
+              }} />
+              <span style={{ color: currentAlert === key ? ALERT_COLORS[key] : 'var(--text-muted)', fontWeight: currentAlert === key ? 700 : 500 }}>
+                {t(`alertLevel.${key}.name`)}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{range}</span>
+            </span>
+          ))}
+          <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+            Approximate barangay boundary · &copy; OpenStreetMap contributors
+          </span>
+        </div>
+      </div>
+      <div className="dash-side">
+        <RecentAlertsCard />
+        <NextHoursCard hourly={forecast} failed={forecastFailed} />
+      </div>
+      </div>
+
+      {/* Charts: bars colored by level, trend line on top */}
+      <div className="dash-grid-2">
+        <FloodForecastChart />
+        <RainfallTrendCard />
+      </div>
+
 
       <div ref={tabAnchorRef} />
       <TabBar idPrefix="dash" label="Dashboard sections" tabs={tabs} active={activeTab} onChange={selectTab} />
 
-      {renderPanel('map', (
+      {renderPanel('forecast', (
         <>
-          {/* ── 5. Critical Facilities Near You ─────────────────────── */}
-          {/* Only shown while the Facilities layer is toggled on (same toggle
-              used on both maps) -- one switch controls whether the layer exists
-              at all, on the map and in this list. */}
-          {showFacilities && (
-            <CollapsibleSection
-              title="Critical Facilities Near You"
-              subtitle="Hospitals, clinics, schools, responders"
-            defaultOpen={false}
-            >
-              <CriticalFacilitiesPanel onSelectFacility={handleSelectFacility} />
-            </CollapsibleSection>
-          )}
+          {/* ── 7. Flood Forecast Chart ───────────────────── */}
+          <div style={{ marginBottom: 18 }}>
+            <FloodForecast14Day />
+          </div>
 
-          {/* ── 6. Alert Classification Reference ───────────────────── */}
+          {/* ── Alert Classification Reference ───────────── */}
           <CollapsibleSection
             title="Alert Classification Reference"
             subtitle="Thresholds and what to do"
@@ -2319,25 +2223,10 @@ export default function Dashboard() {
         </>
       ))}
 
-      {renderPanel('forecast', (
-        <>
-          {/* ── 7. Flood Forecast Chart ───────────────────── */}
-          <div style={{ marginBottom: 18 }}>
-            <FloodForecast14Day />
-          </div>
-
-          {/* ── 8. GRU Flood Probability Chart ───────────────────── */}
-          {/* Trend chart is staff/admin/resident-only — kept out of the public
-              view. Current status (bulletin, conditions strip, map, alert
-              reference) stays public; the historical/predicted probability
-              trend is reserved for signed-in accounts. */}
-          {user && <FloodForecastChart />}
-        </>
-      ))}
-
       {renderPanel('weather', (
         <>
           {/* ── 9. Weather Forecast ───────────── */}
+          {forecastFailed && !forecast.length && <ErrorBanner>Forecast is unavailable right now.</ErrorBanner>}
           <div style={{ marginBottom: 18 }}>
             <CollapsibleSection title="Weather Forecast" defaultOpen={true}>
               <WeatherForecast
@@ -2346,7 +2235,6 @@ export default function Dashboard() {
                 loading={forecastLoading}
                 generatedAt={forecastGeneratedAt}
                 outlook={forecastOutlook}
-                weatherCache={forecastCache}
                 pagasaCalibration={pagasaCalibration}
               />
             </CollapsibleSection>

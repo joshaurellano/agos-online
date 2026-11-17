@@ -4,9 +4,13 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts';
+import TrendChart from '../components/TrendChart';
+import { fitRainfallAxis } from '../lib/rainAxis';
 import { supabase } from '../lib/supabaseClient';
+import { ErrorBanner } from '../components/ui';
+import { logger } from '../lib/logger';
 import { SectionLabel } from '../components/ui';
-import { LuChartColumn, LuTable, LuTimer, LuGauge, LuCloudRain, LuCloudOff, LuDroplets, LuSun, LuTrendingUp } from 'react-icons/lu';
+import { LuChartColumn, LuTable, LuTimer, LuGauge, LuCloudOff, LuDroplets, LuTrendingUp } from 'react-icons/lu';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -112,76 +116,6 @@ function getRainfallEmoji(mm, period = 'hourly') {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatusBanner({ total, peak, acc3hr, acc6hr, period, hasData }) {
-  const ref  = acc3hr ?? total;
-  const cat  = getRainfallCategory(ref, 'hourly');
-  const emoji = getRainfallEmoji(ref, 'hourly');
-
-  // Never claim "dry" when there are simply no readings yet.
-  if (!hasData) return null;
-
-  if (ref === 0) {
-    return (
-      <div className="rain-banner calm" role="status">
-        <span className="rain-banner-icon"><LuSun size={22} aria-hidden="true" /></span>
-        <div>
-          <div className="rain-banner-title">No rainfall detected</div>
-          <div className="rain-banner-text">No significant flood impact expected. Normal activities may continue.</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: 14,
-      padding: '14px 18px', marginBottom: 18,
-      background: `${cat.color}08`,
-      border: `1px solid ${cat.color}35`,
-      borderRadius: 'var(--radius-sm)',
-    }}>
-      <span className="rain-banner-icon" style={{ color: cat.color, background: `${cat.color}1f` }}><LuCloudRain size={22} aria-hidden="true" /></span>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-          <span style={{
-            fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 900,
-            color: cat.color, letterSpacing: '0.04em',
-          }}>
-            {cat.label.toUpperCase()} RAINFALL
-          </span>
-          <span style={{
-            fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em',
-            background: `${cat.color}18`, color: cat.color,
-            border: `1px solid ${cat.color}40`,
-            borderRadius: 4, padding: '2px 8px',
-          }}>
-            {ref.toFixed(1)} mm/hr
-          </span>
-          <span style={{
-            fontSize: '0.6rem', color: 'var(--text-muted)',
-            background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-            borderRadius: 4, padding: '2px 8px',
-          }}>
-            {cat.pagasa}
-          </span>
-        </div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
-          {cat.desc}
-        </div>
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-          {acc3hr != null && (
-            <span>3-hr accumulation: <strong style={{ color: 'var(--text-secondary)' }}>{acc3hr.toFixed(1)} mm</strong></span>
-          )}
-          {acc6hr != null && (
-            <span>6-hr accumulation: <strong style={{ color: 'var(--text-secondary)' }}>{acc6hr.toFixed(1)} mm</strong></span>
-          )}
-          <span>Peak intensity: <strong style={{ color: 'var(--text-secondary)' }}>{peak.toFixed(1)} mm/hr</strong></span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function CustomTooltip({ active, payload, label, period }) {
   if (!active || !payload?.length) return null;
   const val = payload[0]?.value ?? 0;
@@ -217,6 +151,7 @@ export default function RainfallPage() {
   const [period, setPeriod]           = useState('hourly');
   const [dailyData, setDailyData]     = useState([]);
   const [hourlyLogs, setHourlyLogs]   = useState([]);
+  const [fetchFailed, setFetchFailed]   = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
 
   const { prediction } = useOutletContext();
@@ -233,6 +168,13 @@ export default function RainfallPage() {
         .order('created_at', { ascending: true }),
       supabase.rpc('get_daily_rainfall', { days_back: 7 }),
     ]);
+
+    if (hourlyRes.error || dailyRpc.error) {
+      logger.warn('Rainfall fetch failed:', hourlyRes.error?.message ?? dailyRpc.error?.message);
+      setFetchFailed(true);
+    } else {
+      setFetchFailed(false);
+    }
 
     if (hourlyRes.data) {
       const buckets = {};
@@ -304,6 +246,15 @@ export default function RainfallPage() {
 
   // Active thresholds based on current view
   const activeThresholds = getThresholds(period);
+  // Zoom the axis to the data so light rain is visible (0.1 mm/hr used to be a
+  // sliver on a 0-2.5 axis). Threshold lines only show when they fit, and a
+  // note below the chart says when the scale is zoomed, so trace rain is never
+  // mistaken for heavy rain.
+  const axis = fitRainfallAxis(data.reduce((m, r) => Math.max(m, Number(r.rainfall) || 0), 0));
+  const chartThresholds = activeThresholds.slice(1).filter(t => t.min <= axis.top);
+  const moderateAt = activeThresholds[1].min;
+  const axisZoomed = peak > 0 && axis.top < moderateAt;
+  const rainUnit = period === 'hourly' ? 'mm/hr' : 'mm/day';
 
   // KPI card category uses hourly thresholds always (live reading is mm/hr)
   const acc3hrCat = acc3hr != null ? getRainfallCategory(acc3hr, 'hourly') : null;
@@ -311,6 +262,12 @@ export default function RainfallPage() {
 
   return (
     <div className="fade-in">
+
+      {fetchFailed && (
+        <ErrorBanner>
+          {hourlyLogs.length || dailyData.length ? 'Could not refresh rainfall data. Showing earlier data.' : 'Could not load rainfall data.'}
+        </ErrorBanner>
+      )}
 
       {/* ── Staleness Warning ─────────────────────────────────────── */}
       {isStale && (
@@ -324,14 +281,6 @@ export default function RainfallPage() {
           <strong>Data may be stale</strong> — last update was over 5 minutes ago. Check backend connectivity.
         </div>
       )}
-
-      {/* ── Operational Status Banner ─────────────────────────────── */}
-      <StatusBanner
-        total={total} peak={peak}
-        acc3hr={acc3hr} acc6hr={acc6hr}
-        period={period}
-        hasData={hourlyLogs.length > 0}
-      />
 
       {/* ── KPI Cards ─────────────────────────────────────────────── */}
       <div className="grid-4 rain-kpis" style={{ marginBottom: 18 }}>
@@ -434,18 +383,6 @@ export default function RainfallPage() {
           )}
         </div>
 
-        {/* Period context note */}
-        <div style={{
-          fontSize: '0.68rem', color: 'var(--text-muted)',
-          marginBottom: 12, padding: '6px 10px',
-          background: 'var(--blue-mid)', borderRadius: 6,
-          border: '1px solid var(--blue-border)',
-        }}>
-          {period === 'hourly'
-            ? 'Thresholds based on PAGASA hourly rainfall intensity classification (mm/hr) · Philippine Atmospheric, Geophysical and Astronomical Services Administration'
-            : 'Thresholds based on PAGASA 24-hour accumulated rainfall classification (mm/24hr) · Philippine Atmospheric, Geophysical and Astronomical Services Administration'}
-        </div>
-
         {data.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon" aria-hidden="true"><LuCloudOff size={26} /></div>
@@ -453,46 +390,26 @@ export default function RainfallPage() {
             <p className="empty-state-text">Readings appear here once AGOS starts recording. Check back in a few minutes.</p>
           </div>
         ) : view === 'chart' ? (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--blue-border)" />
-              <XAxis
-                dataKey={dataKey}
-                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                tickLine={false}
-                interval={period === 'hourly' ? Math.floor(data.length / 8) : 0}
-              />
-              <YAxis
-                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
-                unit="mm"
-                tickLine={false}
-              />
-              <Tooltip content={<CustomTooltip period={period} />} />
-
-              {/* Dynamic reference lines based on active threshold set */}
-              {activeThresholds.slice(1).map(t => (
-                <ReferenceLine
-                  key={t.label}
-                  y={t.min}
-                  stroke={t.color}
-                  strokeWidth={1}
-                  strokeDasharray="4 3"
-                  label={{
-                    value: `${t.label} (${t.min}mm)`,
-                    fill: t.color,
-                    fontSize: 10,
-                    position: 'insideTopRight',
-                  }}
-                />
-              ))}
-
-              <Bar dataKey="rainfall" fill="#38bdf8" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                {data.map((row, i) => (
-                  <Cell key={i} fill={getRainfallCategory(row.rainfall, period).color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <>
+          <TrendChart
+            data={data}
+            xKey={dataKey}
+            valueKey="rainfall"
+            unit={period === 'hourly' ? ' mm/hr' : ' mm'}
+            valueLabel={period === 'hourly' ? 'Rainfall per hour' : 'Rainfall per day'}
+            domain={[0, axis.top]}
+            ticks={axis.ticks}
+            showTrend={false}
+            height={320}
+            colorFor={(row) => getRainfallCategory(row.value, period).color}
+            thresholds={chartThresholds.map(t => ({ y: t.min, label: t.label, color: t.color }))}
+          />
+          {axisZoomed && (
+            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Light rain only. The scale is zoomed in, and Moderate starts at {moderateAt} {rainUnit}.
+            </p>
+          )}
+          </>
         ) : (
           <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: 300 }}>
             <table style={{ width: '100%', minWidth: 480, borderCollapse: 'collapse', fontSize: '0.8rem' }}>

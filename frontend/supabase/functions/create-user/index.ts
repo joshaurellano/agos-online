@@ -31,6 +31,10 @@ Deno.serve(async (req: Request) => {
   const { data: role } = await admin.from('roles').select('role_id').eq('role_id', roleId).maybeSingle()
   if (!role) return json({ error: 'Choose a staff role.' }, 400)
 
+  // One number, one account.
+  const { data: phoneTaken } = await admin.from('profiles').select('id').eq('phone', phone).maybeSingle()
+  if (phoneTaken) return json({ error: 'This number is already registered.' }, 409)
+
   const { data, error } = await admin.auth.admin.createUser({
     email: `${username}@agos.local`,
     password,

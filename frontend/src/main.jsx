@@ -31,5 +31,14 @@ if (missing.length) {
         <Analytics />
       </StrictMode>
     )
+  }).catch((err) => {
+    console.error('App failed to load:', err)
+    root.render(
+      <div role="alert" style={{ maxWidth: 480, margin: '15vh auto', padding: 24, fontFamily: 'system-ui, sans-serif' }}>
+        <h1 style={{ fontSize: '1.25rem', marginBottom: 8 }}>AGOS could not load</h1>
+        <p>Check your connection and try again.</p>
+        <button type="button" onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    )
   })
 }

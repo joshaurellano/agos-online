@@ -11,11 +11,11 @@ const PHILSMS_API_URL = 'https://dashboard.philsms.com/api/v3/sms/send';
 const SMS_LABEL: Record<string, string> = {
   ADVISORY:       '[FLOOD ADVISORY]',
   WARNING:        '[FLOOD WARNING]',
-  CRITICAL:       '[FLOOD EMERGENCY]',
+  CRITICAL:       '[FLOOD CRITICAL]',
   NORMAL:         '[ALL CLEAR]',
   OUTLOOK:        '[FLOOD OUTLOOK]',
   STILL_ELEVATED: '[FLOOD UPDATE]',
-  RAPID_RISE:     '[FLOOD WARNING]',
+  RAPID_RISE:     '[FLOOD RISK RISING]',
 };
 
 // PhilSMS accepts a comma-separated `recipient` list in one request, so we

@@ -1,45 +1,32 @@
 import { useMemo, useState } from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
+import {
+  LuSun, LuMoon, LuCloud, LuCloudSun, LuCloudMoon, LuCloudFog, LuCloudDrizzle,
+  LuCloudRain, LuCloudSnow, LuCloudLightning, LuWind, LuTornado, LuDroplets,
+  LuDroplet, LuEye, LuGauge, LuSunMedium, LuThermometer, LuSprout,
+} from 'react-icons/lu';
 import { useTheme } from '../hooks/useTheme';
 
-// ─── WMO weather-code → icon/label map ─────────────────────────────────────
+// ─── WMO weather-code → icon ───────────────────────────────────────────────
 // https://open-meteo.com/en/docs (WMO Weather interpretation codes)
-const WMO_ICONS = {
-  0:  { day: '', night: '' },
-  1:  { day: '', night: '' },
-  2:  { day: '',  night: '' },
-  3:  { day: '',  night: '' },
-  45: { day: '', night: '' },
-  48: { day: '', night: '' },
-  51: { day: '', night: '' },
-  53: { day: '', night: '' },
-  55: { day: '', night: '' },
-  56: { day: '', night: '' },
-  57: { day: '', night: '' },
-  61: { day: '', night: '' },
-  63: { day: '', night: '' },
-  65: { day: '', night: '' },
-  66: { day: '', night: '' },
-  67: { day: '', night: '' },
-  71: { day: '', night: '' },
-  73: { day: '', night: '' },
-  75: { day: '',  night: '' },
-  77: { day: '',  night: '' },
-  80: { day: '', night: '' },
-  81: { day: '', night: '' },
-  82: { day: '', night: '' },
-  85: { day: '', night: '' },
-  86: { day: '',  night: '' },
-  95: { day: '', night: '' },
-  96: { day: '', night: '' },
-  99: { day: '', night: '' },
-};
+// Line icons (not emoji) so they follow the text colour in light and dark.
+function conditionIcon(code, isDay = true) {
+  if (code === 0 || code === 1) return isDay ? LuSun : LuMoon;
+  if (code === 2) return isDay ? LuCloudSun : LuCloudMoon;
+  if (code === 3) return LuCloud;
+  if (code === 45 || code === 48) return LuCloudFog;
+  if (code >= 51 && code <= 57) return LuCloudDrizzle;
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return LuCloudRain;
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return LuCloudSnow;
+  if (code >= 95 && code <= 99) return LuCloudLightning;
+  return LuCloud;
+}
 
-function weatherIcon(code, isDay = true) {
-  const entry = WMO_ICONS[code] ?? WMO_ICONS[2];
-  return isDay ? entry.day : entry.night;
+function ConditionIcon({ code, isDay = true, size = 22 }) {
+  const Icon = conditionIcon(code, isDay);
+  return <Icon size={size} aria-hidden="true" />;
 }
 
 // Backdrop tint for the hero panel — keyed off condition, not a literal photo,
@@ -57,10 +44,6 @@ function heroBackdrop(code, isDay) {
     : 'linear-gradient(135deg, #0e2647 0%, #0d1f3c 100%)'; // clear
   return 'linear-gradient(135deg, #1c3f66 0%, #0d1f3c 100%)'; // cloudy default
 }
-
-// Single accent used for every day tab — a uniform look reads calmer than
-// tinting each day by its own weather condition.
-const WEATHER_TAB_ACCENT = '#7c3aed';
 
 // Simple original SVG art (not emoji, not a stock photo) behind the hero
 // panel — a sun with rays, rain streaks, a lightning bolt, cloud blobs, fog
@@ -239,14 +222,21 @@ function fmtDateShort(dateStr) {
   return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' });
 }
 
-function Stat({ icon, label, value }) {
+function fmtUpdated(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' });
+}
+
+function Stat({ Icon, label, value }) {
   return (
     <div style={{
       background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
       borderRadius: 'var(--radius-sm)', padding: '10px 12px',
     }}>
-      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 6, display: 'flex', alignItems: 'flex-start', gap: 6, lineHeight: 1.25 }}>
-        <span style={{ fontSize: '0.85rem', flexShrink: 0 }}>{icon}</span>
+      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.25 }}>
+        {Icon && <Icon size={13} aria-hidden="true" style={{ flexShrink: 0 }} />}
         <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{label}</span>
       </div>
       <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -256,39 +246,55 @@ function Stat({ icon, label, value }) {
   );
 }
 
-function CustomTooltip({ active, payload, label }) {
+// What the hourly chart can plot. `key` is the field on each chart row.
+const METRICS = {
+  temperature: { label: 'Temperature', key: 'temperature_c',        domain: [(min) => Math.floor(min) - 1, (max) => Math.ceil(max) + 1], fmt: (v) => `${Math.round(v)}°` },
+  chance:      { label: 'Rain chance', key: 'rain_probability_pct', domain: [0, 100],                                                    fmt: (v) => `${Math.round(v)}%` },
+  rain:        { label: 'Rainfall',    key: 'precipitation',        domain: [0, (max) => Math.max(2, Math.ceil(max * 1.2))],             fmt: (v) => `${Number(v.toFixed(1))} mm/h` },
+};
+
+function ChartTooltip({ active, payload, label, metric }) {
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload;
+  const m = METRICS[metric];
+  const others = Object.entries(METRICS).filter(([k]) => k !== metric);
   return (
     <div style={{
       background: '#0d1f3c', border: '1px solid #2a4a72', borderRadius: 8,
       padding: '8px 12px', fontSize: '0.75rem', boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
     }}>
       <div style={{ fontWeight: 700, color: '#e2eaf5', marginBottom: 4 }}>{label}</div>
-      <div style={{ color: '#38bdf8', fontWeight: 600 }}>{row?.precipitation ?? 0} mm/h</div>
-      {row?.rain_probability_pct != null && (
-        <div style={{ color: '#8da4be' }}>{row.rain_probability_pct}% chance of rain</div>
-      )}
+      <div style={{ color: '#38bdf8', fontWeight: 700 }}>{row?.[m.key] != null ? m.fmt(row[m.key]) : '—'}</div>
+      {others.map(([k, o]) => (
+        row?.[o.key] != null && <div key={k} style={{ color: '#8da4be' }}>{o.label}: {o.fmt(row[o.key])}</div>
+      ))}
     </div>
   );
 }
 
+const SECTION_LABEL = {
+  fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.07em',
+  textTransform: 'uppercase', color: 'var(--text-secondary)',
+};
+
 /**
- * OpenWeatherMap-style forecast widget: day tabs + hero "now" panel with a
- * stat grid, plus an hourly precipitation trend and hourly card strip.
- * Consumes the /api/forecast response shape directly (hourly[], daily[]).
+ * Forecast widget: day tabs + hero "now" panel with a stat grid, an hourly
+ * trend chart (temperature / rain chance / rainfall) with an hour strip, and
+ * the rainfall outlook. Consumes the /api/forecast response shape directly
+ * (hourly[], daily[]). Cards are plain surfaces: no coloured edges or bands.
  */
-export default function WeatherForecast({ hourly = [], daily = [], loading, generatedAt, outlook, weatherCache, pagasaCalibration }) {
+export default function WeatherForecast({ hourly = [], daily = [], loading, generatedAt, outlook, pagasaCalibration }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   // Which hour (by ISO time string) is pinned into the hero card, or null to
   // fall back to the "now" / midday default for the selected day.
   const [selectedHourTime, setSelectedHourTime] = useState(null);
+  const [metric, setMetric] = useState('temperature');
   const { theme } = useTheme() ?? {};
   const isLight = theme === 'light';
-  // Light canvas washes out low-alpha tints, so give light mode a stronger
-  // fill/border than dark mode needs for the same chip to read as "colored".
-  const tabFillAlpha = isLight ? '26' : '18';
-  const tabBorderAlpha = isLight ? '70' : '55';
+  // Selected states use the accent fill; text on it flips with the theme so
+  // it stays readable (the accent is dark in light mode, bright in dark mode).
+  const accent = isLight ? '#0284c7' : '#38bdf8';
+  const onAccent = isLight ? '#ffffff' : '#0d1f3c';
 
   const days = daily; // full outlook window returned by the backend (currently up to 14 days)
   const selectedDay = days[selectedIdx] ?? null;
@@ -322,39 +328,76 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
         ? hourlyForSelectedDay[Math.min(Math.floor(hourlyForSelectedDay.length / 2), hourlyForSelectedDay.length - 1)]
         : null;
 
+  const updated = fmtUpdated(generatedAt);
+  const header = (
+    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 14 }}>
+      Barangay Triangulo{updated ? ` · Updated ${updated}` : ''}
+    </div>
+  );
+
   if (loading) {
     return (
-      <div style={{ display: 'flex', gap: 8 }}>
-        {[...Array(7)].map((_, i) => (
-          <div key={i} style={{
-            minWidth: 90, height: 220, background: 'var(--blue-mid)',
-            borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue-border)',
-            opacity: 0.5,
-          }} />
-        ))}
+      <div>
+        {header}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[...Array(7)].map((_, i) => (
+            <div key={i} style={{
+              minWidth: 90, height: 220, background: 'var(--blue-mid)',
+              borderRadius: 'var(--radius-sm)', border: '1px solid var(--blue-border)',
+              opacity: 0.5,
+            }} />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (!days.length) {
     return (
-      <div style={{
-        padding: '20px', textAlign: 'center',
-        color: 'var(--text-muted)', fontSize: '0.82rem',
-        background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)',
-        border: '1px solid var(--blue-border)',
-      }}>
-        Forecast feed unavailable — model backend offline
+      <div>
+        {header}
+        <div style={{
+          padding: '20px', textAlign: 'center',
+          color: 'var(--text-muted)', fontSize: '0.82rem',
+          background: 'var(--blue-mid)', borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--blue-border)',
+        }}>
+          Forecast feed unavailable — model backend offline
+        </div>
       </div>
     );
   }
 
+  // Per-day low and best-available rain chance for the day tabs. Prefers the
+  // daily record's own fields; falls back to the hourly rows when they cover
+  // enough of that day (lows need ~a full day of hours to be trustworthy).
+  const dayStats = (d) => {
+    const hrs = hourly.filter(h => h.time.startsWith(d.date));
+    const temps = hrs.map(h => h.temperature_c).filter(v => v != null);
+    const chances = hrs.map(h => h.rain_probability_pct).filter(v => v != null);
+    return {
+      low: d.temperature_min_c ?? (hrs.length >= 20 && temps.length ? Math.min(...temps) : null),
+      chance: d.rain_probability_max_pct ?? d.precipitation_probability_max ?? (chances.length ? Math.max(...chances) : null),
+    };
+  };
+
   const chartData = hourlyForSelectedDay.map(h => ({
     hour: fmtHour(h.time),
     time: h.time,
+    temperature_c: h.temperature_c,
     precipitation: h.precipitation,
     rain_probability_pct: h.rain_probability_pct,
   }));
+
+  const m = METRICS[metric];
+  const metricValues = chartData.map(r => r[m.key]).filter(v => v != null);
+  const metricLo = metricValues.length ? Math.min(...metricValues) : null;
+  const metricHi = metricValues.length ? Math.max(...metricValues) : null;
+  const rainTotal = chartData.reduce((sum, r) => sum + (r.precipitation ?? 0), 0);
+  const rangeText = metricLo == null ? null
+    : metric === 'rain'
+      ? `Total ${Number(rainTotal.toFixed(1))} mm · Peak ${m.fmt(metricHi)}`
+      : `Low ${m.fmt(metricLo)} · High ${m.fmt(metricHi)}`;
 
   // Custom hour labels rendered as our own row below the chart (not recharts'
   // built-in XAxis) — same "every Nth hour" spacing recharts was using, just
@@ -364,30 +407,44 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
 
   return (
     <div>
+      {header}
+
       {/* ── Day tabs (full outlook window returned by the backend) ─── */}
       <div className="weather-day-tabs" style={{ marginBottom: 16 }}>
         {days.map((d, idx) => {
           const active = idx === selectedIdx;
-          const accent = WEATHER_TAB_ACCENT;
+          const { low, chance } = dayStats(d);
+          const high = d.temperature_max_c != null ? Math.round(d.temperature_max_c) : null;
           return (
             <button
               key={d.date}
+              type="button"
               onClick={() => handleSelectDay(idx)}
+              aria-pressed={active}
+              aria-label={`${fmtDayLabel(d.date, idx)}, ${fmtDateShort(d.date)}${d.condition ? `, ${d.condition}` : ''}${high != null ? `, high ${high} degrees` : ''}`}
               style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                minWidth: 74, flexShrink: 0, cursor: 'pointer',
-                padding: '10px 10px 8px', borderRadius: 'var(--radius-sm)',
-                border: `1px solid ${active ? accent : accent + tabBorderAlpha}`,
-                background: active ? accent : accent + tabFillAlpha,
-                color: active ? '#fff' : 'var(--text-primary)',
-                transition: 'all 0.15s ease',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                minWidth: 84, flexShrink: 0, cursor: 'pointer', fontFamily: 'inherit',
+                padding: '10px 10px 9px', borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${active ? accent : 'var(--blue-border)'}`,
+                background: active ? accent : 'var(--blue-mid)',
+                color: active ? onAccent : 'var(--text-primary)',
+                transition: 'background 0.15s ease, border-color 0.15s ease',
               }}
             >
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.02em' }}>{fmtDayLabel(d.date, idx)}</span>
-              <span style={{ fontSize: '0.62rem', opacity: active ? 0.85 : 0.7 }}>{fmtDateShort(d.date)}</span>
-              <span style={{ fontSize: '1.2rem', margin: '2px 0' }}>{weatherIcon(d.weathercode, true)}</span>
-              <span style={{ fontSize: '0.82rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: active ? '#fff' : accent }}>
-                {d.temperature_max_c != null ? `${Math.round(d.temperature_max_c)}°` : '—'}
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.02em' }}>{fmtDayLabel(d.date, idx)}</span>
+              <span style={{ fontSize: '0.62rem', opacity: 0.75 }}>{fmtDateShort(d.date)}</span>
+              <span style={{ margin: '4px 0 2px', display: 'flex' }}>
+                <ConditionIcon code={d.weathercode} isDay size={22} />
+              </span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>
+                {high != null ? `${high}°` : '—'}
+              </span>
+              <span style={{ fontSize: '0.62rem', opacity: 0.75, minHeight: '0.9rem' }}>
+                {low != null ? `Low ${Math.round(low)}°` : '\u00A0'}
+              </span>
+              <span style={{ fontSize: '0.62rem', fontWeight: 700, minHeight: '0.9rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                {chance != null ? (<><LuDroplet size={10} aria-hidden="true" />{Math.round(chance)}%</>) : '\u00A0'}
               </span>
             </button>
           );
@@ -416,6 +473,13 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                     ? fmtHour(pickedHour.time)
                     : isToday ? (heroRecord ? fmtHour(heroRecord.time) : 'Now') : fmtDateShort(selectedDay.date)}
                 </span>
+                <span style={{ color: 'rgba(255,255,255,0.85)', display: 'flex' }}>
+                  <ConditionIcon
+                    code={heroRecord?.weathercode ?? selectedDay?.weathercode}
+                    isDay={heroRecord?.is_day ?? true}
+                    size={26}
+                  />
+                </span>
               </div>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 800, color: '#fff', lineHeight: 1 }}>
                 {heroRecord?.temperature_c != null
@@ -433,20 +497,20 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
             </div>
 
             <div className="weather-stat-grid" style={{ padding: '0 14px 14px' }}>
-              <Stat icon="" label="Wind" value={
+              <Stat Icon={LuWind} label="Wind" value={
                 heroRecord ? `${heroRecord.wind_speed_kph ?? '—'} km/h` : selectedDay?.wind_speed_max_kph != null ? `${selectedDay.wind_speed_max_kph} km/h` : '—'
               } />
-              <Stat icon="" label="Wind Gusts" value={
+              <Stat Icon={LuTornado} label="Wind Gusts" value={
                 heroRecord?.wind_gusts_kph != null ? `${heroRecord.wind_gusts_kph} km/h` : selectedDay?.wind_gusts_max_kph != null ? `${selectedDay.wind_gusts_max_kph} km/h` : '—'
               } />
-              <Stat icon="" label="Humidity" value={heroRecord?.humidity != null ? `${heroRecord.humidity}%` : '—'} />
-              <Stat icon="" label="Visibility" value={heroRecord?.visibility_km != null ? `${heroRecord.visibility_km} km` : '—'} />
-              <Stat icon="" label="Pressure" value={
+              <Stat Icon={LuDroplets} label="Humidity" value={heroRecord?.humidity != null ? `${heroRecord.humidity}%` : '—'} />
+              <Stat Icon={LuEye} label="Visibility" value={heroRecord?.visibility_km != null ? `${heroRecord.visibility_km} km` : '—'} />
+              <Stat Icon={LuGauge} label="Pressure" value={
                 heroRecord?.pressure_msl_hpa != null ? `${heroRecord.pressure_msl_hpa} hPa` : selectedDay?.pressure_msl_hpa != null ? `${selectedDay.pressure_msl_hpa} hPa` : '—'
               } />
-              <Stat icon="" label="UV Index" value={heroRecord?.uv_index ?? '—'} />
-              <Stat icon="" label="Dew Point" value={heroRecord?.dew_point_c != null ? `${heroRecord.dew_point_c}°C` : '—'} />
-              <Stat icon="" label="Soil Moisture" value={
+              <Stat Icon={LuSunMedium} label="UV Index" value={heroRecord?.uv_index ?? '—'} />
+              <Stat Icon={LuThermometer} label="Dew Point" value={heroRecord?.dew_point_c != null ? `${heroRecord.dew_point_c}°C` : '—'} />
+              <Stat Icon={LuSprout} label="Soil Moisture" value={
                 heroRecord?.soil_moisture_vwc != null
                   ? `${(heroRecord.soil_moisture_vwc * 100).toFixed(1)}%`
                   : selectedDay?.soil_moisture_vwc != null ? `${(selectedDay.soil_moisture_vwc * 100).toFixed(1)}%` : '—'
@@ -461,8 +525,35 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
           borderRadius: 'var(--radius)', padding: '16px 18px',
           display: 'flex', flexDirection: 'column', minWidth: 0,
         }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 10 }}>
-            Hourly forecast
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+            <div style={SECTION_LABEL}>Hourly forecast</div>
+            {hasHourlyDetail && (
+              <div role="group" aria-label="Chart metric" style={{
+                display: 'inline-flex', border: '1px solid var(--blue-border)',
+                borderRadius: 'var(--radius-sm)', overflow: 'hidden',
+              }}>
+                {Object.entries(METRICS).map(([key, opt]) => {
+                  const on = metric === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setMetric(key)}
+                      aria-pressed={on}
+                      style={{
+                        padding: '4px 10px', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                        fontFamily: 'inherit', border: 'none',
+                        background: on ? accent : 'transparent',
+                        color: on ? onAccent : 'var(--text-secondary)',
+                        transition: 'background 0.15s ease',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {!hasHourlyDetail ? (
@@ -471,11 +562,15 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
             </div>
           ) : (
             <>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 6, minHeight: '1em' }}>
+                {rangeText ?? 'No data for this metric'}
+              </div>
+
               {/* Grows to fill whatever height the hero panel beside it sets, so the
                   card never has a dead gap under the hour tiles. */}
-              <div style={{ position: 'relative', flex: '1 1 150px', minHeight: 150, marginBottom: 4, cursor: 'pointer' }} title="Click the chart to show that hour in the panel above">
+              <div style={{ position: 'relative', flex: '1 1 150px', minHeight: 150, marginBottom: 4, cursor: 'pointer' }} title="Click the chart to show that hour in the panel on the left">
                 <div style={{ position: 'absolute', inset: 0 }}>
-                <ResponsiveContainer key={`${selectedDay.date}-${chartData.length}`} width="100%" height="100%">
+                <ResponsiveContainer key={`${selectedDay.date}-${chartData.length}-${metric}`} width="100%" height="100%">
                   <AreaChart
                     data={chartData}
                     margin={{ top: 10, right: 8, left: 8, bottom: 0 }}
@@ -487,27 +582,28 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                     }}
                   >
                     <defs>
-                      <linearGradient id="precipFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                      <linearGradient id="hourlyFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={accent} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={accent} stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    {/* No recharts axes at all — no gridlines, no XAxis, no
-                        YAxis. Just the shape of the trend. Hour labels are
-                        rendered separately below as a plain HTML row, and
-                        exact values show on hover via the tooltip. Clicking
-                        anywhere on the chart also pins that hour into the
-                        hero panel, same as clicking its tile below. */}
+                    {/* No recharts axes: just the shape of the trend. Hour labels
+                        are a plain HTML row below, exact values show on hover,
+                        and clicking pins that hour into the hero panel. */}
                     <XAxis dataKey="hour" hide />
-                    <YAxis hide domain={[0, (max) => Math.max(2, Math.ceil(max * 1.2))]} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#38bdf8', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                    <YAxis hide domain={m.domain} />
+                    <Tooltip content={<ChartTooltip metric={metric} />} cursor={{ stroke: accent, strokeWidth: 1, strokeDasharray: '4 4' }} />
+                    {pickedHour && (
+                      <ReferenceLine x={fmtHour(pickedHour.time)} stroke={accent} strokeDasharray="3 3" />
+                    )}
                     <Area
                       type="monotone"
-                      dataKey="precipitation"
-                      stroke="#38bdf8"
+                      dataKey={m.key}
+                      stroke={accent}
                       strokeWidth={2.5}
-                      fill="url(#precipFill)"
-                      activeDot={{ r: 4, fill: '#38bdf8', stroke: '#0d1f3c', strokeWidth: 2, style: { cursor: 'pointer' } }}
+                      fill="url(#hourlyFill)"
+                      connectNulls
+                      activeDot={{ r: 4, fill: accent, stroke: isLight ? '#fff' : '#0d1f3c', strokeWidth: 2, style: { cursor: 'pointer' } }}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -518,10 +614,10 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                   chart, independent of recharts. */}
               <div style={{
                 display: 'flex', justifyContent: 'space-between',
-                padding: '0 8px 10px', borderBottom: '1px solid #1e3a5f', marginBottom: 8,
+                padding: '0 8px 10px', borderBottom: '1px solid var(--blue-border)', marginBottom: 8,
               }}>
                 {axisTicks.map((t, i) => (
-                  <span key={i} style={{ fontSize: 11, color: '#8da4be', fontFamily: 'var(--font-body)' }}>
+                  <span key={i} style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-body)' }}>
                     {t.hour}
                   </span>
                 ))}
@@ -536,24 +632,24 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
                       type="button"
                       onClick={() => setSelectedHourTime(isActive ? null : h.time)}
                       aria-pressed={isActive}
-                      title={`Show ${fmtHour(h.time)} in the panel above`}
+                      title={`Show ${fmtHour(h.time)} in the panel on the left`}
                       style={{
                         minWidth: 62, flexShrink: 0, textAlign: 'center',
                         padding: '8px 4px', borderRadius: 'var(--radius-sm)',
                         cursor: 'pointer', fontFamily: 'inherit',
-                        background: isActive ? 'var(--accent)' : 'transparent',
-                        border: `1px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                        background: isActive ? accent : 'transparent',
+                        border: `1px solid ${isActive ? accent : 'transparent'}`,
                         transition: 'background 0.15s ease, border-color 0.15s ease',
                       }}
                     >
-                      {h.rain_probability_pct != null && (
-                        <div style={{ fontSize: '0.62rem', color: isActive ? '#0d1f3c' : 'var(--accent)', fontWeight: 700, marginBottom: 4 }}>
-                          {h.rain_probability_pct}%
-                        </div>
-                      )}
-                      <div style={{ fontSize: '0.65rem', color: isActive ? '#0d1f3c' : 'var(--text-muted)', marginBottom: 4 }}>{fmtHour(h.time)}</div>
-                      <div style={{ fontSize: '1.15rem', marginBottom: 4 }}>{weatherIcon(h.weathercode, h.is_day)}</div>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: isActive ? '#0d1f3c' : 'var(--text-primary)' }}>
+                      <div style={{ fontSize: '0.62rem', color: isActive ? onAccent : accent, fontWeight: 700, marginBottom: 4, minHeight: '0.9rem' }}>
+                        {h.rain_probability_pct != null ? `${h.rain_probability_pct}%` : '\u00A0'}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: isActive ? onAccent : 'var(--text-muted)', marginBottom: 6 }}>{fmtHour(h.time)}</div>
+                      <div style={{ color: isActive ? onAccent : 'var(--text-secondary)', display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
+                        <ConditionIcon code={h.weathercode} isDay={h.is_day} size={18} />
+                      </div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: isActive ? onAccent : 'var(--text-primary)' }}>
                         {h.temperature_c != null ? `${Math.round(h.temperature_c)}°` : '—'}
                       </div>
                     </button>
@@ -562,7 +658,7 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
               </div>
               {pickedHour && (
                 <div style={{ marginTop: 8, fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  Showing {fmtHour(pickedHour.time)} in the panel above ·{' '}
+                  Showing {fmtHour(pickedHour.time)} in the panel on the left ·{' '}
                   <button
                     type="button"
                     onClick={() => setSelectedHourTime(null)}
@@ -583,36 +679,46 @@ export default function WeatherForecast({ hourly = [], daily = [], loading, gene
 
       {/* ── Rainfall outlook (next_6h / 12h / 24h from the backend) ──── */}
       {outlook && (
-        <div className="grid-3" style={{ marginTop: 16 }}>
-          {[
-            { label: 'Next 6 Hours',  mm: outlook.next_6h_rain_mm,  pct: outlook.next_6h_rain_probability_pct },
-            { label: 'Next 12 Hours', mm: outlook.next_12h_rain_mm, pct: outlook.next_12h_rain_probability_pct },
-            { label: 'Next 24 Hours', mm: outlook.next_24h_rain_mm, pct: outlook.next_24h_rain_probability_pct },
-          ].map(o => (
-            <div key={o.label} style={{
-              background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
-              borderRadius: 'var(--radius-sm)', padding: '10px 14px',
-            }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
-                {o.label}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 800, color: 'var(--accent)' }}>
-                  {o.mm ?? '—'}
-                </span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>mm</span>
-                {o.pct != null && (
-                  <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                    {o.pct}% chance
+        <div style={{ marginTop: 20 }}>
+          <div style={{ ...SECTION_LABEL, marginBottom: 8 }}>Rain outlook</div>
+          <div className="grid-3">
+            {[
+              { label: 'Next 6 hours',  mm: outlook.next_6h_rain_mm,  pct: outlook.next_6h_rain_probability_pct },
+              { label: 'Next 12 hours', mm: outlook.next_12h_rain_mm, pct: outlook.next_12h_rain_probability_pct },
+              { label: 'Next 24 hours', mm: outlook.next_24h_rain_mm, pct: outlook.next_24h_rain_probability_pct },
+            ].map(o => (
+              <div key={o.label} style={{
+                background: 'var(--blue-mid)', border: '1px solid var(--blue-border)',
+                borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+              }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+                  {o.label}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    {o.mm ?? '—'}
                   </span>
-                )}
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>mm</span>
+                  {o.pct != null && (
+                    <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                      {o.pct}% chance
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
-   
+      {pagasaCalibrationApplied(pagasaCalibration) && (
+        <div
+          title={pagasaCalibrationTooltip(pagasaCalibration)}
+          style={{ marginTop: 14, fontSize: '0.68rem', color: 'var(--text-muted)' }}
+        >
+          Forecast adjusted using PAGASA Pili station readings. Hover for details.
+        </div>
+      )}
     </div>
   );
 }

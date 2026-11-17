@@ -1,7 +1,7 @@
 // Combines two things AGOS already knows into one answer for one place:
 //   1. the live community alert level from the forecast model (NORMAL..CRITICAL)
 //   2. the static flood-hazard class at the resident's spot (0 none, 1 low,
-//      2 medium, 3 high; 25-year rainfall return period map)
+//      2 medium, 3 high; 100-year rainfall return period map)
 //
 // This is a transparent rule table, NOT a second machine-learning model. The
 // model predicts how likely flooding is for the barangay; the hazard map says

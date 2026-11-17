@@ -324,8 +324,8 @@ class _RainPainter extends CustomPainter {
       // rain reads as "socked in" rather than just "more streaks".
       canvas.drawRect(Offset.zero & size, Paint()..color = Color.fromRGBO(120, 140, 160, (0.02 + strength * 0.06)));
 
-      final darkBase = const Color(0xFF283B4B); // rgba(40,55,75,*)
-      final lightBase = const Color(0xFFD2E4F5); // rgba(210,228,245,*)
+      const darkBase = Color(0xFF283B4B); // rgba(40,55,75,*)
+      const lightBase = Color(0xFFD2E4F5); // rgba(210,228,245,*)
       final darkPaint = Paint()
         ..strokeWidth = 1.1
         ..strokeCap = StrokeCap.round;
@@ -338,10 +338,10 @@ class _RainPainter extends CustomPainter {
         // basemaps, plus a light line (offset -0.6,-0.6) for contrast
         // against dark basemaps -- together they read clearly regardless
         // of what's underneath.
-        darkPaint.color = darkBase.withOpacity((0.55 * d.opacity).clamp(0.0, 1.0).toDouble());
+        darkPaint.color = darkBase.withValues(alpha: (0.55 * d.opacity).clamp(0.0, 1.0).toDouble());
         canvas.drawLine(Offset(d.x, d.y), Offset(d.x + d.drift * 4, d.y + d.len), darkPaint);
 
-        lightPaint.color = lightBase.withOpacity((0.7 * d.opacity).clamp(0.0, 1.0).toDouble());
+        lightPaint.color = lightBase.withValues(alpha: (0.7 * d.opacity).clamp(0.0, 1.0).toDouble());
         canvas.drawLine(
           Offset(d.x - 0.6, d.y - 0.6),
           Offset(d.x + d.drift * 4 - 0.6, d.y + d.len - 0.6),
@@ -371,7 +371,7 @@ class _RainPainter extends CustomPainter {
       }
     }
     if (particles.lightningAlpha > 0.01) {
-      canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white.withOpacity(particles.lightningAlpha));
+      canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white.withValues(alpha: particles.lightningAlpha));
       particles.lightningAlpha *= 0.85;
     } else {
       particles.lightningAlpha = 0;
@@ -388,7 +388,7 @@ class _RainPainter extends CustomPainter {
     // `ctx.globalCompositeOperation = 'source-atop'` masking trick, so the
     // shading never spills past the cloud's own puffy edge. The layer's own
     // paint color alpha applies cl.opacity to the whole composited cloud.
-    canvas.saveLayer(null, Paint()..color = Colors.white.withOpacity(cl.opacity.clamp(0.0, 1.0).toDouble()));
+    canvas.saveLayer(null, Paint()..color = Colors.white.withValues(alpha: cl.opacity.clamp(0.0, 1.0).toDouble()));
 
     final silhouette = Paint()..color = Colors.white;
     for (final p in _cloudPuffs) {
@@ -408,9 +408,9 @@ class _RainPainter extends CustomPainter {
       Offset(cx, cy - scale * 0.6),
       Offset(cx, cy + scale * 0.55),
       [
-        Colors.white.withOpacity(0.98),
-        const Color(0xFFE2E8F0).withOpacity(0.95),
-        const Color(0xFF606B7D).withOpacity(0.92),
+        Colors.white.withValues(alpha: 0.98),
+        const Color(0xFFE2E8F0).withValues(alpha: 0.95),
+        const Color(0xFF606B7D).withValues(alpha: 0.92),
       ],
       const [0.0, 0.45, 1.0],
     );
@@ -425,9 +425,9 @@ class _RainPainter extends CustomPainter {
       Offset(band.x - band.w / 2, band.y),
       Offset(band.x + band.w / 2, band.y),
       [
-        const Color(0xFFE1E4E8).withOpacity(0),
-        const Color(0xFFE1E4E8).withOpacity(o),
-        const Color(0xFFE1E4E8).withOpacity(0),
+        const Color(0xFFE1E4E8).withValues(alpha: 0),
+        const Color(0xFFE1E4E8).withValues(alpha: o),
+        const Color(0xFFE1E4E8).withValues(alpha: 0),
       ],
       const [0.0, 0.5, 1.0],
     );

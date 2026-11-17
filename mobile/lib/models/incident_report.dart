@@ -65,3 +65,31 @@ class IncidentReport {
 /// outages, road accidents, medical emergencies, etc.) were removed so the
 /// community feed stays focused on real-time flood conditions.
 const kIncidentCategories = <String>['Flood'];
+
+
+/// Quick-pick details a resident can attach to a flood report. They are
+/// stored as a leading "[Knee-deep · Not passable]" tag on the description, so
+/// no database change is needed, and the feed turns the tag back into chips.
+/// (Depth + passability are the two things neighbours and officials most want
+/// to know at a glance; "umaabot na sa tuhod" in free text is easy to miss.)
+const kDepthOptions = <String>['Ankle-deep', 'Knee-deep', 'Waist-deep', 'Chest-deep or higher'];
+const kRoadOptions = <String>['Passable', 'High vehicles only', 'Not passable'];
+
+class ReportTags {
+  const ReportTags._();
+
+  /// "[Knee-deep · Not passable] text" (either tag, or the text, may be absent).
+  static String build(String? depth, String? road, String text) {
+    final tags = [if (depth != null) depth, if (road != null) road];
+    if (tags.isEmpty) return text;
+    final head = '[${tags.join(' · ')}]';
+    return text.isEmpty ? head : '$head $text';
+  }
+
+  static ({List<String> tags, String text}) parse(String description) {
+    final m = RegExp(r'^\[(.+?)\]\s*').firstMatch(description);
+    if (m == null) return (tags: const <String>[], text: description);
+    final tags = m.group(1)!.split('·').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    return (tags: tags, text: description.substring(m.end));
+  }
+}

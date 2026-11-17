@@ -9,7 +9,8 @@ import {
 import { TRIANGULO_BOUNDARY, TRIANGULO_CENTER, EVACUATION_CENTERS } from '../data/triangulo';
 import trianguloFloodHazard from '../data/trianguloFloodHazard.json';
 import trianguloRoads from '../data/trianguloRoads.json';
-import { hazardAtPoint, pointInBoundary } from '../lib/hazard';
+import { hazardAtPoint, pointInBoundary, purokZoneAt } from '../lib/hazard';
+import { addZoneLines, createZoneMarkers } from '../lib/zoneLayers';
 import { buildRoadGraph, findNearestCenterByRoad, OFF_NETWORK_THRESHOLD_KM } from '../lib/routing';
 import { formatDistanceKm } from '../lib/geo';
 import { buildRouteSteps } from '../lib/routeSteps';
@@ -42,26 +43,26 @@ const ZONES = [
   { cls: 3, color: '#ef4444', depth: 'over 1.5 m', meaning: 'Water can rise fast and deep. Leave before it reaches you.' },
 ];
 // What it means for a spot to sit in each zone. The levels are Project NOAH's
-// (UP DREAM) flood-depth classes for a 25-year rain event: low up to 0.5 m,
+// (UP DREAM) flood-depth classes for a 100-year rain event: low up to 0.5 m,
 // medium 0.5-1.5 m, high over 1.5 m (NOAH Hazard Maps dataset card). The class
 // also reflects flow velocity, so fast shallow water can rate higher than its
 // depth alone suggests. They describe hazard, not urgency.
 const ZONE_DETAIL = {
   0: {
     title: 'Not in a mapped flood zone.',
-    text: 'The hazard map shows no flooding here in a 25-year rain event. Heavier rain, blocked drains or a rising creek can still make water collect, so keep an eye on the alerts.',
+    text: 'The hazard map shows no flooding here in a 100-year rain event. Heavier rain, blocked drains or a rising creek can still make water collect, so keep an eye on the alerts.',
   },
   1: {
     title: 'Low flood hazard: up to about 0.5 m deep.',
-    text: 'In a 25-year rain event, floodwater here is expected to stay at about knee-deep or less. Streets and low spots can still get wet and slippery, and fast-moving water can be dangerous even when shallow, so avoid wading through it.',
+    text: 'In a 100-year rain event, floodwater here is expected to stay at about knee-deep or less. Streets and low spots can still get wet and slippery, and fast-moving water can be dangerous even when shallow, so avoid wading through it.',
   },
   2: {
     title: 'Medium flood hazard: about 0.5–1.5 m deep.',
-    text: 'In a 25-year rain event, floodwater here is expected to be roughly knee-deep to chest-deep. Streets can become impassable and belongings at floor level may get wet. Be ready to move early when an alert rises.',
+    text: 'In a 100-year rain event, floodwater here is expected to be roughly knee-deep to chest-deep. Streets can become impassable and belongings at floor level may get wet. Be ready to move early when an alert rises.',
   },
   3: {
     title: 'High flood hazard: over 1.5 m deep.',
-    text: 'In a 25-year rain event, floodwater here is expected to be deeper than chest-high for most adults. Ground floors can be badly flooded and exits cut off, so plan your way out now and leave early when alerts rise.',
+    text: 'In a 100-year rain event, floodwater here is expected to be deeper than chest-high for most adults. Ground floors can be badly flooded and exits cut off, so plan your way out now and leave early when alerts rise.',
   },
 };
 const ZONE_COLOR = { 0: '#64748b', 1: '#3b82f6', 2: '#f59e0b', 3: '#ef4444' };
@@ -183,10 +184,11 @@ export default function KnowYourHazardsPage() {
     if (!spot) { setInfo(null); return; }
     if (!pointInBoundary(spot, TRIANGULO_BOUNDARY)) { setInfo({ inside: false }); return; }
     const zone = hazardAtPoint(spot);
+    const purok = purokZoneAt(spot);
     const tier = prediction ? personalTier(alertKey, zone) : null;
     const pool = targetId ? EVACUATION_CENTERS.filter((c) => c.id === targetId) : EVACUATION_CENTERS;
     const route = findNearestCenterByRoad(getGraph(), spot, pool);
-    setInfo({ inside: true, zone, tier, route });
+    setInfo({ inside: true, zone, purok, tier, route });
   }, [spot, alertKey, prediction, targetId]);
 
   const isSaved = samePoint(spot, savedPlace);
@@ -276,6 +278,10 @@ export default function KnowYourHazardsPage() {
         source: 'kyh-boundary',
         paint: { 'line-color': '#38bdf8', 'line-width': 2.5, 'line-dasharray': [2, 1.5] },
       });
+
+      // Purok zone dividers + "Zone N" badges (official Naga City barangay map).
+      addZoneLines(map);
+      createZoneMarkers(maplibregl, map);
 
       map.addSource('kyh-buildings', { type: 'geojson', data: EMPTY_FC });
       map.addLayer({
@@ -477,6 +483,11 @@ export default function KnowYourHazardsPage() {
                   <span className="kyz-badge" style={{ '--c': ZONE_COLOR[info.zone] }}>
                     {t('place.zone')}: {t(`place.zoneNames.${info.zone}`)}
                   </span>
+                  {info.purok && (
+                    <span className="kyz-badge" style={{ '--c': '#d97706' }}>
+                      Purok {info.purok.name}
+                    </span>
+                  )}
                 </div>
 
                 <p className="kyz-meaning" style={{ '--c': ZONE_COLOR[info.zone] }}>
@@ -572,8 +583,8 @@ export default function KnowYourHazardsPage() {
       <FloodGuide alertKey={alertKey} />
 
       <p className="kyz-source">
-        Zones come from the 25-year rainfall flood hazard map (Camarines Sur), clipped to Barangay Triangulo: the flooding
-        expected in a rain event with a 4% chance of happening in any year. Levels follow Project NOAH's flood-depth classes
+        Flood zones come from the 100-year rainfall flood hazard map (Project NOAH, Camarines Sur), clipped to Barangay Triangulo: the flooding
+        expected in a rain event with a 1% chance of happening in any year. Levels follow Project NOAH's flood-depth classes
         (low up to 0.5 m, medium 0.5–1.5 m, high over 1.5 m). Each level also takes flow speed into account, so fast-moving shallow
         water can rate higher than its depth alone suggests. Routes follow mapped streets and are estimates.
         Building outlines © OpenStreetMap contributors; heights are partly estimated. {t('disclaimer')}

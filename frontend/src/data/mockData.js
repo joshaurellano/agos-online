@@ -16,8 +16,8 @@ export const ALERT_LEVELS = {
     color: '#eab308',
     bg: '#fef9c3',
     border: '#ca8a04',
-    description: 'Elevated water levels. Minor flooding possible in low-lying areas.',
-    action: 'Residents near waterways should be on alert.',
+    description: 'Flooding is possible.',
+    action: 'Keep drains clear. Charge your phone. Check updates.',
     level: 1,
   },
   WARNING: {
@@ -25,8 +25,8 @@ export const ALERT_LEVELS = {
     color: '#f97316',
     bg: '#ffedd5',
     border: '#ea580c',
-    description: 'Significant flooding expected.',
-    action: 'Prepare evacuation. Secure valuables. Monitor updates.',
+    description: 'Flooding is likely.',
+    action: 'Move valuables and vehicles higher. Avoid low roads. Know your evacuation route.',
     level: 2,
   },
   CRITICAL: {
@@ -34,8 +34,8 @@ export const ALERT_LEVELS = {
     color: '#ef4444',
     bg: '#fee2e2',
     border: '#dc2626',
-    description: 'Severe flooding imminent. Immediate danger to life and property.',
-    action: 'EVACUATE IMMEDIATELY. Proceed to designated evacuation centers.',
+    description: 'Flooding is very likely.',
+    action: 'Pack your go-bag. Avoid floodwater. Follow barangay announcements.',
     level: 3,
   },
   // Forecast-based heads-up, not a live-reading severity -- fires when the

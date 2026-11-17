@@ -23,11 +23,15 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const RainfallPage = lazy(() => import('./pages/RainfallPage'));
 const KnowYourHazardsPage = lazy(() => import('./pages/KnowYourHazardsPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const TeamChatPage = lazy(() => import('./pages/TeamChatPage'));
 const CommunityReportsPage = lazy(() => import('./pages/CommunityReportsPage'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
+const ForecastAccuracyPage = lazy(() => import('./pages/ForecastAccuracyPage'));
 const AlertsLogPage = lazy(() => import('./pages/AlertsLogPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
 const ResidentRegistryPage = lazy(() => import('./pages/ResidentRegistryPage'));
+const NeedsAssessmentPage = lazy(() => import('./pages/NeedsAssessmentPage'));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
@@ -63,8 +67,14 @@ function App() {
                     <AnalyticsPage />
                   </AdminRoute>
                 } />
+                <Route path="/forecast-accuracy" element={
+                  <AdminRoute>
+                    <ForecastAccuracyPage />
+                  </AdminRoute>
+                } />
                 <Route path="/alerts-log"    element={<AlertsLogPage />} />
                 <Route path="/settings"      element={<SettingsPage />} />
+                <Route path="/help"          element={<HelpPage />} />
                 <Route path="/privacy"       element={<PrivacyPage />} />
 
                 <Route path="/reports" element={
@@ -83,6 +93,18 @@ function App() {
                   <AdminRoute>
                     <StaffPage />
                   </AdminRoute>
+                } />
+
+                <Route path="/team-chat" element={
+                  <ResidentRoute>
+                    <TeamChatPage />
+                  </ResidentRoute>
+                } />
+
+                <Route path="/needs-assessment" element={
+                  <ResidentRoute>
+                    <NeedsAssessmentPage />
+                  </ResidentRoute>
                 } />
 
                 <Route path="/register" element={

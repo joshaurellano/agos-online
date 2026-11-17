@@ -25,11 +25,10 @@ import '../services/cached_api.dart';
 import '../services/connectivity_service.dart';
 import '../services/flood_status_service.dart';
 import '../services/offline_cache.dart';
-import '../services/model_api_client.dart';
 import '../theme/panahon_ui.dart';
 import '../widgets/rain_overlay.dart';
 import '../widgets/weather_backdrop.dart';
-import '../widgets/minute_forecast_card.dart' hide AppColors;
+import '../widgets/minute_forecast_card.dart';
 import '../widgets/agos_hero.dart';
 import '../widgets/prepare_card.dart';
 import '../widgets/safety_tools.dart';
@@ -304,13 +303,6 @@ String _relativeTime(DateTime dt) {
   return '${diff.inDays}d ago';
 }
 
-String _greetingWord() {
-  final h = DateTime.now().hour;
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
-
 String _riskEmoji(double pct) {
   if (pct >= 75) return '⛈';
   if (pct >= 50) return '🌧';
@@ -407,7 +399,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   _Prediction? _pred;
-  bool _loading = true;
   bool _error   = false;
   DateTime _lastUpdated = DateTime.now();
 
@@ -474,11 +465,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final json = svc.rawJson;
     setState(() {
       _pred = json != null ? _Prediction.fromJson(json) : null;
-      // _loading only blocks the UI when there's truly nothing to show yet.
       // _error tracks whether the *most recent* refresh attempt failed —
       // shown as a banner even when we still have a last-known reading to
       // display underneath it, same as the original behavior.
-      _loading = svc.loading && json == null;
       _error = svc.error != null;
       if (svc.lastUpdated != null) _lastUpdated = svc.lastUpdated!;
     });
@@ -806,11 +795,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                   _CurrentWeatherHero(current: _hourly.isNotEmpty ? _hourly.first : null),
                   const SizedBox(height: 14),
-                  _SectionLabel(
+                  const _SectionLabel(
                     icon: '🕐',
                     text: 'Hourly Weather',
                     muted: true,
-                    trailing: const SectionPill(text: '48 hours'),
+                    trailing: SectionPill(text: '48 hours'),
                   ),
                   const SizedBox(height: 2),
                   Text('OpenMeteo · Brgy. Triangulo, Naga City',
@@ -985,7 +974,7 @@ class _CurrentWeatherHero extends StatelessWidget {
     if (v == null) return null;
     if (v is num) return v.round().toString();
     final parsed = num.tryParse(v.toString());
-    return parsed != null ? parsed.round().toString() : null;
+    return parsed?.round().toString();
   }
 
   String _emoji(num precip) {
@@ -1114,7 +1103,7 @@ class _WeatherSectionDivider extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Row(children: [
           Icon(Icons.cloud_outlined, size: 12, color: AppColors.textMuted),
-          SizedBox(width: 5),
+          const SizedBox(width: 5),
           Text('WEATHER DATA', style: TextStyle(
               color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
         ]),
@@ -1814,7 +1803,7 @@ void _showFloodDriversSheet(BuildContext context, _DailyFloodForecast d, String 
               Expanded(
                 child: _DriverCallout(
                   icon: '☔', label: 'Rainfall',
-                  value: d.rainfallMm != null ? '${d.rainfallMm!.toStringAsFixed(1)}' : '—',
+                  value: d.rainfallMm != null ? d.rainfallMm!.toStringAsFixed(1) : '—',
                   suffix: 'mm',
                   note: 'Forecast total for the day',
                 ),
@@ -2016,7 +2005,7 @@ class _MapTeaserCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Flood and Weather Map', style: TextStyle(
                 color: AppColors.textPri, fontSize: 12.5, fontWeight: FontWeight.w700)),
-            SizedBox(height: 1),
+            const SizedBox(height: 1),
             Text('See the barangay boundary and rain visualization',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 10.5)),
           ]),

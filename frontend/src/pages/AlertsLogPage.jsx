@@ -5,6 +5,7 @@ import { ErrorBanner } from '../components/ui';
 import { ALERT_LEVELS } from '../data/mockData';
 import { reportTimeAgo as timeAgo } from '../lib/incidentReports';
 import { logger } from '../lib/logger';
+import { friendlyError } from '../lib/errors';
 
 // Public, read-only history of dispatched alerts -- deliberately separate
 // from AlertDeliveryStatus (components/AlertDeliveryStatus.jsx), which stays
@@ -206,7 +207,7 @@ export default function AlertsLogPage() {
         return;
       }
       logger.error('alerts log fetch error:', fetchErr.message);
-      setError(fetchErr.message);
+      setError(friendlyError(fetchErr, 'Could not load alerts. Try again.'));
       setLoading(false);
       return;
     }
@@ -242,7 +243,7 @@ export default function AlertsLogPage() {
 
   return (
     <div className="fade-in" ref={topRef} style={{ scrollMarginTop: 12 }}>
-      {error && <ErrorBanner>Could not load alerts: {error}</ErrorBanner>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
         <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>

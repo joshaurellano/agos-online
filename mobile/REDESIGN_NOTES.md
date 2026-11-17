@@ -50,3 +50,64 @@ Android: AndroidManifest.xml now declares sms: and tel: query intents (needed on
 - "My location" outside the barangay frames both you and the barangay.
 - Top-left items are one Column, so the card, wind pill and legend can't overlap.
 - Leftover unused code (_styleSwitcher, _zoomBy, _canZoomIn/Out) can be deleted; analyze will warn about them.
+
+## Round 3 – Evacuation screen
+- Map now fills the whole tab. The half-screen list of long address cards is replaced by a
+  swipeable card strip over the map (nearest first once located). Swiping flies the map to that
+  center; tapping a marker brings its card into view.
+- Each card: walking time + distance (street route when available, straight-line estimate
+  otherwise), address, "Directions" (opens Google Maps walking directions for real turn-by-turn)
+  and "Tell family" (SMS with the center + your live location link).
+- Top strip reacts to the flood level: calm -> "No evacuation needed", Advisory -> "know your route",
+  Warning -> "Be ready to evacuate", Critical -> red "Evacuate now" button straight to directions.
+- Markers: name label only on the selected center (the 7 px always-on labels were unreadable and
+  overlapped); selected marker is larger.
+- Big "Find nearest to me" button until location is known.
+- Tools 5 -> 3 (locate, show-all, key). Zoom buttons and fullscreen removed (pinch / double-tap).
+  The key panel also holds short "if you have to evacuate" tips.
+- Removed: the search bar (only 3 centers - swiping is faster), dead banner/list code.
+- Needs network only for the street route and Directions; centers, distances and cards work offline.
+- `_nearestDist` is now unused; analyze will warn - safe to delete.
+
+## Round 4 – Rainfall screen
+- Hero is now "Rain right now + what happens next": PAGASA 5-band scale with a marker at the current
+  rate, always-visible status chip (NO RAIN / LIGHT / ...), and ONE plain sentence from the forecast
+  ("Dry for now - rain expected around 3 PM" / "Rain should ease around 6 PM") plus the heaviest hour.
+- NEW "Next 24 hours" card: tap-able hourly bars coloured by PAGASA band, plus 6h/12h/24h totals and
+  chance. Uses the same /api/forecast + cache key as the Dashboard (works offline from its saved copy).
+- The 4 KPI cards (two of which read "-- / Insufficient hourly data") became one "Rain that has fallen"
+  card: last 3h / 6h / 24h and the trend. Empty state is a single calm line.
+- History chart: Hourly/Daily is a segmented switch inside the card; boxed disclaimer became a caption.
+- Threshold reference collapsed into "What do the rain levels mean?" (highlights the current level only
+  on the hourly table - previously an hourly reading was also compared against the daily table).
+- Removed unused _MiniStat/_KpiCard/_PeriodTab/_total/_peak.
+- Heads-up (not changed): widgets/minute_forecast_card.dart defines its own light-only AppColors, so the
+  Dashboard's MinuteCast card ignores dark mode.
+
+## Round 5 – Reports (community feed + report form)
+Found: IncidentService.fetchMyReports / deleteOwnPendingReport / streamVerifiedReports existed but no
+screen used them - after submitting, a resident could never see if their report was verified, pending or
+rejected (and why), couldn't withdraw it, and the feed wasn't live.
+
+Feed (screens/community_reports_screen.dart)
+- Tabs: Community | My reports (badge = reports awaiting review). After sending a report the app jumps
+  to My reports. Each own report shows Pending review / Verified / Not verified (+ reason) and a
+  Withdraw button while pending.
+- Realtime updates via streamVerifiedReports, with a "Live" dot. If Realtime isn't enabled for the
+  incident_reports table the stream errors quietly and pull-to-refresh still works.
+- Filter chips: All / Last 24 hours / With photo, plus a count.
+- Alert-aware banner: at Advisory+ asks "is water rising on your street?" -> opens the form.
+- Cards: depth / passability chips, NEW tag (<1 h), friendly "Pinned location" instead of raw
+  coordinates, "View on map" (opens the pin in the maps app), tap photo for full-screen pinch-zoom.
+- Better empty states with a "Report flooding" button.
+
+Form (screens/report_incident_screen.dart)
+- NEW "How deep is the water?" (Ankle / Knee / Waist / Chest+, with Filipino hints) and "Can vehicles
+  pass?" quick picks. Stored as a "[Knee-deep · Not passable]" prefix on the description
+  (models/incident_report.dart: ReportTags) - NO database change. Description is now optional if a
+  depth is picked.
+- Location is attached automatically when permission was already granted (shows accuracy).
+- Submit button pinned to the bottom; name field moved last; shorter copy.
+
+Note: officials viewing reports on the web dashboard will see the "[Knee-deep · ...]" prefix as plain
+text; the dashboard can parse it the same way (regex ^\[(.+?)\]).

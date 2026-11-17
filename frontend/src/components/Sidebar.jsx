@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LuLayoutDashboard, LuCloudRain, LuActivity, LuBellRing, LuSettings,
-  LuClipboardList, LuMegaphone, LuWaves, LuUserCog, LuUsers, LuUserPlus,
-  LuX, LuLogOut, LuLogIn, LuChevronLeft, LuChevronRight,
+  LuClipboardList, LuClipboardCheck, LuMegaphone, LuWaves, LuUserCog, LuUsers, LuUserPlus, LuRadio,
+  LuX, LuLogOut, LuLogIn, LuChevronLeft, LuChevronRight, LuCircleHelp,
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import agosLogo from '../assets/agos-logo.png';
@@ -23,9 +23,13 @@ const NAV_ITEMS = [
   { path: '/know-your-hazards', label: 'Know Your Risk', icon: LuWaves,        group: 'community' },
   { path: '/alerts-log',        label: 'Alert Log',        icon: LuBellRing,        group: 'community' },
   { path: '/settings',          label: 'Settings',         icon: LuSettings,        group: 'community' },
+  { path: '/help',              label: 'Help',             icon: LuCircleHelp,      group: 'community' },
   { path: '/reports',           label: 'Flood Log',        icon: LuClipboardList,   staffOnly: true, group: 'staff' },
   { path: '/community-reports', label: 'Resident Reports', icon: LuMegaphone,       staffOnly: true, group: 'staff' },
+  { path: '/needs-assessment',  label: 'Needs Assessment', icon: LuClipboardCheck,  staffOnly: true, group: 'staff' },
+  { path: '/team-chat',         label: 'Team Coordination', icon: LuRadio,          staffOnly: true, group: 'staff' },
   { path: '/analytics',         label: 'ML Analytics',     icon: LuActivity,        adminOnly: true, group: 'staff' },
+  { path: '/forecast-accuracy', label: 'Forecast vs Actual', icon: LuActivity,      adminOnly: true, group: 'staff' },
   { path: '/staff',             label: 'Staff',            icon: LuUserCog,         adminOnly: true, group: 'staff' },
   { path: '/residents',         label: 'Residents',        icon: LuUsers,           staffOnly: true, group: 'staff' },
   { path: '/add-resident',      label: 'Add Resident',     icon: LuUserPlus,        staffOnly: true, group: 'staff' },

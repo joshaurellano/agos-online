@@ -13,19 +13,7 @@
 // a literal per-minute reproduction.
 
 import 'package:flutter/material.dart';
-
-// Fallback theme colors used when the app theme export is unavailable.
-// Keeping these locally avoids the undefined `AppColors` error without
-// touching any other file in the project.
-class AppColors {
-  const AppColors._();
-
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color bgBorder = Color(0xFFE5E7EB);
-  static const Color textPri = Color(0xFF111827);
-  static const Color textSec = Color(0xFF4B5563);
-  static const Color textSoft = Color(0xFF6B7280);
-}
+import '../main.dart'; // AppColors — theme-aware, follows dark/light mode
 
 class _RateBand {
   final String label;

@@ -129,6 +129,7 @@ export default function Footer() {
             <ul className="site-footer-list">
               <li><Link className="site-footer-link" to="/know-your-hazards">Know your risk <LuChevronRight aria-hidden="true" /></Link></li>
               <li><Link className="site-footer-link" to="/rainfall">Rainfall <LuChevronRight aria-hidden="true" /></Link></li>
+              <li><Link className="site-footer-link" to="/help">Help center <LuChevronRight aria-hidden="true" /></Link></li>
               <li><Link className="site-footer-link" to="/privacy">Privacy notice <LuChevronRight aria-hidden="true" /></Link></li>
             </ul>
           </div>

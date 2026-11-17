@@ -38,7 +38,7 @@ const kTileUrlTerrain = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
 class _TileSource {
   final String urlTemplate;
   final String subdomain; // used only to build a concrete URL for downloading
-  const _TileSource(this.urlTemplate, [this.subdomain = '']);
+  const _TileSource(this.urlTemplate) : subdomain = '';
 }
 
 // Street map only — see the header comment for why the other two basemaps

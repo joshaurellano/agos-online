@@ -3,21 +3,19 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import trianguloRoads from '../data/trianguloRoads.json';
-import trianguloFloodHazard from '../data/trianguloFloodHazard.json';
 // ~850 KB of footprints: fetched as its own chunk after the map is up instead of
 // blocking the first paint, and cached for style switches.
 let buildingsPromise = null;
 const loadBuildings = () => (buildingsPromise ??= import('../data/trianguloBuildings.json').then((m) => m.default));
 const EMPTY_FC = { type: 'FeatureCollection', features: [] };
-import { CRITICAL_FACILITIES, FACILITY_STYLE, facilityIconSvgMarkup } from '../data/criticalFacilities';
 import RainOverlay from './RainOverlay';
 import RainDebugControls from './RainDebugControls';
 import MapTimeline from './MapTimeline';
 import WindFlowOverlay from './WindFlowOverlay';
 import WindDirectionArrow, { degToCardinal } from './WindDirectionArrow';
 import { MapRecenterButton } from './ui';
-import { useYourPlaceMap3D } from '../hooks/useYourPlaceMap3D';
 import PlacePickBanner from './PlacePickBanner';
+import { addZoneLines, createZoneMarkers, setZoneLinesVisible, setZoneMarkersVisible } from '../lib/zoneLayers';
 
 // Road class -> line weight, matching the 2D FloodMap's ROAD_WEIGHT so the
 // two views read consistently (trunk/primary thicker, service thinner).
@@ -27,34 +25,8 @@ const ROAD_WEIGHT = {
   unclassified: 2, residential: 2, service: 1,
 };
 
-// Building colours: buildings matched to a verified critical facility pick up
-// that facility's marker colour; everything else is a neutral grey-blue.
-const BUILDING_COLOR = [
-  'match', ['get', 'c'],
-  ...Object.entries(FACILITY_STYLE).flatMap(([type, st]) => [type, st.color]),
-  '#c9d3df',
-];
-
-// Which 25-yr hazard zone a point sits in (null = outside the mapped zones).
-// Plain ray-casting over the hazard MultiPolygons -- 3 features, so cheap.
-function ringContains(ring, x, y) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-function hazardAt(lng, lat) {
-  let best = null;
-  for (const f of trianguloFloodHazard.features) {
-    const polys = f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [f.geometry.coordinates];
-    const hit = polys.some(poly => ringContains(poly[0], lng, lat) && !poly.slice(1).some(h => ringContains(h, lng, lat)));
-    if (hit && (!best || f.properties.hazard_class > best.hazard_class)) best = f.properties;
-  }
-  return best; // { hazard_class, hazard_level, color } | null
-}
+// Neutral building colour.
+const BUILDING_COLOR = '#c9d3df';
 
 const BOUNDARY_COLOR = '#38bdf8';
 const WATER_COLOR = '#1e88e5';
@@ -62,16 +34,6 @@ const WATER_COLOR = '#1e88e5';
 // Shared between the initial map setup and the recenter button, so the two
 // can never drift apart.
 const DEFAULT_VIEW = { center: [123.1905, 13.618], zoom: 16.2, pitch: 55, bearing: -17 };
-
-// 25-yr rainfall return period hazard zones, clipped to the barangay
-// boundary. Extruded a little per class (not real depth data -- just a
-// legibility cue) so Low/Medium/High read distinctly at a glance in 3D.
-const HAZARD_HEIGHT = ['match', ['get', 'hazard_class'], 1, 1.5, 2, 3, 3, 4.5, 1.5];
-const HAZARD_LEGEND = [
-  { level: 'Low', color: '#3b82f6' },
-  { level: 'Medium', color: '#f59e0b' },
-  { level: 'High', color: '#ef4444' },
-];
 
 // Uniform across the whole boundary (not per-street/per-building) -- same
 // as every other severity cue in this app: it's an intensity signal from
@@ -92,33 +54,130 @@ const STYLE_URLS = {
 };
 const STYLE_LABELS = { liberty: 'Liberty', bright: 'Bright', positron: 'Positron' };
 
-// ─── Time-of-day lighting presets ──────────────────────────────────────────
-// Stylistic only -- not real sun-position astronomy, just four buckets that
-// make the 3D buildings/sky read as day/dawn/dusk/night based on the
-// viewer's local clock. map.setLight() (radial/azimuthal/polar + color +
-// intensity) is core MapLibre style-spec API, shared across all three
-// OpenFreeMap styles, not tied to any one of them.
-function getLightBucket(hour) {
-  if (hour >= 5 && hour < 7) return 'dawn';
-  if (hour >= 7 && hour < 17) return 'day';
-  if (hour >= 17 && hour < 20) return 'dusk';
-  return 'night';
+// ─── Fixed daytime lighting ────────────────────────────────────────────────
+// The map always uses the same bright daytime look, whatever the clock says.
+// map.setLight() is core MapLibre style-spec API, shared across all three
+// OpenFreeMap styles.
+const DAY_LIGHT = { color: '#ffffff', intensity: 0.5, position: [1.5, 210, 45] };
+const DAY_SKY = {
+  'sky-color': '#bcdcff',
+  'horizon-color': '#ffffff',
+  'fog-color': '#ffffff',
+  'sky-horizon-blend': 0.6,
+  'horizon-fog-blend': 0.6,
+  'fog-ground-blend': 0.2,
+  'atmosphere-blend': 0.8,
+};
+
+// ─── Basemap look: labels + per-style tone ─────────────────────────────────
+// The three OpenFreeMap styles all ship small, pale labels, and once the
+// roads/buildings/zone overlays are on top they look nearly identical. So
+// after every style load we (1) make the basemap's text darker, bigger and
+// haloed, and (2) give each style its own ground tone and building colour.
+// Originals are cached so a style can be re-toned without reloading it.
+const LABEL_SCALE = 1.2;
+
+const STYLE_LOOKS = {
+  // Natural OSM colours, left as shipped.
+  liberty:  { building: '#cdd6e2', sat: 1,    mix: null,            mixAmount: 0 },
+  // Same map, noticeably more saturated, with warm sand buildings.
+  bright:   { building: '#f0dcc0', sat: 1.5,  mix: null,            mixAmount: 0 },
+  // Near-greyscale with a cool blue-grey cast; white buildings so the
+  // coloured overlays stand out.
+  positron: { building: '#ffffff', sat: 0.15, mix: [214, 224, 238], mixAmount: 0.3 },
+};
+
+const COLOR_PROPS = ['background-color', 'fill-color', 'fill-outline-color', 'line-color'];
+
+function parseColor(str) {
+  if (typeof str !== 'string') return null;
+  const v = str.trim().toLowerCase();
+  let m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+  if (m) {
+    let h = m[1];
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 1];
+  }
+  m = v.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/);
+  if (m) return [+m[1], +m[2], +m[3], m[4] == null ? 1 : +m[4]];
+  m = v.match(/^hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+)\s*)?\)$/);
+  if (m) {
+    const h = +m[1] / 360, s2 = +m[2] / 100, l = +m[3] / 100;
+    const f = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s2) : l + s2 - l * s2, p = 2 * l - q;
+    return [f(p, q, h + 1 / 3) * 255, f(p, q, h) * 255, f(p, q, h - 1 / 3) * 255, m[4] == null ? 1 : +m[4]];
+  }
+  return null;
 }
 
-const LIGHT_PRESETS = {
-  day:   { light: { color: '#ffffff', intensity: 0.5, position: [1.5, 210, 45] },
-           sky: { color: '#bcdcff', halo: '#ffffff', sunPos: [210, 45], opacity: 1 },
-           bg: '#dce9f5' },
-  dawn:  { light: { color: '#ffcf9e', intensity: 0.35, position: [1.5, 100, 82] },
-           sky: { color: '#ffd9a8', halo: '#fff2d9', sunPos: [100, 82], opacity: 1 },
-           bg: '#f3dcc2' },
-  dusk:  { light: { color: '#ff9d66', intensity: 0.3, position: [1.5, 280, 84] },
-           sky: { color: '#7a5a7a', halo: '#ff9d66', sunPos: [280, 84], opacity: 1 },
-           bg: '#4a3b57' },
-  night: { light: { color: '#3a4a72', intensity: 0.15, position: [1.5, 180, 100] },
-           sky: { color: '#0c1830', halo: '#1a2942', sunPos: [180, 100], opacity: 1 },
-           bg: '#0c1830' },
-};
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  if (mx === mn) return [0, 0, l];
+  const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+const hsla = (h, s, l, a) => `hsla(${h.toFixed(1)}, ${(Math.min(1, s) * 100).toFixed(1)}%, ${(l * 100).toFixed(1)}%, ${a})`;
+
+// Walks a paint value (plain colour, stop function or expression) and maps
+// every literal colour string in it.
+function mapColors(value, fn) {
+  if (typeof value === 'string') {
+    const c = parseColor(value);
+    return c ? fn(c) : value;
+  }
+  if (Array.isArray(value)) return value.map(v => mapColors(v, fn));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const k of Object.keys(value)) out[k] = mapColors(value[k], fn);
+    return out;
+  }
+  return value;
+}
+
+// Ground colour -> this style's tone (saturation scale, then a tint).
+function toneGround([r, g, b, a], look) {
+  const [h, s, l] = rgbToHsl(r, g, b);
+  let [nr, ng, nb] = parseColor(hsla(h, s * look.sat, l, a));
+  if (look.mix) {
+    nr += (look.mix[0] - nr) * look.mixAmount;
+    ng += (look.mix[1] - ng) * look.mixAmount;
+    nb += (look.mix[2] - nb) * look.mixAmount;
+  }
+  return `rgba(${Math.round(nr)}, ${Math.round(ng)}, ${Math.round(nb)}, ${a})`;
+}
+
+// Label colour -> same hue, much darker, so it reads on any ground.
+function darkenText([r, g, b, a]) {
+  const [h, s, l] = rgbToHsl(r, g, b);
+  return hsla(h, Math.max(s, 0.1), Math.min(l, 0.22), a);
+}
+
+// Scales a text-size value (number, legacy stops, or interpolate/step
+// expression) when every output is a plain number; otherwise leaves it.
+function scaleSize(v, k) {
+  const sc = n => +(n * k).toFixed(2);
+  if (typeof v === 'number') return sc(v);
+  if (v && typeof v === 'object' && !Array.isArray(v) && Array.isArray(v.stops)) {
+    return v.stops.every(st => typeof st[1] === 'number') ? { ...v, stops: v.stops.map(([z, n]) => [z, sc(n)]) } : v;
+  }
+  if (Array.isArray(v) && (v[0] === 'interpolate' || v[0] === 'step')) {
+    const first = v[0] === 'interpolate' ? 4 : 2;
+    const idx = [];
+    for (let i = first; i < v.length; i += 2) idx.push(i);
+    if (!idx.every(i => typeof v[i] === 'number')) return v;
+    return v.map((x, i) => (idx.includes(i) ? sc(x) : x));
+  }
+  return v;
+}
 
 function roadsToGeoJSON(roads) {
   return {
@@ -166,21 +225,6 @@ function roadWidthExpression() {
   return expr;
 }
 
-// Plain DOM element for a maplibregl.Marker -- these live outside the
-// style/source/layer system entirely, so (unlike everything in
-// addDataLayers) they survive a setStyle() basemap switch without needing
-// to be re-added. Teardrop pin, same markup as the 2D map.
-function createFacilityMarkerEl(facility) {
-  const style = FACILITY_STYLE[facility.facilityType];
-  const el = document.createElement('div');
-  el.style.display = 'flex';
-  el.style.alignItems = 'center';
-  el.style.justifyContent = 'center';
-  el.style.cursor = 'pointer';
-  el.innerHTML = facilityIconSvgMarkup(facility.facilityType, { size: 30, color: style.color, shape: 'pin' });
-  return el;
-}
-
 // Small pill toggle used for the map's layer switches.
 function LayerChip({ active, label, title, onClick }) {
   return (
@@ -201,20 +245,21 @@ function LayerChip({ active, label, title, onClick }) {
   );
 }
 
-export default function FloodMap3D({ currentAlert, probabilityPct = null, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly, focusRequest, showFacilities, setShowFacilities }) {
+export default function FloodMap3D({ currentAlert, probabilityPct = null, boundary, alertColors, rainfallMm, windSignal, windDirectionDeg, condition, minutely, hourly }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const [styleKey, setStyleKey] = useState('liberty');
   const [rainDebugPreset, setRainDebugPreset] = useState(null); // dev-only override, see RainDebugControls
   // The HUD is big; on phones it starts collapsed to a one-line alert chip.
   const [hudOpen, setHudOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 700);
-  const [showHazard, setShowHazard] = useState(true);
   const [showWind, setShowWind] = useState(true);
   const [showRainFx, setShowRainFx] = useState(true);
-  const [showEvac, setShowEvac] = useState(true);
+  const [showZones, setShowZones] = useState(true);
   // null = live conditions; otherwise the forecast frame picked on the timeline.
   const [forecastFrame, setForecastFrame] = useState(null);
-  const facilityMarkersRef = useRef([]);
+  const zoneMarkersRef = useRef([]);
+  const baseStyleRef = useRef({});
+  const showZonesRef = useRef(true);
   const currentAlertRef = useRef(currentAlert);
   currentAlertRef.current = currentAlert;
   const [showBuildings, setShowBuildings] = useState(true);
@@ -223,39 +268,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
   const selectedIdRef = useRef(-1);
   const showBuildingsRef = useRef(showBuildings);
   showBuildingsRef.current = showBuildings;
-  const showHazardRef = useRef(showHazard);
-  showHazardRef.current = showHazard;
-  const showFacilitiesRef = useRef(showFacilities);
-  showFacilitiesRef.current = showFacilities;
-
-  // Critical-facility markers (hospitals/schools) -- plain maplibregl.Marker
-  // DOM overlays, not style layers, so they're created once on load rather
-  // than inside addDataLayers (which re-runs on every basemap switch and
-  // would otherwise duplicate them).
-  const addFacilityMarkers = (map) => {
-    if (facilityMarkersRef.current.length > 0) return;
-    facilityMarkersRef.current = CRITICAL_FACILITIES.map(facility => {
-      const el = createFacilityMarkerEl(facility);
-      const style = FACILITY_STYLE[facility.facilityType];
-      const popup = new maplibregl.Popup({ offset: 38, closeButton: false }).setHTML(`
-        <div style="min-width:160px; padding:2px;">
-          <div style="font-weight:700; font-size:0.85rem; margin-bottom:4px;">${facility.name}</div>
-          <div style="display:inline-block; font-size:0.6rem; font-weight:700; text-transform:uppercase;
-                      letter-spacing:0.04em; color:${style.color}; background:${style.color}18;
-                      border:1px solid ${style.color}40; border-radius:4px; padding:2px 6px;">
-            ${style.label}
-          </div>
-        </div>
-      `);
-      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([facility.position.lng, facility.position.lat])
-        .setPopup(popup)
-        .addTo(map);
-      marker._facilityId = facility.id; // plain JS property, for lookup on focus-request below
-      el.style.display = showFacilitiesRef.current ? 'flex' : 'none';
-      return marker;
-    });
-  };
+  showZonesRef.current = showZones;
 
   // Hides the basemap's own extruded buildings while ours are showing.
   // Flat building footprints from the basemap stay visible either way.
@@ -275,11 +288,18 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     const color = alertColors[currentAlertRef.current] || alertColors.NORMAL;
     const water = ALERT_WATER[currentAlertRef.current] || ALERT_WATER.NORMAL;
 
+    // Our overlays go UNDER the basemap's first text label, so street and
+    // place names are never covered by the road/zone/boundary lines.
+    const labelAnchor = (map.getStyle()?.layers ?? []).find(
+      l => l.type === 'symbol' && l.layout?.['text-field'] !== undefined && !l.id.startsWith('triangulo-'),
+    )?.id;
+    const addBelowLabels = (layer) => map.addLayer(layer, labelAnchor);
+
     if (!map.getSource('triangulo-roads')) {
       map.addSource('triangulo-roads', { type: 'geojson', data: roadsToGeoJSON(trianguloRoads) });
     }
     if (!map.getLayer('triangulo-roads-line')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-roads-line',
         type: 'line',
         source: 'triangulo-roads',
@@ -301,7 +321,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       map.addSource('triangulo-water', { type: 'geojson', data: boundaryToPolygonGeoJSON(boundary) });
     }
     if (!map.getLayer('triangulo-water-fill')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-water-fill',
         type: 'fill-extrusion',
         source: 'triangulo-water',
@@ -310,28 +330,6 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
           'fill-extrusion-height': water.height,
           'fill-extrusion-base': 0,
           'fill-extrusion-opacity': water.opacity,
-        },
-      });
-    }
-
-    // 25-yr flood hazard overlay -- own toggle, independent of the live
-    // alert-driven water slab above. Added after the water slab / before
-    // the boundary outline so the dashed boundary still renders crisply
-    // on top of it.
-    if (!map.getSource('triangulo-flood-hazard')) {
-      map.addSource('triangulo-flood-hazard', { type: 'geojson', data: trianguloFloodHazard });
-    }
-    if (!map.getLayer('triangulo-flood-hazard-fill')) {
-      map.addLayer({
-        id: 'triangulo-flood-hazard-fill',
-        type: 'fill-extrusion',
-        source: 'triangulo-flood-hazard',
-        layout: { visibility: showHazardRef.current ? 'visible' : 'none' },
-        paint: {
-          'fill-extrusion-color': ['get', 'color'],
-          'fill-extrusion-height': HAZARD_HEIGHT,
-          'fill-extrusion-base': 0,
-          'fill-extrusion-opacity': 0.55,
         },
       });
     }
@@ -348,7 +346,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
     if (!map.getLayer('triangulo-buildings-3d')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-buildings-3d',
         type: 'fill-extrusion',
         source: 'triangulo-buildings',
@@ -362,7 +360,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
     if (!map.getLayer('triangulo-buildings-hl')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-buildings-hl',
         type: 'fill-extrusion',
         source: 'triangulo-buildings',
@@ -382,7 +380,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       map.addSource('triangulo-boundary', { type: 'geojson', data: boundaryToLineGeoJSON(boundary) });
     }
     if (!map.getLayer('triangulo-boundary-halo')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-boundary-halo',
         type: 'line',
         source: 'triangulo-boundary',
@@ -391,7 +389,7 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
     if (!map.getLayer('triangulo-boundary-line')) {
-      map.addLayer({
+      addBelowLabels({
         id: 'triangulo-boundary-line',
         type: 'line',
         source: 'triangulo-boundary',
@@ -405,89 +403,62 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       });
     }
 
-    // Sky layer -- optional; wrapped in try/catch since older style JSON or
-    // a MapLibre version mismatch could omit 'sky' layer-type support.
-    if (!map.getLayer('triangulo-sky')) {
-      try {
-        map.addLayer({
-          id: 'triangulo-sky',
-          type: 'sky',
-          paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun-intensity': 8 },
+    // Purok zone dividers (style layers, so re-added after a basemap switch).
+    addZoneLines(map, showZonesRef.current, labelAnchor);
+  };
+
+  const applyDayLighting = (map) => {
+    map.setLight(DAY_LIGHT);
+    // MapLibre has no 'sky' layer type -- the sky is a style-level property.
+    try {
+      map.setSky(DAY_SKY);
+    } catch { /* sky not supported -- lighting still applies */ }
+  };
+
+  // Per-style ground tone + building colour, and clearer basemap labels.
+  const applyStyleLook = (map, key) => {
+    const look = STYLE_LOOKS[key] ?? STYLE_LOOKS.liberty;
+    const cache = baseStyleRef.current;
+    const layers = map.getStyle()?.layers ?? [];
+    const retone = look.sat !== 1 || look.mix;
+
+    layers.forEach(l => {
+      if (l.id.startsWith('triangulo-')) return;
+      const paint = l.paint || {};
+      const layout = l.layout || {};
+
+      // Ground colours (land, water, parks, roads...). Skipped for symbols.
+      if (l.type !== 'symbol') {
+        COLOR_PROPS.forEach(p => {
+          const ck = `${l.id}|${p}`;
+          if (paint[p] === undefined && cache[ck] === undefined) return;
+          if (cache[ck] === undefined) cache[ck] = paint[p];
+          try { map.setPaintProperty(l.id, p, retone ? mapColors(cache[ck], c => toneGround(c, look)) : cache[ck]); } catch { /* not valid for this layer */ }
         });
-      } catch (e) {
-        // sky layer unsupported -- lighting still applies via map.setLight()
+        return;
       }
-    }
-  };
 
-  const applyTimeOfDay = (map) => {
-    const bucket = getLightBucket(new Date().getHours());
-    const preset = LIGHT_PRESETS[bucket];
-    map.setLight(preset.light);
-    if (map.getLayer('triangulo-sky')) {
-      map.setPaintProperty('triangulo-sky', 'sky-atmosphere-color', preset.sky.color);
-      map.setPaintProperty('triangulo-sky', 'sky-atmosphere-halo-color', preset.sky.halo);
-      map.setPaintProperty('triangulo-sky', 'sky-atmosphere-sun', preset.sky.sunPos);
-      map.setPaintProperty('triangulo-sky', 'sky-opacity', preset.sky.opacity);
-    }
-    if (map.getLayer('background')) {
-      map.setPaintProperty('background', 'background-color', preset.bg);
-    }
-  };
-
-  // Highlight = the selected building if a popup is open, else the hovered one.
-  const refreshBuildingHighlight = (map) => {
-    if (!map.getLayer('triangulo-buildings-hl')) return;
-    const id = selectedIdRef.current >= 0 ? selectedIdRef.current : hoverIdRef.current;
-    map.setFilter('triangulo-buildings-hl', ['==', ['get', 'i'], id]);
-  };
-
-  const openBuildingPopup = (map, feature, lngLat) => {
-    const { f: facilityId, c: type, h, e: estimated, i } = feature.properties;
-    const facility = facilityId ? CRITICAL_FACILITIES.find(x => x.id === facilityId) : null;
-    const style = type ? FACILITY_STYLE[type] : null;
-    const hazard = hazardAt(lngLat.lng, lngLat.lat);
-    const alert = currentAlertRef.current;
-    const alertCol = alertColors[alert] || alertColors.NORMAL;
-    const waterH = (ALERT_WATER[alert] || ALERT_WATER.NORMAL).height;
-    const heightNum = Number(h);
-    // The slab is a severity cue, not measured depth -- only say "reaches the
-    // roofline" when it plainly does, otherwise leave depth out entirely.
-    const slabNote = waterH > 0 && heightNum <= waterH
-      ? 'Illustrative flood layer covers this building at the current alert level.'
-      : '';
-
-    const badge = (txt, color) => `<span style="display:inline-block; font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:${color}; background:${color}18; border:1px solid ${color}40; border-radius:4px; padding:2px 6px; margin-right:4px;">${txt}</span>`;
-
-    buildingPopupRef.current?.remove();
-    selectedIdRef.current = i;
-    refreshBuildingHighlight(map);
-    const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' })
-      .setLngLat(lngLat)
-      .setHTML(`
-        <div style="min-width:190px; padding:2px;">
-          <div style="font-weight:700; font-size:0.88rem; margin-bottom:5px;">${facility ? facility.name : 'Building'}</div>
-          <div style="margin-bottom:6px;">
-            ${style ? badge(style.label, style.color) : ''}
-            ${hazard ? badge(`${hazard.hazard_level} flood hazard`, hazard.color) : badge('Outside mapped hazard zones', '#64748b')}
-          </div>
-          <div style="font-size:0.7rem; line-height:1.5; color:#475569;">
-            <div>Live alert: <b style="color:${alertCol};">${alert}</b></div>
-            <div>Height: ~${Math.round(heightNum)} m${estimated ? ' (estimated)' : ''}</div>
-            ${slabNote ? `<div style="margin-top:3px;">${slabNote}</div>` : ''}
-          </div>
-          <div style="font-size:0.58rem; color:#94a3b8; margin-top:6px;">
-            Hazard: 25-yr rainfall return period map. Building outline © OpenStreetMap contributors.
-          </div>
-        </div>
-      `)
-      .addTo(map);
-    popup.on('close', () => {
-      if (buildingPopupRef.current === popup) buildingPopupRef.current = null;
-      selectedIdRef.current = -1;
-      refreshBuildingHighlight(map);
+      // Labels: darker, haloed, bigger. Light-on-dark text (e.g. road
+      // shields) is left alone.
+      if (layout['text-field'] === undefined) return;
+      const tk = `${l.id}|text-color`;
+      if (cache[tk] === undefined) cache[tk] = paint['text-color'] ?? '#000000';
+      const lit = parseColor(cache[tk]);
+      if (lit && rgbToHsl(lit[0], lit[1], lit[2])[2] >= 0.62) return;
+      try {
+        map.setPaintProperty(l.id, 'text-color', mapColors(cache[tk], c => (rgbToHsl(c[0], c[1], c[2])[2] < 0.62 ? darkenText(c) : c)));
+        map.setPaintProperty(l.id, 'text-halo-color', '#ffffff');
+        map.setPaintProperty(l.id, 'text-halo-width', 2);
+        map.setPaintProperty(l.id, 'text-halo-blur', 0.4);
+        const sk = `${l.id}|text-size`;
+        if (cache[sk] === undefined) cache[sk] = layout['text-size'] ?? 16;
+        map.setLayoutProperty(l.id, 'text-size', scaleSize(cache[sk], LABEL_SCALE));
+      } catch { /* property not valid for this layer */ }
     });
-    buildingPopupRef.current = popup;
+
+    if (map.getLayer('triangulo-buildings-3d')) {
+      map.setPaintProperty('triangulo-buildings-3d', 'fill-extrusion-color', look.building);
+    }
   };
 
   // Init map once on mount.
@@ -510,10 +481,10 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     // Layer-delegated listeners survive basemap switches (setStyle), so they
     // are registered once here rather than inside addDataLayers.
     map.on('click', 'triangulo-buildings-3d', (e) => {
-      if (!pickingRef.current && e.features?.[0]) openBuildingPopup(map, e.features[0], e.lngLat);
+      if (e.features?.[0]) openBuildingPopup(map, e.features[0], e.lngLat);
     });
     map.on('mousemove', 'triangulo-buildings-3d', (e) => {
-      map.getCanvas().style.cursor = pickingRef.current ? 'crosshair' : 'pointer';
+      map.getCanvas().style.cursor = 'pointer';
       const id = e.features?.[0]?.properties?.i ?? -1;
       if (id !== hoverIdRef.current) {
         hoverIdRef.current = id;
@@ -521,15 +492,16 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
       }
     });
     map.on('mouseleave', 'triangulo-buildings-3d', () => {
-      map.getCanvas().style.cursor = pickingRef.current ? 'crosshair' : '';
+      map.getCanvas().style.cursor = '';
       hoverIdRef.current = -1;
       refreshBuildingHighlight(map);
     });
 
     map.on('load', () => {
       addDataLayers(map);
-      applyTimeOfDay(map);
-      addFacilityMarkers(map);
+      applyDayLighting(map);
+      applyStyleLook(map, 'liberty');
+      zoneMarkersRef.current = createZoneMarkers(maplibregl, map, showZonesRef.current);
     });
 
     // Keeps the canvas correctly sized whenever the container's box
@@ -538,54 +510,15 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     const resizeObserver = new ResizeObserver(() => map.resize());
     resizeObserver.observe(containerRef.current);
 
-    // Re-lights every 5 minutes so a long-running demo still drifts with
-    // the real clock instead of freezing at whatever time the page opened.
-    const lightTimer = setInterval(() => {
-      if (mapRef.current && mapRef.current.isStyleLoaded()) applyTimeOfDay(mapRef.current);
-    }, 5 * 60 * 1000);
-
     return () => {
-      clearInterval(lightTimer);
       buildingPopupRef.current?.remove();
       resizeObserver.disconnect();
-      facilityMarkersRef.current.forEach(marker => marker.remove());
-      facilityMarkersRef.current = [];
+      zoneMarkersRef.current.forEach(marker => marker.remove());
+      zoneMarkersRef.current = [];
       map.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Saved place: pin, route and evacuation centers on this map. Declared after
-  // the init effect above so the map instance exists when its effects run.
-  const pickingRef = useYourPlaceMap3D(mapRef, { currentAlert, showEvac, showPlace: false });
-
-  // Toggle critical-facility marker visibility. Markers are plain DOM
-  // overlays (not a style layer), so this just flips each element's
-  // display rather than touching map state.
-  useEffect(() => {
-    facilityMarkersRef.current.forEach(marker => {
-      marker.getElement().style.display = showFacilities ? 'flex' : 'none';
-    });
-  }, [showFacilities]);
-
-  // Fly to + pop open a facility marker when a Critical Facilities card is
-  // clicked (focusRequest set by the Dashboard). ts in focusRequest makes
-  // re-clicking the same facility retrigger this even though the id repeats.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!focusRequest || !map) return;
-    const facility = CRITICAL_FACILITIES.find(f => f.id === focusRequest.id);
-    if (!facility) return;
-    setShowFacilities(true);
-    const flyAndPop = () => {
-      map.flyTo({ center: [facility.position.lng, facility.position.lat], zoom: 18, pitch: 55, duration: 1200 });
-      const marker = facilityMarkersRef.current.find(m => m._facilityId === facility.id);
-      const popup = marker?.getPopup();
-      if (popup && !popup.isOpen()) marker.togglePopup();
-    };
-    if (map.isStyleLoaded()) flyAndPop();
-    else map.once('load', flyAndPop);
-  }, [focusRequest]);
 
   // Keep road color AND water slab height/opacity in sync with alert level.
   useEffect(() => {
@@ -623,19 +556,15 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     else map.once('load', apply);
   }, [showBuildings]);
 
-  // Toggle the flood hazard overlay's visibility without touching any
-  // other layer.
+  // Purok zone overlay: divider lines are a style layer, badges are DOM markers.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const applyHazardVisibility = () => {
-      if (map.getLayer('triangulo-flood-hazard-fill')) {
-        map.setLayoutProperty('triangulo-flood-hazard-fill', 'visibility', showHazard ? 'visible' : 'none');
-      }
-    };
-    if (map.isStyleLoaded()) applyHazardVisibility();
-    else map.once('load', applyHazardVisibility);
-  }, [showHazard]);
+    setZoneMarkersVisible(zoneMarkersRef.current, showZones);
+    const apply = () => setZoneLinesVisible(map, showZones);
+    if (map.isStyleLoaded()) apply();
+    else map.once('load', apply);
+  }, [showZones]);
 
   // Handle basemap style switching -- setStyle() wipes custom layers, so
   // they're re-added (and re-lit) once the new style finishes loading.
@@ -643,10 +572,12 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
     setStyleKey(key);
     const map = mapRef.current;
     if (!map) return;
+    baseStyleRef.current = {};
     map.setStyle(STYLE_URLS[key]);
     map.once('style.load', () => {
       addDataLayers(map);
-      applyTimeOfDay(map);
+      applyDayLighting(map);
+      applyStyleLook(map, key);
     });
   };
 
@@ -796,35 +727,12 @@ export default function FloodMap3D({ currentAlert, probabilityPct = null, bounda
               Layers
             </div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-              <LayerChip active={showHazard} label="Hazard" title="25-yr rainfall return period flood hazard" onClick={() => setShowHazard(v => !v)} />
-              <LayerChip active={showFacilities} label="Facilities" title="Hospitals and schools -- exposure layer" onClick={() => setShowFacilities(v => !v)} />
+              <LayerChip active={showZones} label="Zones" title="Purok zone boundaries 1-7 (from the official Naga City barangay map)" onClick={() => setShowZones(v => !v)} />
               <LayerChip active={showBuildings} label="Buildings" title="Building footprints in 3D (heights partly estimated)" onClick={() => setShowBuildings(v => !v)} />
               <LayerChip active={showWind} label="Wind flow" title="Animated wind direction and strength (barangay-wide reading)" onClick={() => setShowWind(v => !v)} />
               <LayerChip active={showRainFx} label="Rain" title="Animated rain / cloud effect" onClick={() => setShowRainFx(v => !v)} />
-              <LayerChip active={showEvac} label="Evac centers" title="Designated evacuation centers" onClick={() => setShowEvac(v => !v)} />
             </div>
           </div>
-
-          {showHazard && (
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginTop: 4 }}>
-              {HAZARD_LEGEND.map(({ level, color }) => (
-                <div key={level} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 2, background: color, flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.58rem', color: '#8da4be' }}>{level}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {showFacilities && (
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-              {Object.values(FACILITY_STYLE).map(({ label, color }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.58rem', color: '#8da4be' }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         </div>
         </div>

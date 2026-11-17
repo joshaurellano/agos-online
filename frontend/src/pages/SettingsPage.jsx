@@ -7,6 +7,7 @@ import { useModelSelection } from '../hooks/useModelSelection';
 import { useDataSource } from '../hooks/useDataSource';
 import { useAccessibility, TEXT_SCALES } from '../hooks/useAccessibility';
 import { supabase } from '../lib/supabaseClient';
+import { friendlyError } from '../lib/errors';
 import { isAdmin } from '../lib/roles';
 
 // ── Small building blocks ──────────────────────────────────────────────────
@@ -264,10 +265,20 @@ function AccountSection() {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.auth.updateUser({ password });
+    let error = null;
+    try {
+      ({ error } = await supabase.auth.updateUser({ password }));
+    } catch (err) {
+      error = err;
+    }
     setBusy(false);
     if (error) {
-      setStatus({ type: 'error', text: error.message || 'Could not change the password.' });
+      const raw = error.message ?? '';
+      let text;
+      if (/different from the old/i.test(raw)) text = 'Use a different password than your current one.';
+      else if (/weak|at least \d+ char|should contain/i.test(raw)) text = 'That password is too weak. Use letters and numbers.';
+      else text = friendlyError(error, 'Could not change the password. Try again.');
+      setStatus({ type: 'error', text });
       return;
     }
     setPassword('');

@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '../lib/maplibreSetup';
 import RainOverlay from './RainOverlay';
 import { MapRecenterButton } from './ui';
+import { addZoneLines, createZoneMarkers } from '../lib/zoneLayers';
 
 const BOUNDARY_COLOR = '#38bdf8';
 const ROUTE_COLOR = '#22c55e';
@@ -197,6 +198,10 @@ export default function EvacuationMap3D({ boundary, evacuationCenters, rainfallM
           'line-dasharray': [3, 2],
         },
       });
+
+      // Purok zone dividers + "Zone N" badges (DOM markers are removed with the map).
+      addZoneLines(map);
+      createZoneMarkers(maplibregl, map);
 
       // Route (via-roads walking path to the nearest evacuation center).
       // Starts empty; syncRoute() below fills it in once a route exists.

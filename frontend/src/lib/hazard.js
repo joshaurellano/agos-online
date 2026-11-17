@@ -1,8 +1,9 @@
 // Point-in-polygon lookups against the bundled flood hazard map
-// (trianguloFloodHazard.json: 25-year rainfall return period, classes 1-3).
+// (trianguloFloodHazard.json: 100-year rainfall return period, classes 1-3).
 // Pure functions, no network: the whole check runs on the resident's device.
 
 import hazardGeoJson from '../data/trianguloFloodHazard.json';
+import { TRIANGULO_ZONES } from '../data/triangulo';
 
 // Ray casting on one ring of [lng, lat] pairs.
 function inRing(lng, lat, ring) {
@@ -38,6 +39,11 @@ function inGeometry(lng, lat, geometry) {
 export function pointInBoundary(point, boundary) {
   const ring = boundary.map((p) => [p.lng, p.lat]);
   return inRing(point.lng, point.lat, ring);
+}
+
+// Which purok zone (1-7) a point is in, or null when it is outside all of them.
+export function purokZoneAt(point) {
+  return TRIANGULO_ZONES.find((z) => inRing(point.lng, point.lat, z.polygon.map((p) => [p.lng, p.lat]))) ?? null;
 }
 
 export const HAZARD_LABELS = { 0: 'None', 1: 'Low', 2: 'Medium', 3: 'High' };
