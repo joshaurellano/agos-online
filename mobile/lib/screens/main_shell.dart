@@ -9,6 +9,7 @@ import 'settings_screen.dart';
 import 'dashboard_screen.dart';
 import 'alert_screen.dart';
 import 'evacuation_screen.dart';
+import 'emergency_screen.dart';
 import 'rainfall_screen.dart';
 import 'flood_map_screen.dart';
 import 'community_reports_screen.dart';
@@ -65,6 +66,13 @@ class _MainShellState extends State<MainShell> {
   void _openAlerts() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AlertScreen()),
+    );
+  }
+
+  // The red button in the middle of the bottom bar.
+  void _openEmergency() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const EmergencyScreen()),
     );
   }
 
@@ -202,12 +210,19 @@ class _MainShellState extends State<MainShell> {
           PanahonBottomNav(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
-        items: const [
-          PanahonNavItem(icon: Icons.dashboard_rounded, label: 'Dashboard'),
-          PanahonNavItem(icon: Icons.radar_rounded, label: 'Flood Map'),
-          PanahonNavItem(icon: Icons.water_drop_rounded, label: 'Rainfall'),
-          PanahonNavItem(icon: Icons.directions_run_rounded, label: 'Evacuation'),
-          PanahonNavItem(icon: Icons.campaign_rounded, label: 'Reports'),
+        // Slot numbers match screen indexes. Slot 2 (Rainfall) is the
+        // Emergency button now; the Rainfall screen is still reachable from
+        // the Dashboard's "Rainfall Details" shortcut.
+        items: [
+          const PanahonNavItem(icon: Icons.dashboard_rounded, label: 'Dashboard'),
+          const PanahonNavItem(icon: Icons.radar_rounded, label: 'Flood Map'),
+          PanahonNavItem.center(
+            icon: Icons.phone_in_talk_rounded,
+            label: 'Emergency',
+            onPressed: _openEmergency,
+          ),
+          const PanahonNavItem(icon: Icons.directions_run_rounded, label: 'Evacuation'),
+          const PanahonNavItem(icon: Icons.campaign_rounded, label: 'Reports'),
         ],
       ),
         ],

@@ -260,6 +260,10 @@ class PanahonHeroCard extends StatelessWidget {
 
 /// Pill-style bottom navigation bar, mirroring PANaHON's docked bottom bar
 /// (Location Forecast / Radar / Satellite / Synoptic) but in AGOS colors.
+///
+/// An item created with [PanahonNavItem.center] is drawn as a raised round
+/// button (like the Emergency button in My Naga) instead of a normal tab. It
+/// calls its own `onPressed` and is never "selected".
 class PanahonBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
@@ -272,37 +276,49 @@ class PanahonBottomNav extends StatelessWidget {
     required this.items,
   });
 
+  static const double _lift = 18; // how far the center button rises above the bar
+  static const double _centerSize = 58;
+
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
-        decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: AppColors.bgBorder),
-          boxShadow: [
-            BoxShadow(color: AppColors.shadow(0.4), blurRadius: 20, offset: const Offset(0, 8)),
-          ],
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final slotWidth = constraints.maxWidth / items.length;
-            return Stack(
-              children: [
-                // Sliding pill sits behind the row of icons and eases to the
-                // selected slot, rather than each item toggling its own
-                // background on/off — reads as one continuous motion instead
-                // of a flicker between two static states.
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 280),
-                  curve: Curves.easeOutCubic,
-                  left: slotWidth * currentIndex,
-                  top: 0,
-                  bottom: 0,
-                  width: slotWidth,
+    final centerIdx = items.indexWhere((e) => e.isCenter);
+    final hasCenter = centerIdx != -1;
+    // No sliding highlight while the current screen has no tab in the bar
+    // (e.g. Rainfall, which is reached from the Dashboard).
+    final showPill = currentIndex >= 0 &&
+        currentIndex < items.length &&
+        !items[currentIndex].isCenter;
+
+    final pill = Container(
+      margin: EdgeInsets.fromLTRB(12, hasCenter ? _lift : 0, 12, 10),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.bgBorder),
+        boxShadow: [
+          BoxShadow(color: AppColors.shadow(0.4), blurRadius: 20, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final slotWidth = constraints.maxWidth / items.length;
+          return Stack(
+            children: [
+              // Sliding pill sits behind the row of icons and eases to the
+              // selected slot, rather than each item toggling its own
+              // background on/off — reads as one continuous motion instead
+              // of a flicker between two static states.
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                left: slotWidth * (showPill ? currentIndex : 0),
+                top: 0,
+                bottom: 0,
+                width: slotWidth,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: showPill ? 1 : 0,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
                     child: DecoratedBox(
@@ -321,63 +337,156 @@ class PanahonBottomNav extends StatelessWidget {
                     ),
                   ),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: List.generate(items.length, (i) {
-                    final selected = i == currentIndex;
-                    final item = items[i];
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          if (!selected) HapticFeedback.selectionClick();
-                          onTap(i);
-                        },
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              AnimatedScale(
-                                duration: const Duration(milliseconds: 280),
-                                curve: Curves.easeOutBack,
-                                scale: selected ? 1.08 : 1.0,
-                                child: Icon(
-                                  item.icon,
-                                  size: 21,
-                                  color: selected ? AppColors.accent : AppColors.textMuted,
-                                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(items.length, (i) {
+                  final item = items[i];
+                  if (item.isCenter) return Expanded(child: _centerLabel(item));
+                  final selected = i == currentIndex;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        if (!selected) HapticFeedback.selectionClick();
+                        onTap(i);
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedScale(
+                              duration: const Duration(milliseconds: 280),
+                              curve: Curves.easeOutBack,
+                              scale: selected ? 1.08 : 1.0,
+                              child: Icon(
+                                item.icon,
+                                size: 21,
+                                color: selected ? AppColors.accent : AppColors.textMuted,
                               ),
-                              const SizedBox(height: 3),
-                              AnimatedDefaultTextStyle(
-                                duration: const Duration(milliseconds: 200),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                                  color: selected ? AppColors.accent : AppColors.textMuted,
-                                ),
-                                child: Text(item.label),
+                            ),
+                            const SizedBox(height: 3),
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                                color: selected ? AppColors.accent : AppColors.textMuted,
                               ),
-                            ],
-                          ),
+                              child: Text(item.label),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  }),
-                ),
-              ],
-            );
-          },
-        ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          );
+        },
       ),
     );
+
+    return SafeArea(
+      top: false,
+      child: hasCenter
+          ? Stack(
+              clipBehavior: Clip.none,
+              children: [
+                pill,
+                // The round button, centered over the middle slot. It sits
+                // inside this widget's own bounds (the transparent headroom
+                // above the bar), so taps on its raised part still register.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: _centerButton(items[centerIdx])),
+                ),
+              ],
+            )
+          : pill,
+    );
   }
+
+  // Label that sits in the bar under the raised button.
+  Widget _centerLabel(PanahonNavItem item) => GestureDetector(
+        onTap: item.onPressed,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 21), // same height as a tab icon
+              const SizedBox(height: 3),
+              Text(
+                item.label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.redText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _centerButton(PanahonNavItem item) => Semantics(
+        button: true,
+        label: item.label,
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.mediumImpact();
+            item.onPressed?.call();
+          },
+          child: Container(
+            width: _centerSize,
+            height: _centerSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFF05252), Color(0xFFD62828)],
+              ),
+              border: Border.all(color: AppColors.bgDeep, width: 4),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.red.withValues(alpha: 0.45),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Icon(item.icon, color: Colors.white, size: 26),
+          ),
+        ),
+      );
 }
 
 class PanahonNavItem {
   final IconData icon;
   final String label;
-  const PanahonNavItem({required this.icon, required this.label});
+
+  /// True for the raised round button in the middle of the bar.
+  final bool isCenter;
+
+  /// Only used by a center item.
+  final VoidCallback? onPressed;
+
+  const PanahonNavItem({required this.icon, required this.label})
+      : isCenter = false,
+        onPressed = null;
+
+  const PanahonNavItem.center({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  }) : isCenter = true;
 }
 
 /// A single stat shown in [FloodHeroBanner]'s bottom row (rain now,
