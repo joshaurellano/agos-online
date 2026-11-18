@@ -8,6 +8,11 @@ import {
   LuDroplet, LuEye, LuGauge, LuSunMedium, LuThermometer, LuSprout,
 } from 'react-icons/lu';
 import { useTheme } from '../hooks/useTheme';
+import weatherDayArt from '../assets/illustrations/weather-day.png';
+import weatherNightArt from '../assets/illustrations/weather-night.png';
+import weatherRainArt from '../assets/illustrations/weather-rain.png';
+import weatherThunderstormArt from '../assets/illustrations/weather-thunderstorm.png';
+import weatherCloudyArt from '../assets/illustrations/weather-cloudy.png';
 
 // ─── WMO weather-code → icon ───────────────────────────────────────────────
 // https://open-meteo.com/en/docs (WMO Weather interpretation codes)
@@ -64,6 +69,37 @@ function heroArtBucket(code, isDay) {
 
 function HeroWeatherArt({ code, isDay }) {
   const bucket = heroArtBucket(code, isDay);
+
+  // Coordinated 3D artwork for clear, rainy, and thunderstorm conditions.
+  // Keep the existing inline SVG art for foggy and snowy conditions.
+  const illustration = bucket === 'sun' ? weatherDayArt
+    : bucket === 'clear-night' ? weatherNightArt
+    : bucket === 'rain' ? weatherRainArt
+    : bucket === 'storm' ? weatherThunderstormArt
+    : bucket === 'cloudy' ? weatherCloudyArt
+    : null;
+
+  if (illustration) {
+    return (
+      <img
+        src={illustration}
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+        style={{
+          position: 'absolute',
+          top: '8px',
+          right: '0',
+          width: bucket === 'storm' || bucket === 'rain' ? '58%' : '54%',
+          height: '54%',
+          objectFit: 'contain',
+          objectPosition: 'right top',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+    );
+  }
 
   return (
     <svg
