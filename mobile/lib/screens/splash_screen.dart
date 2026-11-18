@@ -25,8 +25,10 @@ import '../services/app_settings.dart';
 import '../services/connectivity_service.dart';
 import '../services/crash_reporting.dart';
 import '../services/notification_service.dart';
+import '../services/privacy_consent.dart';
 import 'main_shell.dart';
 import 'onboarding_screen.dart';
+import 'privacy_notice_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -78,6 +80,18 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<void> _bootstrap() async {
+    // Privacy consent comes first: nothing below (Firebase, Supabase, the
+    // anonymous ID, push registration) runs until the person has agreed to
+    // the current privacy notice. Existing installs see it once on update.
+    if (!await PrivacyConsent.isGiven()) {
+      if (!mounted) return;
+      final agreed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const PrivacyConsentScreen()),
+      );
+      // Declining closes the app from inside the consent screen.
+      if (agreed != true || !mounted) return;
+    }
+
     // Real work and a floor on how long the splash stays up race against
     // each other via Future.wait — on a fast connection the animation
     // still gets its ~1.6s to actually be seen instead of flashing by;

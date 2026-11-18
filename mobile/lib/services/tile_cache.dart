@@ -47,13 +47,13 @@ const _downloadSources = <_TileSource>[
   _TileSource(kTileUrlStandard),
 ];
 
-// Barangay Triangulo's boundary (see _trianguloPolygon in flood_map_screen)
-// spans lat 13.6027–13.6226, lng 123.1841–123.1978; padded by ~450 m so the
+// Barangay Triangulo's official boundary (see data/barangay_boundary.dart)
+// spans lat 13.6083–13.6227, lng 123.1847–123.2015; padded by ~450 m so the
 // nearest streets and neighbouring barangay edges are covered too.
-const double kOfflineNorth = 13.6266;
-const double kOfflineSouth = 13.5987;
-const double kOfflineWest = 123.1801;
-const double kOfflineEast = 123.2018;
+const double kOfflineNorth = 13.6267;
+const double kOfflineSouth = 13.6043;
+const double kOfflineWest = 123.1807;
+const double kOfflineEast = 123.2055;
 const int kOfflineMinZoom = 12;
 const int kOfflineMaxZoom = 17;
 

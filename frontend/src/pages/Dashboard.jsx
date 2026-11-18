@@ -48,6 +48,7 @@ import StaleDataBanner from '../components/StaleDataBanner';
 import NextHoursStrip from '../components/NextHoursStrip';
 import ProbabilityStat from '../components/ProbabilityStat';
 import PageLoader from '../components/PageLoader';
+import KitNudge from '../components/KitNudge';
 import { rainfallAxis, fitRainfallAxis } from '../lib/rainAxis';
 
 // Shape + icon for each level, so the alert never relies on color alone.
@@ -478,6 +479,8 @@ function AdvisoryBulletin({ alertInfo, alertColor, currentAlert, recentTrend, pr
               {residentSteps.map((step) => <li key={step}>{step}</li>)}
             </ul>
           </div>
+
+          <KitNudge alertKey={currentAlert} />
 
           {canSendAlert && (
             <div className="action-callout" style={{ '--lvl': alertColor }}>

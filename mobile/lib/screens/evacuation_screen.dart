@@ -12,18 +12,32 @@ import '../services/flood_status_service.dart';
 import '../theme/panahon_ui.dart';
 import '../services/routing_service.dart';
 import '../services/tile_cache.dart';
+import '../data/barangay_boundary.dart';
 
 // ─── Evacuation Centers ────────────────────────────────────────────────────────
 class _EvacCenter {
   final String id, name, type, note;
   final double lat, lng;
   final Color color;
+  // Bundled photo shown at the top of the center's card, or null to show a
+  // generated placeholder (see _CenterPhoto). Photos live in lib/assets/evac/
+  // and that folder must be listed under `assets:` in pubspec.yaml.
+  final String? photo;
+  // Where to anchor the crop when the photo is cropped to the banner shape.
+  final Alignment photoAlignment;
   const _EvacCenter({
     required this.id,    required this.name,  required this.type,
     required this.note,  required this.lat,   required this.lng,
     required this.color,
+    this.photo,
+    this.photoAlignment = Alignment.center,
   });
 }
+
+// Photo banner on top of each center card, and the resulting height of the
+// whole card strip. Floating map controls sit just above the strip.
+const double _kPhotoH = 84;
+const double _kStripH = 190 + _kPhotoH;
 
 // Colors mirror the web dashboard: Primary = red, School = blue, so the
 // marker/card color itself communicates the center's role at a glance
@@ -39,6 +53,8 @@ const _centers = [
     note: 'Ninoy and Cory Avenue, corner Carnation Street, Barangay Triangulo, Naga City',
     lat: 13.620122, lng: 123.188095,
     color: _colorPrimary,
+    photo: 'lib/assets/evac/jesse_robredo_coliseum.jpg',
+    photoAlignment: Alignment(0, -0.35),
   ),
   _EvacCenter(
     id: 'triangulo-elem',
@@ -47,6 +63,8 @@ const _centers = [
     note: 'Roxas Ave. Diversion Rd. Barangay Triangulo, Naga City',
     lat: 13.6165193, lng: 123.1878926,
     color: _colorSchool,
+    photo: 'lib/assets/evac/triangulo_elementary.jpg',
+    photoAlignment: Alignment(0, 0.1),
   ),
   _EvacCenter(
     id: 'jose-rizal-elem',
@@ -58,34 +76,6 @@ const _centers = [
   ),
 ];
 
-const _trianguloCenter = LatLng(13.6150, 123.1910);
-
-const _boundary = [
-  LatLng(13.622162, 123.193368), LatLng(13.621778, 123.195934),
-  LatLng(13.621222, 123.195882), LatLng(13.621053, 123.196923),
-  LatLng(13.620874, 123.197226), LatLng(13.619826, 123.196902),
-  LatLng(13.619792, 123.197160), LatLng(13.619419, 123.197081),
-  LatLng(13.619310, 123.197670), LatLng(13.617688, 123.197134),
-  LatLng(13.613977, 123.197774), LatLng(13.611311, 123.195202),
-  LatLng(13.607139, 123.197145), LatLng(13.602733, 123.187140),
-  LatLng(13.611057, 123.185706), LatLng(13.611714, 123.186500),
-  LatLng(13.611770, 123.186722), LatLng(13.611529, 123.187289),
-  LatLng(13.611511, 123.187524), LatLng(13.611704, 123.187806),
-  LatLng(13.611891, 123.187920), LatLng(13.612091, 123.187856),
-  LatLng(13.612502, 123.187898), LatLng(13.612609, 123.187964),
-  LatLng(13.612574, 123.188154), LatLng(13.612936, 123.188138),
-  LatLng(13.613193, 123.187934), LatLng(13.613532, 123.188201),
-  LatLng(13.613921, 123.187954), LatLng(13.613929, 123.187798),
-  LatLng(13.614044, 123.187740), LatLng(13.614219, 123.187710),
-  LatLng(13.614300, 123.187333), LatLng(13.616435, 123.187325),
-  LatLng(13.616637, 123.184921), LatLng(13.617106, 123.184082),
-  LatLng(13.618525, 123.185204), LatLng(13.618746, 123.185162),
-  LatLng(13.619016, 123.185245), LatLng(13.619187, 123.185523),
-  LatLng(13.619383, 123.185558), LatLng(13.620149, 123.186123),
-  LatLng(13.620387, 123.186049), LatLng(13.620389, 123.186138),
-  LatLng(13.621316, 123.187165), LatLng(13.621189, 123.187267),
-  LatLng(13.622423, 123.189744), LatLng(13.622633, 123.189794),
-];
 
 // ─── Haversine distance (in meters) ──────────────────────────────────────────
 double _haversine(double lat1, double lng1, double lat2, double lng2) {
@@ -272,7 +262,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       );
 
       final userLatLng = LatLng(pos.latitude, pos.longitude);
-      final inZone = _pointInPolygon(pos.latitude, pos.longitude, _boundary);
+      final inZone = _pointInPolygon(pos.latitude, pos.longitude, trianguloBoundary);
 
       _EvacCenter? nearest;
       double nearestDist = double.infinity;
@@ -609,14 +599,18 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
+      clipBehavior: Clip.antiAlias, // rounds the photo's top corners
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: isSel ? tint : AppColors.bgBorder, width: isSel ? 1.8 : 1),
         boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 14, offset: const Offset(0, 4))],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        _CenterPhoto(center: c, height: _kPhotoH, onTap: () => _showPhoto(c)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Container(
             width: 34, height: 34,
@@ -698,7 +692,41 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
             ),
           ),
         ]),
+          ]),
+        ),
       ]),
+    );
+  }
+
+  // Tap the photo to see it full size (pinch to zoom). Centers without a
+  // photo have nothing bigger to show.
+  void _showPhoto(_EvacCenter c) {
+    if (c.photo == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(children: [
+          InteractiveViewer(
+            maxScale: 4,
+            child: Image.asset(
+              c.photo!,
+              fit: BoxFit.contain,
+              semanticLabel: 'Photo of ${c.name}',
+              errorBuilder: (_, __, ___) => const SizedBox(height: 200),
+            ),
+          ),
+          Positioned(
+            top: 4, right: 4,
+            child: IconButton(
+              tooltip: 'Close photo',
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -718,7 +746,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
             FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: _trianguloCenter,
+                initialCenter: trianguloCenter,
                 initialZoom: 14.5,
                 // Tapping the map clears the selection highlight
                 onTap: (_, __) {
@@ -757,7 +785,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 // Barangay boundary
                 PolygonLayer(polygons: [
                   Polygon(
-                    points: _boundary,
+                    points: trianguloBoundary,
                     color: AppColors.accent.withValues(alpha: 0.08),
                     borderColor: AppColors.accent.withValues(alpha: 0.7),
                     borderStrokeWidth: 2,
@@ -872,7 +900,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       if (_userLocation == null && !_locating)
         Positioned(
           left: 14,
-          bottom: 200,
+          bottom: _kStripH + 10,
           child: Material(
             color: AppColors.accent,
             borderRadius: BorderRadius.circular(22),
@@ -898,7 +926,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         Positioned(
           left: 12,
           right: 12,
-          bottom: 200,
+          bottom: _kStripH + 10,
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -923,7 +951,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         left: 0,
         right: 0,
         bottom: 0,
-        height: 190,
+        height: _kStripH,
         child: PageView.builder(
           controller: _pageController,
           onPageChanged: _onPageChanged,
@@ -936,6 +964,148 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       ),
     ]);
   }
+}
+
+// ── Photo banner on a center card ──────────────────────────────────────────────
+// The center's bundled photo, cropped to a banner; when there is none (or the
+// asset is missing) a generated placeholder in the center's color: a simple
+// school / building silhouette with a "Photo coming soon" tag.
+class _CenterPhoto extends StatelessWidget {
+  final _EvacCenter center;
+  final double height;
+  final VoidCallback onTap;
+  const _CenterPhoto({required this.center, required this.height, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = center.photo;
+    final placeholder = _CenterPhotoPlaceholder(center: center);
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: photo == null
+          ? placeholder
+          : GestureDetector(
+              onTap: onTap,
+              child: Stack(fit: StackFit.expand, children: [
+                Image.asset(
+                  photo,
+                  fit: BoxFit.cover,
+                  alignment: center.photoAlignment,
+                  semanticLabel: 'Photo of ${center.name}',
+                  errorBuilder: (_, __, ___) => placeholder,
+                ),
+                // Soft fade at the bottom so the photo meets the card cleanly.
+                Positioned(
+                  left: 0, right: 0, bottom: 0, height: 26,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, AppColors.surface.withValues(alpha: 0.55)],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 6, right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.zoom_out_map_rounded, color: Colors.white, size: 13),
+                  ),
+                ),
+              ]),
+            ),
+    );
+  }
+}
+
+class _CenterPhotoPlaceholder extends StatelessWidget {
+  final _EvacCenter center;
+  const _CenterPhotoPlaceholder({required this.center});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = center.color;
+    return Semantics(
+      label: 'No photo yet for ${center.name}',
+      child: Stack(fit: StackFit.expand, children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [c.withValues(alpha: 0.55), c.withValues(alpha: 0.22)],
+            ),
+          ),
+        ),
+        CustomPaint(painter: _SchoolSilhouettePainter(color: Colors.white.withValues(alpha: 0.30))),
+        Positioned(
+          left: 10, bottom: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text('Photo coming soon',
+                style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// A simple school building: two wings, a taller middle block with a
+// pitched roof, a door, windows and a flagpole.
+class _SchoolSilhouettePainter extends CustomPainter {
+  final Color color;
+  const _SchoolSilhouettePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final fill = Paint()..color = color;
+    final cut = Paint()..color = Colors.black.withValues(alpha: 0.18);
+    final ground = h * 0.86;
+    final cx = w * 0.5;
+
+    // Wings
+    canvas.drawRect(Rect.fromLTRB(cx - w * 0.36, ground - h * 0.30, cx - w * 0.10, ground), fill);
+    canvas.drawRect(Rect.fromLTRB(cx + w * 0.10, ground - h * 0.30, cx + w * 0.36, ground), fill);
+    // Center block + roof
+    canvas.drawRect(Rect.fromLTRB(cx - w * 0.12, ground - h * 0.46, cx + w * 0.12, ground), fill);
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(cx - w * 0.15, ground - h * 0.46)
+        ..lineTo(cx, ground - h * 0.66)
+        ..lineTo(cx + w * 0.15, ground - h * 0.46)
+        ..close(),
+      fill,
+    );
+    // Door
+    canvas.drawRect(Rect.fromLTRB(cx - w * 0.025, ground - h * 0.17, cx + w * 0.025, ground), cut);
+    // Windows
+    final ww = w * 0.035, wh = h * 0.10;
+    for (final x in [-0.30, -0.22, -0.16, 0.16, 0.22, 0.30]) {
+      canvas.drawRect(Rect.fromLTWH(cx + w * x - ww / 2, ground - h * 0.24, ww, wh), cut);
+    }
+    // Flagpole
+    final pole = Paint()..color = color..strokeWidth = 1.6;
+    canvas.drawLine(Offset(cx + w * 0.40, ground), Offset(cx + w * 0.40, ground - h * 0.52), pole);
+    canvas.drawRect(Rect.fromLTWH(cx + w * 0.40, ground - h * 0.52, w * 0.05, h * 0.08), fill);
+    // Ground line
+    canvas.drawRect(Rect.fromLTRB(0, ground, w, ground + 2), fill);
+  }
+
+  @override
+  bool shouldRepaint(_SchoolSilhouettePainter old) => old.color != color;
 }
 
 // ── Custom Pin Painter ─────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LuLayoutDashboard, LuCloudRain, LuActivity, LuBellRing, LuSettings,
   LuClipboardList, LuClipboardCheck, LuMegaphone, LuWaves, LuUserCog, LuUsers, LuUserPlus, LuRadio,
-  LuX, LuLogOut, LuLogIn, LuChevronLeft, LuChevronRight, LuCircleHelp,
+  LuX, LuLogOut, LuLogIn, LuChevronLeft, LuChevronRight, LuCircleHelp, LuPhoneCall,
 } from 'react-icons/lu';
 import { useAuth } from '../hooks/useAuth';
 import agosLogo from '../assets/agos-logo.png';
@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { path: '/rainfall',          label: 'Rainfall',         icon: LuCloudRain,       group: 'community' },
   { path: '/know-your-hazards', label: 'Know Your Risk', icon: LuWaves,        group: 'community' },
   { path: '/alerts-log',        label: 'Alert Log',        icon: LuBellRing,        group: 'community' },
+  { path: '/emergency',         label: 'Emergency numbers', icon: LuPhoneCall,    group: 'community' },
   { path: '/settings',          label: 'Settings',         icon: LuSettings,        group: 'community' },
   { path: '/help',              label: 'Help',             icon: LuCircleHelp,      group: 'community' },
   { path: '/reports',           label: 'Flood Log',        icon: LuClipboardList,   staffOnly: true, group: 'staff' },

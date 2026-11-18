@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/react"
 
 import 'bootstrap/dist/css/bootstrap.min.css'
 import './index.css'
+import './gov-theme.css'
 import 'leaflet/dist/leaflet.css';
 
 const root = createRoot(document.getElementById('root'))

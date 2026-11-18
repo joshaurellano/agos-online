@@ -20,6 +20,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
+import '../screens/emergency_screen.dart';
 
 class Hotline {
   final String name;
@@ -192,6 +193,24 @@ class _SafetyToolsCardState extends State<SafetyToolsCard> {
           if (i != kEmergencyHotlines.length - 1) const SizedBox(width: 8),
         ],
       ]),
+      const SizedBox(height: 8),
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const EmergencyScreen()),
+          ),
+          icon: const Icon(Icons.local_phone_rounded, size: 17),
+          label: const Text('All emergency numbers',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.redText,
+            side: BorderSide(color: AppColors.red.withValues(alpha: 0.45)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
     ]);
   }
 
