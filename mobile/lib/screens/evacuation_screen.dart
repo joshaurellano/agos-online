@@ -12,6 +12,7 @@ import '../services/flood_status_service.dart';
 import '../theme/panahon_ui.dart';
 import '../services/routing_service.dart';
 import '../services/tile_cache.dart';
+import '../data/barangay_boundary.dart';
 
 // ─── Evacuation Centers ────────────────────────────────────────────────────────
 class _EvacCenter {
@@ -58,34 +59,6 @@ const _centers = [
   ),
 ];
 
-const _trianguloCenter = LatLng(13.6150, 123.1910);
-
-const _boundary = [
-  LatLng(13.622162, 123.193368), LatLng(13.621778, 123.195934),
-  LatLng(13.621222, 123.195882), LatLng(13.621053, 123.196923),
-  LatLng(13.620874, 123.197226), LatLng(13.619826, 123.196902),
-  LatLng(13.619792, 123.197160), LatLng(13.619419, 123.197081),
-  LatLng(13.619310, 123.197670), LatLng(13.617688, 123.197134),
-  LatLng(13.613977, 123.197774), LatLng(13.611311, 123.195202),
-  LatLng(13.607139, 123.197145), LatLng(13.602733, 123.187140),
-  LatLng(13.611057, 123.185706), LatLng(13.611714, 123.186500),
-  LatLng(13.611770, 123.186722), LatLng(13.611529, 123.187289),
-  LatLng(13.611511, 123.187524), LatLng(13.611704, 123.187806),
-  LatLng(13.611891, 123.187920), LatLng(13.612091, 123.187856),
-  LatLng(13.612502, 123.187898), LatLng(13.612609, 123.187964),
-  LatLng(13.612574, 123.188154), LatLng(13.612936, 123.188138),
-  LatLng(13.613193, 123.187934), LatLng(13.613532, 123.188201),
-  LatLng(13.613921, 123.187954), LatLng(13.613929, 123.187798),
-  LatLng(13.614044, 123.187740), LatLng(13.614219, 123.187710),
-  LatLng(13.614300, 123.187333), LatLng(13.616435, 123.187325),
-  LatLng(13.616637, 123.184921), LatLng(13.617106, 123.184082),
-  LatLng(13.618525, 123.185204), LatLng(13.618746, 123.185162),
-  LatLng(13.619016, 123.185245), LatLng(13.619187, 123.185523),
-  LatLng(13.619383, 123.185558), LatLng(13.620149, 123.186123),
-  LatLng(13.620387, 123.186049), LatLng(13.620389, 123.186138),
-  LatLng(13.621316, 123.187165), LatLng(13.621189, 123.187267),
-  LatLng(13.622423, 123.189744), LatLng(13.622633, 123.189794),
-];
 
 // ─── Haversine distance (in meters) ──────────────────────────────────────────
 double _haversine(double lat1, double lng1, double lat2, double lng2) {
@@ -272,7 +245,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       );
 
       final userLatLng = LatLng(pos.latitude, pos.longitude);
-      final inZone = _pointInPolygon(pos.latitude, pos.longitude, _boundary);
+      final inZone = _pointInPolygon(pos.latitude, pos.longitude, trianguloBoundary);
 
       _EvacCenter? nearest;
       double nearestDist = double.infinity;
@@ -718,7 +691,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
             FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: _trianguloCenter,
+                initialCenter: trianguloCenter,
                 initialZoom: 14.5,
                 // Tapping the map clears the selection highlight
                 onTap: (_, __) {
@@ -757,7 +730,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
                 // Barangay boundary
                 PolygonLayer(polygons: [
                   Polygon(
-                    points: _boundary,
+                    points: trianguloBoundary,
                     color: AppColors.accent.withValues(alpha: 0.08),
                     borderColor: AppColors.accent.withValues(alpha: 0.7),
                     borderStrokeWidth: 2,
