@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/alert_level.dart';
+import '../services/app_navigation.dart';
 import '../services/pending_reports_service.dart';
 import '../theme/panahon_ui.dart';
 import '../widgets/offline_banner.dart';
@@ -48,6 +49,9 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialTabIndex;
+    // Other screens (the Help Center's "Open Flood Map" buttons, ...) can ask
+    // for a tab through AppNavigation.
+    AppNavigation.tabRequest.addListener(_onTabRequest);
     // Send any reports queued while offline in a previous session. init()
     // resolves once the saved queue has been read from disk; flush() then
     // quietly does nothing if we're still offline (it also runs on every
@@ -61,6 +65,19 @@ class _MainShellState extends State<MainShell> {
     if (widget.openAlertsOnStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openAlerts());
     }
+  }
+
+  @override
+  void dispose() {
+    AppNavigation.tabRequest.removeListener(_onTabRequest);
+    super.dispose();
+  }
+
+  void _onTabRequest() {
+    final i = AppNavigation.tabRequest.value;
+    if (i == null || !mounted || i == _currentIndex) return;
+    if (i < 0 || i >= _tabMeta.length) return;
+    setState(() => _currentIndex = i);
   }
 
   void _openAlerts() {

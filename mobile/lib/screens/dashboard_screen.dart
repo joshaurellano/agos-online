@@ -32,6 +32,7 @@ import '../widgets/minute_forecast_card.dart';
 import '../widgets/agos_hero.dart';
 import '../widgets/prepare_card.dart';
 import '../widgets/safety_tools.dart';
+import 'help_screen.dart';
 
 // ─── URLs ─────────────────────────────────────────────────────────────────────
 // Read from .env (see README) so the backend can be swapped between
@@ -770,6 +771,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
 
                   _QuickActionsRow(onNavigate: widget.onNavigate),
+                  const SizedBox(height: 10),
+                  _HelpLinkCard(onTap: () => HelpScreen.open(context)),
                   const SizedBox(height: 18),
 
                   // Reference material, collapsed: the current level is already
@@ -1972,6 +1975,40 @@ class _QuickActionsRow extends StatelessWidget {
       }).toList(),
     );
   }
+}
+
+// ── Help link ─────────────────────────────────────────────────────────────────
+// Slim entry to the Help Center, right under the quick actions where someone
+// who is unsure what a screen does is already looking.
+class _HelpLinkCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _HelpLinkCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.bgBorder),
+            ),
+            child: Row(children: [
+              Icon(Icons.help_outline_rounded, color: AppColors.accent, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Help Center — how AGOS works, FAQs, troubleshooting',
+                    style: TextStyle(color: AppColors.textSec, fontSize: 12, fontWeight: FontWeight.w700)),
+              ),
+              Icon(Icons.chevron_right_rounded, color: AppColors.textMuted, size: 18),
+            ]),
+          ),
+        ),
+      );
 }
 
 // ── Map Teaser Link ────────────────────────────────────────────────────────────

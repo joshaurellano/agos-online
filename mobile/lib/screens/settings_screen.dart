@@ -23,6 +23,7 @@ import '../services/offline_cache.dart';
 import '../services/pending_reports_service.dart';
 import '../services/theme_settings.dart';
 import '../services/tile_cache.dart';
+import 'help_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -182,6 +183,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: const Text('Refresh'),
                 ),
               ]),
+            ]),
+
+            // ── Help ─────────────────────────────────────────────────
+            const SizedBox(height: 12),
+            _Card(children: [
+              _ActionRow(
+                icon: Icons.help_outline_rounded,
+                title: 'Help Center',
+                subtitle: 'Guides, answers and a quick check that alerts will reach you.',
+                actionLabel: 'Open',
+                onTap: () => HelpScreen.open(context),
+              ),
             ]),
 
             // ── Notifications ────────────────────────────────────────
