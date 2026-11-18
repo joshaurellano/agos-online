@@ -14,44 +14,36 @@ const STYLES = `
   --f-accent: #5ec8fa;
   --f-line: rgba(255, 255, 255, 0.16);
   position: relative; margin-top: 24px; padding: 40px 24px 18px;
-  background: linear-gradient(180deg, #123a66 0%, #0c2a4d 100%);
+  background: #0a2a52;
   color: var(--f-soft); font-size: 0.92rem; line-height: 1.65;
-}
-.site-footer::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, #0369a1, #5ec8fa, #0369a1);
 }
 .site-footer-inner { max-width: 1200px; margin: 0 auto; }
 
 .site-footer-grid { display: grid; gap: 32px 44px; grid-template-columns: 1.35fr 1fr 1.35fr 0.9fr; }
 
 .site-footer-brand { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
-.site-footer-logo { width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0; }
+.site-footer-logo { width: 52px; height: 52px; border-radius: 6px; flex-shrink: 0; }
 .site-footer-name { color: var(--f-text); font-size: 0.95rem; line-height: 1.35; }
-.site-footer-name strong { display: block; font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; letter-spacing: .05em; }
+.site-footer-name strong { display: block; font-family: var(--font-serif); font-size: 1.3rem; font-weight: 900; letter-spacing: .03em; }
 
 .site-footer-heading {
-  margin: 0 0 14px; padding-bottom: 8px; position: relative;
-  font-family: var(--font-display); font-size: 0.8rem; font-weight: 800;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--f-text);
-}
-.site-footer-heading::after {
-  content: ''; position: absolute; left: 0; bottom: 0; width: 28px; height: 2px;
-  border-radius: 2px; background: var(--f-accent);
+  margin: 0 0 12px; position: relative;
+  font-family: var(--font-serif); font-size: 1rem; font-weight: 700;
+  letter-spacing: 0; color: var(--f-text);
 }
 .site-footer-block + .site-footer-block { margin-top: 22px; }
 .site-footer p { margin: 0; }
 
 .site-footer-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .site-footer-chip {
-  padding: 3px 11px; border-radius: 999px; font-size: 0.8rem; font-weight: 600;
+  padding: 3px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;
   color: var(--f-text); background: rgba(255, 255, 255, 0.1); border: 1px solid var(--f-line);
 }
 
 .site-footer-contact { display: flex; align-items: flex-start; gap: 12px; color: var(--f-text); }
 .site-footer-contact-icon {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
-  width: 36px; height: 36px; border-radius: 50%; font-size: 1.1rem;
+  width: 36px; height: 36px; border-radius: 4px; font-size: 1.1rem;
   color: var(--f-accent); background: rgba(94, 200, 250, 0.14); border: 1px solid rgba(94, 200, 250, 0.4);
 }
 

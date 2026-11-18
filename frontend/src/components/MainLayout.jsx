@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import QuickActionsBar from './QuickActionsBar';
 import Footer from './Footer';
+import GovBanner from './GovBanner';
 import ErrorBoundary from './ErrorBoundary';
 import OfflineBanner from './OfflineBanner';
 import AlertChangeToast from './AlertChangeToast';
@@ -110,6 +111,7 @@ export default function MainLayout() {
         onToggleCollapse={toggleCollapsed}
       />
       <div className="main-content">
+        <GovBanner />
         <OfflineBanner />
         <Topbar
           title={pageTitle}

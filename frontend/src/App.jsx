@@ -30,6 +30,7 @@ const ForecastAccuracyPage = lazy(() => import('./pages/ForecastAccuracyPage'));
 const AlertsLogPage = lazy(() => import('./pages/AlertsLogPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const HelpPage = lazy(() => import('./pages/HelpPage'));
+const EmergencyPage = lazy(() => import('./pages/EmergencyPage'));
 const ResidentRegistryPage = lazy(() => import('./pages/ResidentRegistryPage'));
 const NeedsAssessmentPage = lazy(() => import('./pages/NeedsAssessmentPage'));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
@@ -75,6 +76,7 @@ function App() {
                 <Route path="/alerts-log"    element={<AlertsLogPage />} />
                 <Route path="/settings"      element={<SettingsPage />} />
                 <Route path="/help"          element={<HelpPage />} />
+                <Route path="/emergency"     element={<EmergencyPage />} />
                 <Route path="/privacy"       element={<PrivacyPage />} />
 
                 <Route path="/reports" element={
