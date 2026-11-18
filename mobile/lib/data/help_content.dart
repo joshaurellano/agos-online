@@ -18,7 +18,8 @@ enum HelpAction {
   reportFlood('Report a flood', Icons.add_a_photo_rounded),
   alerts('Open Alerts', Icons.notifications_rounded),
   emergency('Emergency numbers', Icons.phone_in_talk_rounded),
-  settings('Open Settings', Icons.settings_rounded);
+  settings('Open Settings', Icons.settings_rounded),
+  privacy('Privacy notice', Icons.shield_outlined);
 
   final String label;
   final IconData icon;
@@ -549,6 +550,20 @@ const kHelpTopics = <HelpTopic>[
     blurb: 'What AGOS does and doesn\'t collect',
     icon: Icons.shield_outlined,
     faqs: [
+      HelpFaq(
+        'Where can I read the full privacy notice?',
+        'Settings → Privacy & support → Privacy notice, or the button below. It explains what AGOS collects, why, who can see it, '
+            'which outside services are involved, and your rights under the Data Privacy Act.',
+        keywords: 'terms policy consent data protection law dpa ra 10173',
+        action: HelpAction.privacy,
+      ),
+      HelpFaq(
+        'How do I withdraw my consent or ask for my data to be deleted?',
+        'Open the privacy notice and tap "Withdraw consent": AGOS stops alerts on this phone, clears saved data and closes. '
+            'To have information on our servers (your anonymous ID or reports) deleted, use "Email us" there and include your Device ID.',
+        keywords: 'delete erase remove account opt out revoke consent forget',
+        action: HelpAction.privacy,
+      ),
       HelpFaq(
         'What information does AGOS collect?',
         'An anonymous device ID and your phone\'s notification token, used to send alerts and to link your reports to you. '

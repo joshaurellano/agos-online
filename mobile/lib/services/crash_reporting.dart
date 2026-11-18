@@ -51,6 +51,16 @@ class CrashReporting {
     }
   }
 
+  /// Saves the choice without touching Firebase. Used by the consent screen,
+  /// which runs before Firebase starts; [init] applies it a moment later.
+  static Future<void> rememberChoice(bool value) async {
+    _enabled = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefKey, value);
+    } catch (_) {}
+  }
+
   static Future<void> setEnabled(bool value) async {
     _enabled = value;
     try {

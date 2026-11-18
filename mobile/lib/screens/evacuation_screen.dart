@@ -19,12 +19,25 @@ class _EvacCenter {
   final String id, name, type, note;
   final double lat, lng;
   final Color color;
+  // Bundled photo shown at the top of the center's card, or null to show a
+  // generated placeholder (see _CenterPhoto). Photos live in lib/assets/evac/
+  // and that folder must be listed under `assets:` in pubspec.yaml.
+  final String? photo;
+  // Where to anchor the crop when the photo is cropped to the banner shape.
+  final Alignment photoAlignment;
   const _EvacCenter({
     required this.id,    required this.name,  required this.type,
     required this.note,  required this.lat,   required this.lng,
     required this.color,
+    this.photo,
+    this.photoAlignment = Alignment.center,
   });
 }
+
+// Photo banner on top of each center card, and the resulting height of the
+// whole card strip. Floating map controls sit just above the strip.
+const double _kPhotoH = 84;
+const double _kStripH = 190 + _kPhotoH;
 
 // Colors mirror the web dashboard: Primary = red, School = blue, so the
 // marker/card color itself communicates the center's role at a glance
@@ -40,6 +53,8 @@ const _centers = [
     note: 'Ninoy and Cory Avenue, corner Carnation Street, Barangay Triangulo, Naga City',
     lat: 13.620122, lng: 123.188095,
     color: _colorPrimary,
+    photo: 'lib/assets/evac/jesse_robredo_coliseum.jpg',
+    photoAlignment: Alignment(0, -0.35),
   ),
   _EvacCenter(
     id: 'triangulo-elem',
@@ -48,6 +63,8 @@ const _centers = [
     note: 'Roxas Ave. Diversion Rd. Barangay Triangulo, Naga City',
     lat: 13.6165193, lng: 123.1878926,
     color: _colorSchool,
+    photo: 'lib/assets/evac/triangulo_elementary.jpg',
+    photoAlignment: Alignment(0, 0.1),
   ),
   _EvacCenter(
     id: 'jose-rizal-elem',
@@ -582,14 +599,18 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
+      clipBehavior: Clip.antiAlias, // rounds the photo's top corners
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: isSel ? tint : AppColors.bgBorder, width: isSel ? 1.8 : 1),
         boxShadow: [BoxShadow(color: AppColors.shadow(0.4), blurRadius: 14, offset: const Offset(0, 4))],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        _CenterPhoto(center: c, height: _kPhotoH, onTap: () => _showPhoto(c)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Row(children: [
           Container(
             width: 34, height: 34,
@@ -671,7 +692,41 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
             ),
           ),
         ]),
+          ]),
+        ),
       ]),
+    );
+  }
+
+  // Tap the photo to see it full size (pinch to zoom). Centers without a
+  // photo have nothing bigger to show.
+  void _showPhoto(_EvacCenter c) {
+    if (c.photo == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(children: [
+          InteractiveViewer(
+            maxScale: 4,
+            child: Image.asset(
+              c.photo!,
+              fit: BoxFit.contain,
+              semanticLabel: 'Photo of ${c.name}',
+              errorBuilder: (_, __, ___) => const SizedBox(height: 200),
+            ),
+          ),
+          Positioned(
+            top: 4, right: 4,
+            child: IconButton(
+              tooltip: 'Close photo',
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -845,7 +900,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       if (_userLocation == null && !_locating)
         Positioned(
           left: 14,
-          bottom: 200,
+          bottom: _kStripH + 10,
           child: Material(
             color: AppColors.accent,
             borderRadius: BorderRadius.circular(22),
@@ -871,7 +926,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         Positioned(
           left: 12,
           right: 12,
-          bottom: 200,
+          bottom: _kStripH + 10,
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -896,7 +951,7 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
         left: 0,
         right: 0,
         bottom: 0,
-        height: 190,
+        height: _kStripH,
         child: PageView.builder(
           controller: _pageController,
           onPageChanged: _onPageChanged,
@@ -909,6 +964,148 @@ class _EvacuationScreenState extends State<EvacuationScreen> {
       ),
     ]);
   }
+}
+
+// ── Photo banner on a center card ──────────────────────────────────────────────
+// The center's bundled photo, cropped to a banner; when there is none (or the
+// asset is missing) a generated placeholder in the center's color: a simple
+// school / building silhouette with a "Photo coming soon" tag.
+class _CenterPhoto extends StatelessWidget {
+  final _EvacCenter center;
+  final double height;
+  final VoidCallback onTap;
+  const _CenterPhoto({required this.center, required this.height, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = center.photo;
+    final placeholder = _CenterPhotoPlaceholder(center: center);
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: photo == null
+          ? placeholder
+          : GestureDetector(
+              onTap: onTap,
+              child: Stack(fit: StackFit.expand, children: [
+                Image.asset(
+                  photo,
+                  fit: BoxFit.cover,
+                  alignment: center.photoAlignment,
+                  semanticLabel: 'Photo of ${center.name}',
+                  errorBuilder: (_, __, ___) => placeholder,
+                ),
+                // Soft fade at the bottom so the photo meets the card cleanly.
+                Positioned(
+                  left: 0, right: 0, bottom: 0, height: 26,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, AppColors.surface.withValues(alpha: 0.55)],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 6, right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.zoom_out_map_rounded, color: Colors.white, size: 13),
+                  ),
+                ),
+              ]),
+            ),
+    );
+  }
+}
+
+class _CenterPhotoPlaceholder extends StatelessWidget {
+  final _EvacCenter center;
+  const _CenterPhotoPlaceholder({required this.center});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = center.color;
+    return Semantics(
+      label: 'No photo yet for ${center.name}',
+      child: Stack(fit: StackFit.expand, children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [c.withValues(alpha: 0.55), c.withValues(alpha: 0.22)],
+            ),
+          ),
+        ),
+        CustomPaint(painter: _SchoolSilhouettePainter(color: Colors.white.withValues(alpha: 0.30))),
+        Positioned(
+          left: 10, bottom: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text('Photo coming soon',
+                style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// A simple school building: two wings, a taller middle block with a
+// pitched roof, a door, windows and a flagpole.
+class _SchoolSilhouettePainter extends CustomPainter {
+  final Color color;
+  const _SchoolSilhouettePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final fill = Paint()..color = color;
+    final cut = Paint()..color = Colors.black.withValues(alpha: 0.18);
+    final ground = h * 0.86;
+    final cx = w * 0.5;
+
+    // Wings
+    canvas.drawRect(Rect.fromLTRB(cx - w * 0.36, ground - h * 0.30, cx - w * 0.10, ground), fill);
+    canvas.drawRect(Rect.fromLTRB(cx + w * 0.10, ground - h * 0.30, cx + w * 0.36, ground), fill);
+    // Center block + roof
+    canvas.drawRect(Rect.fromLTRB(cx - w * 0.12, ground - h * 0.46, cx + w * 0.12, ground), fill);
+    canvas.drawPath(
+      ui.Path()
+        ..moveTo(cx - w * 0.15, ground - h * 0.46)
+        ..lineTo(cx, ground - h * 0.66)
+        ..lineTo(cx + w * 0.15, ground - h * 0.46)
+        ..close(),
+      fill,
+    );
+    // Door
+    canvas.drawRect(Rect.fromLTRB(cx - w * 0.025, ground - h * 0.17, cx + w * 0.025, ground), cut);
+    // Windows
+    final ww = w * 0.035, wh = h * 0.10;
+    for (final x in [-0.30, -0.22, -0.16, 0.16, 0.22, 0.30]) {
+      canvas.drawRect(Rect.fromLTWH(cx + w * x - ww / 2, ground - h * 0.24, ww, wh), cut);
+    }
+    // Flagpole
+    final pole = Paint()..color = color..strokeWidth = 1.6;
+    canvas.drawLine(Offset(cx + w * 0.40, ground), Offset(cx + w * 0.40, ground - h * 0.52), pole);
+    canvas.drawRect(Rect.fromLTWH(cx + w * 0.40, ground - h * 0.52, w * 0.05, h * 0.08), fill);
+    // Ground line
+    canvas.drawRect(Rect.fromLTRB(0, ground, w, ground + 2), fill);
+  }
+
+  @override
+  bool shouldRepaint(_SchoolSilhouettePainter old) => old.color != color;
 }
 
 // ── Custom Pin Painter ─────────────────────────────────────────────────────────

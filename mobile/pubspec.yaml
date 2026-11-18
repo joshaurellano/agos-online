@@ -83,6 +83,7 @@ flutter:
     # launch with no signal. google_fonts prefers files it finds here over
     # downloading them. (SIL Open Font License — see google_fonts/OFL.txt.)
     - google_fonts/
+    - lib/assets/evac/
 
 # The Android launcher icons are already generated into android/.../res/.
 # Re-run this only if you change the images below:  dart run flutter_launcher_icons

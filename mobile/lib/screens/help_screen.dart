@@ -28,6 +28,7 @@ import '../services/offline_cache.dart' show agoLabel;
 import '../services/pending_reports_service.dart';
 import 'alert_screen.dart';
 import 'emergency_screen.dart';
+import 'privacy_notice_screen.dart';
 import 'report_incident_screen.dart';
 import 'settings_screen.dart';
 
@@ -63,6 +64,8 @@ void runHelpAction(BuildContext context, HelpAction action) {
       push(const EmergencyScreen());
     case HelpAction.settings:
       push(const SettingsScreen());
+    case HelpAction.privacy:
+      push(const PrivacyNoticeScreen());
   }
 }
 
@@ -269,6 +272,13 @@ class _HelpScreenState extends State<HelpScreen> {
                       onTap: _emailFeedback,
                     ),
                   ],
+                  const _Divider(),
+                  _LinkRow(
+                    icon: Icons.shield_outlined,
+                    title: 'Privacy notice',
+                    subtitle: 'What AGOS collects and your choices.',
+                    onTap: () => runHelpAction(context, HelpAction.privacy),
+                  ),
                   if (kPrivacyPolicyUrl.isNotEmpty) ...[
                     const _Divider(),
                     _LinkRow(

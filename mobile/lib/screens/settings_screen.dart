@@ -24,6 +24,7 @@ import '../services/pending_reports_service.dart';
 import '../services/theme_settings.dart';
 import '../services/tile_cache.dart';
 import 'help_screen.dart';
+import 'privacy_notice_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -446,6 +447,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // ── Privacy & support ────────────────────────────────────
             const _SectionTitle('PRIVACY & SUPPORT'),
             _Card(children: [
+              _ActionRow(
+                icon: Icons.shield_outlined,
+                title: 'Privacy notice',
+                subtitle: 'What AGOS collects, who sees it, and your choices — including withdrawing consent.',
+                actionLabel: 'Read',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PrivacyNoticeScreen()),
+                ),
+              ),
+              const _Divider(),
               _SwitchRow(
                 icon: Icons.bug_report_outlined,
                 title: 'Send crash reports',
