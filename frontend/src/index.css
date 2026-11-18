@@ -1450,11 +1450,14 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible) { outline: none; }
 .kyz-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .kyz-step {
   --c: #0ea5e9;
-  display: flex; gap: 12px; align-items: flex-start; padding: 14px;
+  display: flex; flex-direction: column; gap: 12px; align-items: stretch; padding: 14px;
   border-radius: var(--radius-sm); border: 1px solid var(--blue-border);
   background: color-mix(in srgb, var(--c) 7%, transparent);
 }
 .kyz-step-avoid { --c: #ef4444; }
+.kyz-step-row { display: flex; gap: 12px; align-items: flex-start; }
+.kyz-art { display: block; width: 100%; height: auto; color: var(--text-secondary); }
+.kyz-art-plate { fill: var(--c); fill-opacity: 0.1; }
 .kyz-step-icon {
   flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%;
   color: var(--c); background: color-mix(in srgb, var(--c) 18%, transparent);
