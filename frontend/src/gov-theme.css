@@ -401,3 +401,67 @@ main :is(input[type="text"], input[type="email"], input[type="password"], input[
 .kyz-source { font-size: 0.8rem; }
 .kyz-source-main { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px; }
 .kyz-source a { color: var(--accent); text-decoration: underline; text-underline-offset: 0.2em; }
+
+/* ── Survival kit ───────────────────────────────────────────────────────── */
+
+.kyz-kit-alert {
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px;
+  border: 1px solid var(--blue-border); border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #f59e0b 14%, var(--blue-card)); color: var(--text-primary); font-weight: 600;
+}
+.kyz-household { margin: 0; padding: 14px; border: 1px solid var(--blue-border); border-radius: var(--radius-sm); display: grid; gap: 12px; }
+.kyz-household legend { padding: 0 6px; font-size: 0.9rem; color: var(--text-secondary); }
+.kyz-people { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-weight: 600; }
+.kyz-stepper { display: inline-flex; align-items: center; border: 1px solid #5b6b80; border-radius: var(--radius-sm); overflow: hidden; background: var(--blue-card); }
+.kyz-stepper button { width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: 0; color: var(--text-primary); cursor: pointer; }
+.kyz-stepper button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.kyz-stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
+.kyz-stepper output { min-width: 44px; text-align: center; font-weight: 700; font-size: 1.05rem; }
+.kyz-needs { display: flex; flex-wrap: wrap; gap: 8px; }
+.kyz-need { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 6px 14px; border: 1px solid #5b6b80; border-radius: var(--radius-sm); background: var(--blue-card); cursor: pointer; font-weight: 600; }
+.kyz-need input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.kyz-need.is-on { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+.kyz-need:has(input:focus-visible) { outline: 3px solid var(--gov-focus); outline-offset: 2px; }
+.kyz-kit-sub { margin: 4px 0 0; font-family: var(--font-serif); font-size: 1rem; }
+.kyz-kit-text { display: flex; flex-direction: column; gap: 2px; }
+.kyz-kit-name { font-weight: 600; }
+.kyz-kit-why { font-size: 0.82rem; line-height: 1.4; color: var(--text-secondary); font-weight: 400; }
+.kyz-grab-tag { margin-left: 8px; padding: 0 6px; border-radius: 3px; font-style: normal; font-size: 0.72rem; font-weight: 700; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.kyz-kit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.kyz-kit-actions .btn { display: inline-flex; align-items: center; gap: 8px; }
+.kyz-kit-last { margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
+
+/* Dashboard nudge */
+.kit-nudge { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--blue-border); border-radius: var(--radius-sm); background: var(--blue-card); }
+.kit-nudge svg { flex-shrink: 0; color: var(--accent); }
+.kit-nudge p { margin: 0; font-size: 0.9rem; }
+.kit-nudge a { font-weight: 700; color: var(--accent); text-decoration: underline; text-underline-offset: 0.2em; }
+
+/* Family plan: hidden on screen, the only thing printed */
+.kit-print { display: none; }
+@media print {
+  body * { visibility: hidden; }
+  .kit-print, .kit-print * { visibility: visible; }
+  .kit-print { display: block; position: absolute; left: 0; top: 0; width: 100%; padding: 0 12mm; color: #000; background: #fff; font-family: var(--font-body); font-size: 11pt; }
+  .kit-print h1 { font-family: var(--font-serif); font-size: 20pt; margin: 0; }
+  .kit-print h2 { font-family: var(--font-serif); font-size: 12.5pt; margin: 14pt 0 4pt; border-bottom: 1px solid #000; padding-bottom: 2pt; }
+  .kit-print-sub { margin: 2pt 0 0; }
+  .kit-print-hint { margin: 0 0 4pt; font-size: 9.5pt; }
+  .kit-print ul { margin: 0; padding-left: 14pt; }
+  .kit-print-kit { list-style: none; padding-left: 0 !important; columns: 2; column-gap: 16pt; }
+  .kit-print-kit li { break-inside: avoid; margin-bottom: 2pt; }
+  .kit-print-table { width: 100%; border-collapse: collapse; }
+  .kit-print-table th, .kit-print-table td { border: 1px solid #000; padding: 5pt; text-align: left; height: 20pt; }
+  .kit-print-line { border-bottom: 1px solid #000; height: 20pt; }
+  .kit-print-foot { margin-top: 12pt; font-size: 9pt; }
+}
+
+/* Optional household names for the printed plan */
+.kyz-members { border: 1px solid var(--blue-border); border-radius: var(--radius-sm); padding: 0 14px; }
+.kyz-members summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+.kyz-members[open] { padding-bottom: 14px; }
+.kyz-members-note { margin: 0 0 10px; font-size: 0.85rem; color: var(--text-secondary); }
+.kyz-member { display: grid; grid-template-columns: 5.5rem 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
+.kyz-member-n { font-size: 0.85rem; color: var(--text-secondary); }
+.kyz-member input { min-height: 44px; padding: 6px 10px; border: 1px solid #5b6b80; border-radius: var(--radius-sm); background: var(--blue-card); color: var(--text-primary); font: inherit; min-width: 0; }
+@media (max-width: 520px) { .kyz-member { grid-template-columns: 1fr 1fr; } .kyz-member-n { grid-column: 1 / -1; } }
