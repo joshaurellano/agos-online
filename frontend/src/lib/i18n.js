@@ -29,7 +29,7 @@ export const STRINGS = {
     banner: {
       label: 'About this site',
       line: 'AGOS is a student flood early-warning project for Barangay Triangulo, Naga City.',
-      toggle: 'How to use it safely',
+      toggle: 'About this site',
       officialTitle: 'Official advisories',
       officialText: 'Weather and flood bulletins come from PAGASA. AGOS adds a model forecast for Triangulo and does not replace them.',
       emergencyTitle: 'In an emergency',
@@ -154,7 +154,7 @@ export const STRINGS = {
     banner: {
       label: 'Tungkol sa site na ito',
       line: 'Ang AGOS ay proyekto ng mga estudyante para sa maagang babala sa baha sa Barangay Triangulo, Lungsod ng Naga.',
-      toggle: 'Paano gamitin nang ligtas',
+      toggle: 'Tungkol sa site na ito',
       officialTitle: 'Opisyal na abiso',
       officialText: 'Ang mga bulletin sa panahon at baha ay galing sa PAGASA. Nagdaragdag ang AGOS ng forecast ng modelo para sa Triangulo at hindi nito pinapalitan ang mga ito.',
       emergencyTitle: 'Sa oras ng emerhensiya',
