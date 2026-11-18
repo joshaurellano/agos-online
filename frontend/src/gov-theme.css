@@ -396,3 +396,8 @@ main :is(input[type="text"], input[type="email"], input[type="password"], input[
 }
 .em-copy:hover { color: var(--text-primary); border-color: var(--text-secondary); }
 .em-source { margin-top: 24px; font-size: 0.85rem; color: var(--text-secondary); max-width: 70ch; }
+
+/* Data source citation on Know Your Risk */
+.kyz-source { font-size: 0.8rem; }
+.kyz-source-main { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 8px; }
+.kyz-source a { color: var(--accent); text-decoration: underline; text-underline-offset: 0.2em; }

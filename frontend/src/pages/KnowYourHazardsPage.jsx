@@ -582,11 +582,15 @@ export default function KnowYourHazardsPage() {
 
       <FloodGuide alertKey={alertKey} />
 
+      <p className="kyz-source kyz-source-main">
+        <strong>Source:</strong> Project NOAH (DOST and the University of the Philippines), 100-year rainfall flood hazard map for
+        Camarines Sur, clipped to Barangay Triangulo. See{' '}
+        <a href="https://noah.up.edu.ph" target="_blank" rel="noreferrer">noah.up.edu.ph</a>.
+      </p>
       <p className="kyz-source">
-        Flood zones come from the 100-year rainfall flood hazard map (Project NOAH, Camarines Sur), clipped to Barangay Triangulo: the flooding
-        expected in a rain event with a 1% chance of happening in any year. Levels follow Project NOAH's flood-depth classes
-        (low up to 0.5 m, medium 0.5–1.5 m, high over 1.5 m). Each level also takes flow speed into account, so fast-moving shallow
-        water can rate higher than its depth alone suggests. Routes follow mapped streets and are estimates.
+        The map shows the flooding expected in a rain event with a 1% chance of happening in any year. Levels follow Project NOAH's
+        flood-depth classes (low up to 0.5 m, medium 0.5–1.5 m, high over 1.5 m). Each level also takes flow speed into account, so
+        fast-moving shallow water can rate higher than its depth alone suggests. Routes follow mapped streets and are estimates.
         Building outlines © OpenStreetMap contributors; heights are partly estimated. {t('disclaimer')}
       </p>
     </div>
